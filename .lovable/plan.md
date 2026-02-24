@@ -1,94 +1,129 @@
 
 
-# CRM Inteligente con IA para Gestión de Proyectos Europeos
+# Integración de Envío de Emails con Resend
 
-## Visión General
-Un CRM centrado en un **chat de IA** que actúa como asistente personal para gestionar contactos, empresas, proyectos europeos y documentos. El agente IA aprende de toda la información que le proporcionas (emails, documentos, pantallazos) y construye una base de conocimiento que te permite interactuar de forma inteligente con tus datos.
+## Resumen
 
----
-
-## 1. Autenticación y Gestión de Usuarios
-- Login/registro con email y contraseña
-- Roles básicos: **Administrador** y **Usuario**
-- Perfiles de usuario con nombre, avatar y preferencias
-- Equipo de 2-5 personas con acceso compartido a los datos
-
-## 2. Panel Principal (Dashboard)
-- Resumen de actividad reciente: últimos emails, tareas pendientes, próximas reuniones
-- Acceso rápido al chat IA (protagonista de la interfaz)
-- Indicadores clave: contactos activos, proyectos en curso, tareas pendientes
-- Notificaciones de tareas vencidas o emails sin responder
-
-## 3. Chat de IA (Centro del CRM)
-- **Interfaz de chat** como pantalla principal del CRM
-- Subir documentos, pantallazos, emails directamente al chat
-- El agente IA analiza y extrae información: nombres, empresas, fechas, importes
-- Preguntar al agente cosas como:
-  - *"Redáctame un email de respuesta a María sobre el presupuesto Lump Sum"*
-  - *"¿Qué proyectos tenemos pendientes con el socio italiano?"*
-  - *"Resúmeme los últimos emails con la Comisión Europea"*
-- El agente usa la base de conocimiento acumulada para dar respuestas contextuales
-- Historial de conversaciones guardado y organizable
-
-## 4. Gestión de Contactos
-### Empresas/Organizaciones
-- Ficha de empresa: nombre, sector, país, tipo (socio, institución, cliente)
-- Historial de interacciones (emails, llamadas, reuniones)
-- Documentos vinculados a la empresa
-- Proyectos europeos en los que participa
-
-### Personas/Contactos
-- Ficha de contacto: nombre, cargo, email, teléfono
-- Vinculación a una o varias empresas
-- Historial de comunicaciones
-- Notas y etiquetas personalizadas
-
-## 5. Gestión de Proyectos/Oportunidades
-- Ficha de proyecto: título, convocatoria, estado (propuesta, en curso, finalizado)
-- Socios del consorcio vinculados
-- Documentos del proyecto (presupuestos, mandatos, informes)
-- Fechas clave y deadlines
-- Pipeline visual tipo Kanban para seguimiento de oportunidades
-
-## 6. Gestión Documental
-- Subida y almacenamiento de documentos (PDFs, Excel, imágenes)
-- Vinculación de documentos a empresas, contactos o proyectos
-- El agente IA extrae y resume el contenido de los documentos
-- Búsqueda inteligente dentro de los documentos subidos
-
-## 7. Integración de Email
-- Conexión con Gmail/Google Workspace, Outlook/Microsoft 365 y cuentas IMAP
-- Bandeja de entrada unificada dentro del CRM
-- Envío de emails desde el CRM
-- El agente IA sugiere y redacta respuestas basándose en el contexto
-- Vinculación automática de emails a contactos y proyectos
-
-## 8. Calendario y Tareas
-- Calendario integrado con vista diaria, semanal y mensual
-- Tipos de eventos: llamadas, reuniones, deadlines de proyecto
-- Lista de tareas pendientes con prioridad y fecha límite
-- Categorías: emails pendientes, llamadas, documentos por revisar
-- Recordatorios y notificaciones
-- El agente IA puede crear tareas y eventos cuando se lo pides en el chat
-
-## 9. Base de Conocimiento IA
-- Todo lo que subes (documentos, emails, pantallazos, notas) alimenta la base de conocimiento
-- Organizada por empresa, contacto y proyecto
-- El agente IA la consulta automáticamente al responder preguntas
-- Crece con el uso: cuanto más usas el CRM, más inteligente se vuelve
+Integrar Resend como servicio de envío de emails profesionales en el CRM, permitiendo:
+- Enviar emails individuales a contactos desde su ficha o desde el chat IA
+- Enviar campañas a grupos de contactos filtrados
+- La IA redacta y envía emails directamente desde el chat
+- Registro de todos los emails enviados vinculados a contactos/organizaciones
 
 ---
 
-## Stack Técnico
-- **Frontend**: React con la interfaz actual (shadcn/ui + Tailwind)
-- **Backend**: Supabase (base de datos, autenticación, almacenamiento de archivos, edge functions)
-- **IA**: Lovable AI Gateway para el agente inteligente
-- **Email**: Integración vía edge functions con Gmail API y Microsoft Graph API
+## Lo que se necesita antes de empezar
 
-## Fases de Implementación
-1. **Fase 1**: Autenticación, dashboard, estructura de contactos/empresas/proyectos y chat IA básico
-2. **Fase 2**: Gestión documental con análisis IA y base de conocimiento
-3. **Fase 3**: Integración de email (recibir y enviar)
-4. **Fase 4**: Calendario, tareas y recordatorios
-5. **Fase 5**: Redacción inteligente de emails y automatizaciones IA avanzadas
+1. **Crear una cuenta gratuita en Resend** (resend.com)
+2. **Obtener la API Key** desde el panel de Resend (Settings > API Keys)
+3. **Verificar un dominio** o usar el dominio de prueba que Resend proporciona (onboarding@resend.dev para testing)
+
+---
+
+## Componentes a implementar
+
+### 1. Tabla `email_logs` para registrar todos los emails enviados
+
+Campos principales:
+- Destinatario (to), remitente (from), asunto, cuerpo HTML/texto
+- Vinculacion a contacto, organizacion y proyecto
+- Estado del envio (sent, failed, pending)
+- Fecha de envio
+- ID de Resend para tracking
+
+### 2. Edge Function `send-email`
+
+Funcion backend que:
+- Recibe los datos del email (to, subject, html, contact_id, etc.)
+- Llama a la API de Resend para enviar el email
+- Registra el resultado en la tabla `email_logs`
+- Devuelve confirmacion o error
+
+### 3. Componente `ComposeEmail` (modal de redaccion)
+
+Un dialogo reutilizable que permite:
+- Seleccionar destinatario (de la lista de contactos o escribir manualmente)
+- Escribir asunto y cuerpo del email
+- Boton "Pedir a la IA que redacte" que usa el chat para generar el contenido
+- Vista previa antes de enviar
+- Envio directo desde el CRM
+
+### 4. Seccion de Emails en la pagina de cada contacto
+
+- Historial de emails enviados a ese contacto
+- Boton rapido "Enviar email" que abre el modal de redaccion
+
+### 5. Pagina de Campanas (opcional, segunda fase)
+
+- Crear campanas seleccionando filtros (por organizacion, pais, etiqueta)
+- Envio programado o inmediato
+- Metricas basicas (enviados, fallidos)
+
+### 6. Integracion con el Chat IA
+
+- El usuario puede decir: "Redactame un email para Maria sobre el presupuesto Lump Sum y envialo"
+- La IA redacta el email y muestra un boton de confirmacion antes de enviar
+- Al confirmar, se llama a la edge function de envio
+
+---
+
+## Detalles Tecnicos
+
+### Migracion SQL
+
+```sql
+CREATE TABLE public.email_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_by uuid,
+  contact_id uuid REFERENCES contacts(id) ON DELETE SET NULL,
+  organization_id uuid REFERENCES organizations(id) ON DELETE SET NULL,
+  project_id uuid REFERENCES projects(id) ON DELETE SET NULL,
+  from_email text NOT NULL,
+  to_email text NOT NULL,
+  subject text NOT NULL,
+  body_html text,
+  body_text text,
+  status text NOT NULL DEFAULT 'pending',
+  resend_id text,
+  error_message text,
+  sent_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.email_logs ENABLE ROW LEVEL SECURITY;
+-- Politicas RLS para usuarios autenticados
+```
+
+### Edge Function: `send-email/index.ts`
+
+- Recibe: `{ to, subject, html, text, contact_id?, organization_id?, project_id? }`
+- Usa `RESEND_API_KEY` (secret que habra que configurar)
+- Llama a `https://api.resend.com/emails` con POST
+- Guarda resultado en `email_logs`
+
+### Archivos a crear/modificar
+
+1. **Migracion SQL** - tabla `email_logs` + RLS
+2. **`supabase/functions/send-email/index.ts`** - edge function de envio
+3. **`src/components/email/ComposeEmail.tsx`** - modal de redaccion
+4. **`src/pages/Contacts.tsx`** - agregar historial de emails y boton de envio
+5. **`src/App.tsx`** - (sin cambios de rutas, el compose es un modal)
+6. **`supabase/config.toml`** - registrar nueva funcion
+
+### Flujo de usuario
+
+```text
+1. Usuario va a un contacto o abre el chat IA
+2. Dice "enviar email a Maria" o pulsa el boton de email
+3. Se abre el modal de redaccion con el destinatario pre-rellenado
+4. Opcionalmente pide a la IA que redacte el contenido
+5. Revisa el email y pulsa "Enviar"
+6. Edge function envia via Resend
+7. Se registra en email_logs vinculado al contacto
+8. El usuario ve confirmacion y el email aparece en el historial
+```
+
+### Configuracion necesaria
+
+Se pedira al usuario que introduzca su API Key de Resend como secret seguro en el proyecto. Esta clave solo sera accesible desde las funciones backend, nunca desde el navegador.
 
