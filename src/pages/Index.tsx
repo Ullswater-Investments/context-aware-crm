@@ -1,13 +1,54 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { streamChat } from "@/lib/chat-stream";
+import { streamChat, type ChatAttachment } from "@/lib/chat-stream";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-import { Send, Bot, User, Loader2, Plus, UserPlus, X } from "lucide-react";
+import { Send, Bot, User, Loader2, Plus, UserPlus, X, Paperclip, FileText, Image as ImageIcon } from "lucide-react";
+
+const MAX_FILES = 10;
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const TEXT_TYPES = ["text/plain", "text/csv", "text/markdown", "application/json", "application/xml", "text/xml"];
+
+function isImageFile(file: File) {
+  return IMAGE_TYPES.includes(file.type) || /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name);
+}
+
+function isTextFile(file: File) {
+  return TEXT_TYPES.includes(file.type) || /\.(txt|csv|json|xml|md|yaml|yml|log)$/i.test(file.name);
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1]); // strip data:...;base64,
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -60,7 +101,9 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<{ id: string; title: string; updated_at: string }[]>([]);
   const [pendingContacts, setPendingContacts] = useState<PendingContact[]>([]);
   const [savingContact, setSavingContact] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadConversations();
@@ -94,6 +137,67 @@ export default function ChatPage() {
     setMessages([]);
     setConversationId(null);
     setPendingContacts([]);
+    setAttachedFiles([]);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    
+    const totalAfter = attachedFiles.length + files.length;
+    if (totalAfter > MAX_FILES) {
+      toast.error(`Máximo ${MAX_FILES} archivos. Ya tienes ${attachedFiles.length}.`);
+      return;
+    }
+    
+    const validFiles: File[] = [];
+    for (const f of files) {
+      if (f.size > MAX_FILE_SIZE) {
+        toast.error(`"${f.name}" excede 20MB`);
+        continue;
+      }
+      validFiles.push(f);
+    }
+    
+    setAttachedFiles(prev => [...prev, ...validFiles]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const processAttachments = async (files: File[]): Promise<ChatAttachment[]> => {
+    const attachments: ChatAttachment[] = [];
+    for (const file of files) {
+      if (isImageFile(file)) {
+        const base64 = await readFileAsBase64(file);
+        attachments.push({ name: file.name, type: file.type || "image/png", content: base64 });
+      } else if (isTextFile(file)) {
+        const text = await readFileAsText(file);
+        attachments.push({ name: file.name, type: file.type || "text/plain", content: text });
+      } else {
+        // For PDFs and other binary files, just reference by name
+        attachments.push({ name: file.name, type: file.type || "application/octet-stream", content: `[Archivo binario: ${file.name} (${formatFileSize(file.size)})]` });
+      }
+    }
+    return attachments;
+  };
+
+  const uploadFilesToStorage = async (files: File[], convId: string) => {
+    for (const file of files) {
+      const path = `${user!.id}/chat/${convId}/${Date.now()}_${file.name}`;
+      await supabase.storage.from("knowledge").upload(path, file);
+      await supabase.from("knowledge_items").insert({
+        file_name: file.name,
+        file_path: path,
+        file_type: file.type,
+        file_size: file.size,
+        source_type: "chat_upload",
+        conversation_id: convId,
+        created_by: user!.id,
+      });
+    }
   };
 
   // Check if contact already exists by email or phone
@@ -147,22 +251,29 @@ export default function ChatPage() {
 
   const send = async () => {
     const text = input.trim();
-    if (!text || isLoading) return;
+    if ((!text && attachedFiles.length === 0) || isLoading) return;
     setInput("");
+    const filesToSend = [...attachedFiles];
+    setAttachedFiles([]);
 
-    const userMsg: Msg = { role: "user", content: text };
-    const currentMsgIndex = messages.length; // index of this user message
+    // Build display content with file names
+    const fileNames = filesToSend.map(f => f.name);
+    const displayContent = fileNames.length > 0
+      ? `${text}\n\n📎 ${fileNames.join(", ")}`
+      : text;
+
+    const userMsg: Msg = { role: "user", content: displayContent };
+    const currentMsgIndex = messages.length;
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
-    // Detect contact info in the user message
     const contactInfo = extractContactInfo(text);
 
     let convId = conversationId;
     if (!convId) {
       const { data } = await supabase
         .from("conversations")
-        .insert({ user_id: user!.id, title: text.slice(0, 60) })
+        .insert({ user_id: user!.id, title: text.slice(0, 60) || fileNames[0] || "Archivos" })
         .select("id")
         .single();
       if (data) {
@@ -176,11 +287,15 @@ export default function ChatPage() {
       await supabase.from("chat_messages").insert({
         conversation_id: convId,
         role: "user",
-        content: text,
+        content: displayContent,
       });
+
+      // Upload files to storage in background
+      if (filesToSend.length > 0) {
+        uploadFilesToStorage(filesToSend, convId).catch(console.error);
+      }
     }
 
-    // Check for new contact in parallel with AI response
     if (contactInfo) {
       checkExistingContact(contactInfo).then((exists) => {
         if (!exists) {
@@ -190,6 +305,17 @@ export default function ChatPage() {
           ]);
         }
       });
+    }
+
+    // Process file attachments for the AI
+    let attachments: ChatAttachment[] | undefined;
+    if (filesToSend.length > 0) {
+      try {
+        attachments = await processAttachments(filesToSend);
+      } catch (err) {
+        console.error("Error processing attachments:", err);
+        toast.error("Error al procesar archivos adjuntos");
+      }
     }
 
     let assistantSoFar = "";
@@ -205,8 +331,11 @@ export default function ChatPage() {
     };
 
     try {
+      // Send text-only content to the AI (without the file badge line)
+      const aiMsg: Msg = { role: "user", content: text || "Analiza los archivos adjuntos." };
       await streamChat({
-        messages: [...messages, userMsg],
+        messages: [...messages, aiMsg],
+        attachments,
         onDelta: upsertAssistant,
         onDone: async () => {
           setIsLoading(false);
@@ -396,18 +525,54 @@ export default function ChatPage() {
           </ScrollArea>
         )}
 
+        {/* Attached files preview */}
+        {attachedFiles.length > 0 && (
+          <div className="border-t border-border px-4 pt-3 bg-background">
+            <div className="max-w-3xl mx-auto flex flex-wrap gap-2">
+              {attachedFiles.map((f, i) => (
+                <Badge key={i} variant="secondary" className="gap-1.5 pr-1 py-1">
+                  {isImageFile(f) ? <ImageIcon className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+                  <span className="max-w-[120px] truncate text-xs">{f.name}</span>
+                  <span className="text-[10px] text-muted-foreground">{formatFileSize(f.size)}</span>
+                  <button onClick={() => removeFile(i)} className="ml-0.5 p-0.5 rounded hover:bg-muted">
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Input */}
         <div className="border-t border-border p-4 bg-background">
           <div className="max-w-3xl mx-auto flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf,.txt,.csv,.json,.xml,.md,.yaml,.yml,.log,.docx,.xlsx,.pptx"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || attachedFiles.length >= MAX_FILES}
+              title={`Adjuntar archivos (${attachedFiles.length}/${MAX_FILES})`}
+            >
+              <Paperclip className="w-4 h-4" />
+            </Button>
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Escribe tu mensaje..."
+              placeholder={attachedFiles.length > 0 ? "Describe qué quieres hacer con los archivos..." : "Escribe tu mensaje..."}
               className="min-h-[44px] max-h-32 resize-none"
               rows={1}
             />
-            <Button onClick={send} disabled={isLoading || !input.trim()} size="icon" className="shrink-0">
+            <Button onClick={send} disabled={isLoading || (!input.trim() && attachedFiles.length === 0)} size="icon" className="shrink-0">
               <Send className="w-4 h-4" />
             </Button>
           </div>

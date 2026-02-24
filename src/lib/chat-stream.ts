@@ -1,13 +1,21 @@
 type Msg = { role: "user" | "assistant"; content: string };
 
+export interface ChatAttachment {
+  name: string;
+  type: string; // mime type
+  content: string; // base64 for images, text for text files
+}
+
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
 export async function streamChat({
   messages,
+  attachments,
   onDelta,
   onDone,
 }: {
   messages: Msg[];
+  attachments?: ChatAttachment[];
   onDelta: (deltaText: string) => void;
   onDone: () => void;
 }) {
@@ -17,7 +25,7 @@ export async function streamChat({
       "Content-Type": "application/json",
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, attachments }),
   });
 
   if (resp.status === 429) {
