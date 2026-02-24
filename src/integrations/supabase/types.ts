@@ -80,46 +80,70 @@ export type Database = {
       }
       contacts: {
         Row: {
+          company_domain: string | null
           created_at: string
           created_by: string | null
           email: string | null
           full_name: string
           id: string
+          last_enriched_at: string | null
+          linkedin_url: string | null
+          lusha_status: string
+          mobile_phone: string | null
           notes: string | null
           organization_id: string | null
+          personal_email: string | null
           phone: string | null
           position: string | null
           status: Database["public"]["Enums"]["contact_status"]
           tags: string[] | null
           updated_at: string
+          work_email: string | null
+          work_phone: string | null
         }
         Insert: {
+          company_domain?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
           full_name: string
           id?: string
+          last_enriched_at?: string | null
+          linkedin_url?: string | null
+          lusha_status?: string
+          mobile_phone?: string | null
           notes?: string | null
           organization_id?: string | null
+          personal_email?: string | null
           phone?: string | null
           position?: string | null
           status?: Database["public"]["Enums"]["contact_status"]
           tags?: string[] | null
           updated_at?: string
+          work_email?: string | null
+          work_phone?: string | null
         }
         Update: {
+          company_domain?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
           full_name?: string
           id?: string
+          last_enriched_at?: string | null
+          linkedin_url?: string | null
+          lusha_status?: string
+          mobile_phone?: string | null
           notes?: string | null
           organization_id?: string | null
+          personal_email?: string | null
           phone?: string | null
           position?: string | null
           status?: Database["public"]["Enums"]["contact_status"]
           tags?: string[] | null
           updated_at?: string
+          work_email?: string | null
+          work_phone?: string | null
         }
         Relationships: [
           {

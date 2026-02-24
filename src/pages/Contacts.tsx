@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, Linkedin } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
 
 const PIPELINE_COLUMNS = [
@@ -31,6 +31,14 @@ interface Contact {
   status: string;
   tags: string[] | null;
   notes: string | null;
+  linkedin_url?: string | null;
+  company_domain?: string | null;
+  work_email?: string | null;
+  personal_email?: string | null;
+  mobile_phone?: string | null;
+  work_phone?: string | null;
+  lusha_status?: string | null;
+  last_enriched_at?: string | null;
 }
 
 export default function Contacts() {
@@ -39,7 +47,7 @@ export default function Contacts() {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
-  const [form, setForm] = useState({ full_name: "", email: "", phone: "", position: "", organization_id: "" });
+  const [form, setForm] = useState({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "" });
   const [view, setView] = useState<"kanban" | "list">("kanban");
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -59,12 +67,20 @@ export default function Contacts() {
   }, [load]);
 
   const create = async () => {
-    const insert: any = { full_name: form.full_name, email: form.email || null, phone: form.phone || null, position: form.position || null, created_by: user!.id };
+    const insert: any = {
+      full_name: form.full_name,
+      email: form.email || null,
+      phone: form.phone || null,
+      position: form.position || null,
+      linkedin_url: form.linkedin_url || null,
+      company_domain: form.company_domain || null,
+      created_by: user!.id,
+    };
     if (form.organization_id) insert.organization_id = form.organization_id;
     const { error } = await supabase.from("contacts").insert(insert);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto creado");
-    setForm({ full_name: "", email: "", phone: "", position: "", organization_id: "" });
+    setForm({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "" });
     setOpen(false);
     load();
   };
@@ -150,6 +166,8 @@ export default function Contacts() {
                     {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>
                 </div>
+                <div><Label>LinkedIn URL</Label><Input value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
+                <div><Label>Dominio empresa</Label><Input value={form.company_domain} onChange={(e) => setForm({ ...form, company_domain: e.target.value })} placeholder="empresa.com" /></div>
                 <Button onClick={create} disabled={!form.full_name} className="w-full">Crear contacto</Button>
               </div>
             </DialogContent>
@@ -194,7 +212,10 @@ export default function Contacts() {
                       <div className="flex items-start gap-2">
                         <GripVertical className="w-4 h-4 text-muted-foreground/40 shrink-0 mt-0.5 cursor-grab" />
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium text-sm truncate">{c.full_name}</p>
+                          <div className="flex items-center gap-1">
+                            <p className="font-medium text-sm truncate">{c.full_name}</p>
+                            {(c as any).lusha_status === "enriched" && <Sparkles className="w-3 h-3 text-green-500 shrink-0" />}
+                          </div>
                           {c.organizations?.name && (
                             <p className="text-xs text-muted-foreground truncate">{c.organizations.name}</p>
                           )}

@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save } from "lucide-react";
+import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin } from "lucide-react";
 import ComposeEmail from "@/components/email/ComposeEmail";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -23,6 +23,12 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_OPTIONS = Object.entries(STATUS_LABELS);
 
+const LUSHA_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  pending: { label: "Pendiente", className: "bg-muted text-muted-foreground" },
+  enriched: { label: "Enriquecido", className: "bg-green-500/15 text-green-700 border-green-500/30" },
+  not_found: { label: "No encontrado", className: "bg-orange-500/15 text-orange-700 border-orange-500/30" },
+};
+
 interface Contact {
   id: string;
   full_name: string;
@@ -34,6 +40,14 @@ interface Contact {
   status: string;
   tags: string[] | null;
   notes: string | null;
+  linkedin_url?: string | null;
+  company_domain?: string | null;
+  work_email?: string | null;
+  personal_email?: string | null;
+  mobile_phone?: string | null;
+  work_phone?: string | null;
+  lusha_status?: string | null;
+  last_enriched_at?: string | null;
 }
 
 interface ContactNote {
@@ -49,6 +63,18 @@ interface ContactProfileProps {
   onUpdate: () => void;
 }
 
+function CopyButton({ value }: { value: string }) {
+  const copy = () => {
+    navigator.clipboard.writeText(value);
+    toast.success("Copiado al portapapeles");
+  };
+  return (
+    <button onClick={copy} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+      <Copy className="w-3 h-3" />
+    </button>
+  );
+}
+
 export default function ContactProfile({ contact, open, onOpenChange, onUpdate }: ContactProfileProps) {
   const { user } = useAuth();
   const [notes, setNotes] = useState<ContactNote[]>([]);
@@ -58,8 +84,9 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const [composeOpen, setComposeOpen] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editData, setEditData] = useState({ full_name: "", email: "", phone: "", position: "" });
+  const [editData, setEditData] = useState({ full_name: "", email: "", phone: "", position: "", linkedin_url: "" });
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [enriching, setEnriching] = useState(false);
 
   const loadNotes = async (contactId: string) => {
     setLoadingNotes(true);
@@ -83,7 +110,13 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
 
   const startEdit = () => {
     if (!contact) return;
-    setEditData({ full_name: contact.full_name, email: contact.email || "", phone: contact.phone || "", position: contact.position || "" });
+    setEditData({
+      full_name: contact.full_name,
+      email: contact.email || "",
+      phone: contact.phone || "",
+      position: contact.position || "",
+      linkedin_url: contact.linkedin_url || "",
+    });
     setEditing(true);
   };
 
@@ -94,7 +127,8 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       email: editData.email || null,
       phone: editData.phone || null,
       position: editData.position || null,
-    }).eq("id", contact.id);
+      linkedin_url: editData.linkedin_url || null,
+    } as any).eq("id", contact.id);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto actualizado");
     setEditing(false);
@@ -103,7 +137,6 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
 
   const confirmDelete = async () => {
     if (!contact) return;
-    // Delete notes first
     await supabase.from("contact_notes").delete().eq("contact_id", contact.id);
     const { error } = await supabase.from("contacts").delete().eq("id", contact.id);
     if (error) { toast.error(error.message); return; }
@@ -159,7 +192,48 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
     else if (contact) loadNotes(contact.id);
   };
 
+  const enrichWithLusha = async () => {
+    if (!contact) return;
+    setEnriching(true);
+    try {
+      // Split full_name into first/last
+      const nameParts = contact.full_name.trim().split(/\s+/);
+      const firstName = nameParts[0] || "";
+      const lastName = nameParts.slice(1).join(" ") || "";
+
+      const { data, error } = await supabase.functions.invoke("enrich-lusha-contact", {
+        body: {
+          contact_id: contact.id,
+          first_name: firstName,
+          last_name: lastName,
+          company_name: contact.organizations?.name || "",
+          linkedin_url: contact.linkedin_url || "",
+        },
+      });
+
+      if (error) {
+        toast.error("Error al conectar con Lusha");
+        return;
+      }
+
+      if (data?.status === "enriched") {
+        toast.success("¡Contacto enriquecido con éxito!");
+      } else {
+        toast.warning("Lusha no encontró datos para este contacto");
+      }
+      onUpdate();
+    } catch (err) {
+      toast.error("Error inesperado al enriquecer contacto");
+    } finally {
+      setEnriching(false);
+    }
+  };
+
   if (!contact) return null;
+
+  const lushaStatus = (contact as any).lusha_status || "pending";
+  const lushaConfig = LUSHA_STATUS_CONFIG[lushaStatus] || LUSHA_STATUS_CONFIG.pending;
+  const hasLushaData = (contact as any).work_email || (contact as any).personal_email || (contact as any).mobile_phone || (contact as any).work_phone;
 
   return (
     <>
@@ -167,7 +241,10 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
         <DialogContent className="sm:max-w-xl max-h-[90vh]">
           <DialogHeader>
             <div className="flex items-center justify-between pr-6">
-              <DialogTitle className="text-xl">{editing ? "Editar contacto" : contact.full_name}</DialogTitle>
+              <div className="flex items-center gap-2">
+                <DialogTitle className="text-xl">{editing ? "Editar contacto" : contact.full_name}</DialogTitle>
+                <Badge className={lushaConfig.className}>{lushaConfig.label}</Badge>
+              </div>
               <div className="flex gap-1">
                 {!editing && (
                   <button onClick={startEdit} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"><Pencil className="w-4 h-4" /></button>
@@ -185,6 +262,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   <div><Label>Email</Label><Input type="email" value={editData.email} onChange={(e) => setEditData({ ...editData, email: e.target.value })} /></div>
                   <div><Label>Teléfono</Label><Input value={editData.phone} onChange={(e) => setEditData({ ...editData, phone: e.target.value })} /></div>
                   <div><Label>Cargo</Label><Input value={editData.position} onChange={(e) => setEditData({ ...editData, position: e.target.value })} /></div>
+                  <div><Label>LinkedIn URL</Label><Input value={editData.linkedin_url} onChange={(e) => setEditData({ ...editData, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={saveEdit} disabled={!editData.full_name}><Save className="w-3.5 h-3.5 mr-1" />Guardar</Button>
                     <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
@@ -204,12 +282,66 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   {contact.phone && (
                     <div className="flex items-center gap-2 text-sm"><Phone className="w-4 h-4 text-muted-foreground" />{contact.phone}</div>
                   )}
+                  {(contact as any).linkedin_url && (
+                    <a href={(contact as any).linkedin_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                      <Linkedin className="w-4 h-4" />LinkedIn
+                    </a>
+                  )}
                   {contact.email && (
                     <Button size="sm" variant="outline" className="mt-2" onClick={() => setComposeOpen(true)}>
                       <Send className="w-3.5 h-3.5 mr-1" />Enviar email
                     </Button>
                   )}
                 </div>
+              )}
+
+              {/* Lusha Data Section */}
+              {hasLushaData && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" />Datos Lusha</Label>
+                  <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                    {(contact as any).work_email && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-muted-foreground" />Corp: {(contact as any).work_email}</span>
+                        <CopyButton value={(contact as any).work_email} />
+                      </div>
+                    )}
+                    {(contact as any).personal_email && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-muted-foreground" />Personal: {(contact as any).personal_email}</span>
+                        <CopyButton value={(contact as any).personal_email} />
+                      </div>
+                    )}
+                    {(contact as any).mobile_phone && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-muted-foreground" />Móvil: {(contact as any).mobile_phone}</span>
+                        <CopyButton value={(contact as any).mobile_phone} />
+                      </div>
+                    )}
+                    {(contact as any).work_phone && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-muted-foreground" />Trabajo: {(contact as any).work_phone}</span>
+                        <CopyButton value={(contact as any).work_phone} />
+                      </div>
+                    )}
+                    {(contact as any).last_enriched_at && (
+                      <p className="text-xs text-muted-foreground pt-1">
+                        Enriquecido: {new Date((contact as any).last_enriched_at).toLocaleString("es-ES")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Enrich Button */}
+              {lushaStatus === "pending" && (
+                <Button onClick={enrichWithLusha} disabled={enriching} className="w-full" variant="outline">
+                  {enriching ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Buscando en Lusha...</>
+                  ) : (
+                    <><Sparkles className="w-4 h-4 mr-2" />🪄 Enriquecer con Lusha</>
+                  )}
+                </Button>
               )}
 
               {/* Status */}
