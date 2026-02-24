@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,10 +16,7 @@ function buildUserMessageWithAttachments(
   userContent: string,
   attachments: Attachment[]
 ): any {
-  // Build multimodal content parts
   const parts: any[] = [];
-
-  // Add text files content inline
   const textAttachments: Attachment[] = [];
   const imageAttachments: Attachment[] = [];
 
@@ -31,7 +28,6 @@ function buildUserMessageWithAttachments(
     }
   }
 
-  // Build text content with file contents appended
   let fullText = userContent;
   if (textAttachments.length > 0) {
     fullText += "\n\n---\nArchivos adjuntos:\n";
@@ -42,7 +38,6 @@ function buildUserMessageWithAttachments(
 
   parts.push({ type: "text", text: fullText });
 
-  // Add images as image_url parts
   for (const img of imageAttachments) {
     const mimeType = img.type || "image/png";
     parts.push({
@@ -56,10 +51,34 @@ function buildUserMessageWithAttachments(
   return { role: "user", content: parts };
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    // Validate JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "No autorizado" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      return new Response(JSON.stringify({ error: "Token inválido" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { messages, attachments } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
@@ -67,12 +86,10 @@ serve(async (req) => {
     const hasAttachments = attachments && attachments.length > 0;
     const hasImages = hasAttachments && attachments.some((a: Attachment) => a.type.startsWith("image/"));
 
-    // Use multimodal model when there are attachments (especially images)
     const model = hasImages
       ? "google/gemini-2.5-pro"
       : "google/gemini-3-flash-preview";
 
-    // Build messages array
     const systemMsg = {
       role: "system",
       content: `Eres el asistente IA de EuroCRM, un CRM especializado en la gestión de proyectos europeos.
@@ -91,7 +108,6 @@ Puedes responder en español o en el idioma que el usuario solicite.
 Cuando el usuario adjunte archivos, analízalos en detalle y responde sobre su contenido.`,
     };
 
-    // Process the last user message to include attachments if present
     const processedMessages = [...messages];
     if (hasAttachments && processedMessages.length > 0) {
       const lastMsg = processedMessages[processedMessages.length - 1];
