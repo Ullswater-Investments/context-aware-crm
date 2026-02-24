@@ -46,6 +46,38 @@ export type Database = {
           },
         ]
       }
+      contact_notes: {
+        Row: {
+          contact_id: string
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+        }
+        Insert: {
+          contact_id: string
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+        }
+        Update: {
+          contact_id?: string
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_notes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contacts: {
         Row: {
           created_at: string
@@ -57,6 +89,7 @@ export type Database = {
           organization_id: string | null
           phone: string | null
           position: string | null
+          status: Database["public"]["Enums"]["contact_status"]
           tags: string[] | null
           updated_at: string
         }
@@ -70,6 +103,7 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           position?: string | null
+          status?: Database["public"]["Enums"]["contact_status"]
           tags?: string[] | null
           updated_at?: string
         }
@@ -83,6 +117,7 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           position?: string | null
+          status?: Database["public"]["Enums"]["contact_status"]
           tags?: string[] | null
           updated_at?: string
         }
@@ -599,6 +634,12 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      contact_status:
+        | "new_lead"
+        | "contacted"
+        | "proposal_sent"
+        | "client"
+        | "lost"
       project_status: "proposal" | "active" | "completed" | "cancelled"
       task_priority: "low" | "medium" | "high" | "urgent"
       task_type:
@@ -736,6 +777,13 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      contact_status: [
+        "new_lead",
+        "contacted",
+        "proposal_sent",
+        "client",
+        "lost",
+      ],
       project_status: ["proposal", "active", "completed", "cancelled"],
       task_priority: ["low", "medium", "high", "urgent"],
       task_type: ["email", "call", "meeting", "document", "deadline", "other"],
