@@ -1,97 +1,108 @@
 
 
-# Plan: Sistema de Adjuntar Archivos al Chat (hasta 10 archivos)
+# Plan: Integracion de Lusha API para Enriquecimiento de Contactos
 
 ## Resumen
 
-Restaurar y mejorar el boton de adjuntar archivos en el chat de IA, permitiendo subir hasta 10 archivos simultaneamente junto con el mensaje de texto. Los archivos se suben al bucket `knowledge` de Storage, se registran en `knowledge_items`, y su contenido se envia al modelo multimodal (Gemini 2.5 Pro) para que la IA pueda analizarlos.
+Integrar la API de Lusha para enriquecer contactos del CRM con emails y telefonos profesionales. Se creara una Edge Function segura que almacene la API Key, nuevos campos en la tabla `contacts`, y un boton "Enriquecer con Lusha" en la ficha de cada contacto.
 
 ---
 
-## Cambios a Implementar
+## 1. Almacenar la API Key de forma segura
 
-### 1. Frontend - Chat Input (src/pages/Index.tsx)
+- Usar la herramienta de secretos para guardar `LUSHA_API_KEY` como variable de entorno en el backend
+- La clave NUNCA se expondra en el frontend
 
-- Agregar estado `attachedFiles` (array de File, max 10)
-- Agregar boton de clip/adjuntar (icono `Paperclip`) junto al textarea
-- Input de tipo `file` oculto con `multiple` y `accept` amplio (PDF, imagenes, Word, Excel, CSV, TXT, etc.)
-- Validaciones: maximo 10 archivos, maximo 20MB por archivo
-- Mostrar previsualizacion compacta de archivos adjuntos debajo del textarea (nombre + tamano + boton X para quitar)
-- Al enviar: subir archivos a Storage, registrar en `knowledge_items`, y pasar referencias/contenido al edge function
+## 2. Migracion de base de datos
 
-### 2. Logica de Envio con Archivos
+Agregar columnas nuevas a la tabla `contacts`:
 
-- Subir cada archivo a `knowledge/{user_id}/chat/{conversation_id}/{filename}`
-- Registrar en tabla `knowledge_items` con `source_type = 'chat_upload'` y `conversation_id`
-- Para imagenes: convertir a base64 y enviar como contenido multimodal al modelo Gemini 2.5 Pro (soporta vision)
-- Para texto/CSV/JSON: leer contenido como texto y adjuntarlo al mensaje del usuario
-- Para PDFs y otros binarios: mencionar el nombre del archivo en el mensaje y almacenar para referencia futura
+| Campo | Tipo | Descripcion |
+|-------|------|-------------|
+| `linkedin_url` | text, nullable | URL de LinkedIn del contacto |
+| `company_domain` | text, nullable | Dominio web de la empresa |
+| `work_email` | text, nullable | Email corporativo (Lusha) |
+| `personal_email` | text, nullable | Email personal (Lusha) |
+| `mobile_phone` | text, nullable | Movil (Lusha) |
+| `work_phone` | text, nullable | Telefono fijo (Lusha) |
+| `lusha_status` | text, default 'pending' | Estado: pending, enriched, not_found |
+| `last_enriched_at` | timestamptz, nullable | Fecha del ultimo enriquecimiento |
 
-### 3. Edge Function (supabase/functions/chat/index.ts)
+## 3. Edge Function `enrich-lusha-contact`
 
-- Cambiar modelo a `google/gemini-2.5-pro` cuando hay archivos adjuntos (soporta multimodal)
-- Aceptar nuevo campo `attachments` en el body: array de `{ name, type, content }` donde content es base64 para imagenes o texto extraido
-- Construir mensajes multimodales con partes de tipo `image_url` o texto segun el tipo de archivo
+Nueva funcion en `supabase/functions/enrich-lusha-contact/index.ts`:
 
-### 4. Chat Stream (src/lib/chat-stream.ts)
+- Recibe por POST: `contact_id`, `first_name`, `last_name`, `company_name`, `linkedin_url`
+- Lee `LUSHA_API_KEY` desde `Deno.env.get()`
+- Llama a `https://api.lusha.com/person` con los datos del contacto
+- Si Lusha devuelve datos: actualiza los campos de email/telefono, cambia `lusha_status` a `enriched`
+- Si no encuentra datos: cambia `lusha_status` a `not_found`
+- Devuelve JSON con el resultado al frontend
+- Incluye headers CORS y `verify_jwt = false` en config.toml
 
-- Actualizar la firma para aceptar `attachments` opcionales
-- Pasar `attachments` al body del fetch junto con `messages`
+## 4. Actualizar el perfil del contacto (ContactProfile.tsx)
 
-### 5. Visualizacion de Archivos en Mensajes
+Agregar en la ficha de contacto:
 
-- En los mensajes del usuario que tienen archivos adjuntos, mostrar iconos/badges con los nombres de archivo
-- Almacenar metadata de archivos adjuntos en `chat_messages.content` como parte del mensaje (ej: texto + lista de archivos)
+- **Badge de estado Lusha** en la cabecera: gris (pending), verde (enriched), naranja (not_found)
+- **Seccion "Datos Lusha"** que muestra work_email, personal_email, mobile_phone, work_phone con botones de copiar al portapapeles
+- **Campo LinkedIn URL** editable en el formulario de edicion
+- **Boton "Enriquecer con Lusha"**: visible solo si `lusha_status` es `pending`, con estado de carga (spinner), deshabilitado si ya fue enriquecido o no encontrado
+- Si Lusha no encuentra datos, mostrar toast de aviso
+
+## 5. Actualizar la interfaz de contactos
+
+- Actualizar la interfaz `Contact` en `Contacts.tsx` y `ContactProfile.tsx` para incluir los nuevos campos
+- Mostrar indicador visual (icono pequeno) en las tarjetas del Kanban si un contacto ha sido enriquecido
+- Agregar los campos `linkedin_url` y `company_domain` al formulario de creacion de contacto
 
 ---
 
 ## Seccion Tecnica
 
+### Archivos a crear:
+1. `supabase/functions/enrich-lusha-contact/index.ts` - Edge Function segura
+
 ### Archivos a modificar:
-1. **src/pages/Index.tsx** - Agregar UI de adjuntar, estado de archivos, logica de subida a Storage
-2. **src/lib/chat-stream.ts** - Agregar campo `attachments` al payload
-3. **supabase/functions/chat/index.ts** - Soportar mensajes multimodales con imagenes y texto de archivos
+1. `supabase/config.toml` - Agregar configuracion de la nueva funcion (verify_jwt = false)
+2. `src/components/contacts/ContactProfile.tsx` - Boton Lusha, datos enriquecidos, badge de estado, boton copiar
+3. `src/pages/Contacts.tsx` - Actualizar interfaz Contact, campos linkedin/domain en formulario de creacion, indicador visual en Kanban
+
+### Migracion SQL:
+- ALTER TABLE contacts ADD COLUMN para los 8 nuevos campos
 
 ### Flujo tecnico:
 
 ```text
-Usuario selecciona archivos (max 10, max 20MB c/u)
+Usuario abre ficha de contacto
         |
         v
-[Previsualizacion inline debajo del textarea]
+Ve badge "Pendiente" y boton "Enriquecer con Lusha"
         |
-  Click Enviar
-        |
-        v
-+-- Imagenes --> base64 --> parte multimodal (image_url)
-+-- Texto/CSV/JSON --> FileReader.readAsText --> parte de texto
-+-- PDF/otros --> solo nombre referenciado
+  Click boton --> estado "Cargando..."
         |
         v
-Subir a Storage bucket "knowledge"
-Registrar en knowledge_items
+Frontend llama a Edge Function via supabase.functions.invoke()
         |
         v
-POST /chat con { messages, attachments }
+Edge Function lee LUSHA_API_KEY del entorno
         |
         v
-Edge function: si hay imagenes usa gemini-2.5-pro
-               construye mensaje con partes multimodales
+POST a https://api.lusha.com/person con nombre + empresa + linkedin
         |
         v
-Stream response al usuario
++-- Datos encontrados --> UPDATE contacts SET work_email, mobile_phone... lusha_status='enriched'
++-- Sin datos --> UPDATE contacts SET lusha_status='not_found'
+        |
+        v
+Respuesta JSON al frontend
+        |
+        v
+UI se actualiza: badge verde/naranja, datos visibles con boton copiar
 ```
 
-### Modelo IA:
-- Sin archivos: `google/gemini-3-flash-preview` (rapido, texto puro)
-- Con archivos (especialmente imagenes): `google/gemini-2.5-pro` (multimodal, vision)
-
-### Tipos de archivo soportados:
-- Imagenes: JPG, PNG, WEBP, GIF
-- Documentos: PDF, TXT, CSV, JSON, XML, MD
-- Office: DOCX, XLSX, PPTX (referencia por nombre)
-
-### No se necesitan cambios de base de datos:
-- La tabla `knowledge_items` ya tiene los campos necesarios (`file_path`, `file_name`, `file_type`, `file_size`, `conversation_id`, `source_type`, `created_by`)
-- El bucket `knowledge` ya existe en Storage
+### Proteccion de creditos:
+- El boton se desactiva automaticamente tras el primer uso (estado enriched o not_found)
+- Se registra `last_enriched_at` para trazabilidad
+- Solo enriquecimiento manual (contacto por contacto), nunca automatico masivo
 
