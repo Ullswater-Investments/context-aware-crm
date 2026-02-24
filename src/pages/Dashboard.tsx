@@ -1,20 +1,27 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Users, FolderKanban, CheckSquare, FileText, Bot } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Building2, Users, FolderKanban, CheckSquare, FileText, Bot, Clock, CheckCircle, CreditCard } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function Dashboard() {
   const [stats, setStats] = useState({ orgs: 0, contacts: 0, projects: 0, tasks: 0, docs: 0 });
+  const [lushaStats, setLushaStats] = useState({ total: 0, pending: 0, enriched: 0, notFound: 0 });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
-      const [orgs, contacts, projects, tasks, docs] = await Promise.all([
+      const [orgs, contacts, projects, tasks, docs, totalContacts, pending, enriched, notFound] = await Promise.all([
         supabase.from("organizations").select("id", { count: "exact", head: true }),
         supabase.from("contacts").select("id", { count: "exact", head: true }),
         supabase.from("projects").select("id", { count: "exact", head: true }),
         supabase.from("tasks").select("id", { count: "exact", head: true }).eq("completed", false),
         supabase.from("documents").select("id", { count: "exact", head: true }),
+        supabase.from("contacts").select("id", { count: "exact", head: true }),
+        supabase.from("contacts").select("id", { count: "exact", head: true }).eq("lusha_status", "pending"),
+        supabase.from("contacts").select("id", { count: "exact", head: true }).eq("lusha_status", "enriched"),
+        supabase.from("contacts").select("id", { count: "exact", head: true }).eq("lusha_status", "not_found"),
       ]);
       setStats({
         orgs: orgs.count ?? 0,
@@ -23,9 +30,23 @@ export default function Dashboard() {
         tasks: tasks.count ?? 0,
         docs: docs.count ?? 0,
       });
+      setLushaStats({
+        total: totalContacts.count ?? 0,
+        pending: pending.count ?? 0,
+        enriched: enriched.count ?? 0,
+        notFound: notFound.count ?? 0,
+      });
+      setLoading(false);
     };
     load();
   }, []);
+
+  const lushaCards = [
+    { label: "Total Contactos", value: lushaStats.total, icon: Users, color: "text-primary" },
+    { label: "Pendientes", value: lushaStats.pending, icon: Clock, color: "text-muted-foreground" },
+    { label: "Enriquecidos", value: lushaStats.enriched, icon: CheckCircle, color: "text-success" },
+    { label: "Créditos Estimados", value: lushaStats.enriched, icon: CreditCard, color: "text-warning" },
+  ];
 
   const cards = [
     { label: "Empresas", value: stats.orgs, icon: Building2, to: "/organizations", color: "text-primary" },
@@ -65,6 +86,28 @@ export default function Dashboard() {
             </Card>
           </Link>
         ))}
+      </div>
+
+      {/* Lusha Enrichment Stats */}
+      <div>
+        <h2 className="text-lg font-display font-semibold mb-4">Enriquecimiento Lusha</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {lushaCards.map((c) => (
+            <Card key={c.label}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{c.label}</CardTitle>
+                <c.icon className={`w-5 h-5 ${c.color}`} />
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <Skeleton className="h-9 w-16" />
+                ) : (
+                  <p className="text-3xl font-display font-bold">{c.value}</p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     </div>
   );

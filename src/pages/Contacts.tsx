@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, Linkedin } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, Linkedin, FilterX } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
 
 const PIPELINE_COLUMNS = [
@@ -45,6 +46,8 @@ export default function Contacts() {
   const { user } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState("");
+  const [lushaFilter, setLushaFilter] = useState("");
+  const [positionFilter, setPositionFilter] = useState("");
   const [open, setOpen] = useState(false);
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "" });
@@ -117,11 +120,18 @@ export default function Contacts() {
     }
   };
 
-  const filtered = contacts.filter((c) =>
-    c.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    c.email?.toLowerCase().includes(search.toLowerCase()) ||
-    (c.tags || []).some((t) => t.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filtered = contacts.filter((c) => {
+    const searchLower = search.toLowerCase();
+    const matchesSearch = !search ||
+      c.full_name.toLowerCase().includes(searchLower) ||
+      c.email?.toLowerCase().includes(searchLower) ||
+      c.position?.toLowerCase().includes(searchLower) ||
+      c.organizations?.name?.toLowerCase().includes(searchLower) ||
+      (c.tags || []).some((t) => t.toLowerCase().includes(searchLower));
+    const matchesLusha = !lushaFilter || lushaFilter === "all" || c.lusha_status === lushaFilter;
+    const matchesPosition = !positionFilter || c.position?.toLowerCase().includes(positionFilter.toLowerCase());
+    return matchesSearch && matchesLusha && matchesPosition;
+  });
 
   const getColumnContacts = (status: string) =>
     filtered.filter((c) => c.status === status);
@@ -175,9 +185,31 @@ export default function Contacts() {
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input placeholder="Buscar contactos o etiquetas..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input placeholder="Buscar por nombre, email, cargo..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+        </div>
+        <Select value={lushaFilter} onValueChange={setLushaFilter}>
+          <SelectTrigger>
+            <SelectValue placeholder="Estado Lusha" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los estados</SelectItem>
+            <SelectItem value="pending">Pendiente</SelectItem>
+            <SelectItem value="enriched">Enriquecido</SelectItem>
+            <SelectItem value="not_found">No encontrado</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="relative">
+          <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input placeholder="Filtrar por cargo..." value={positionFilter} onChange={(e) => setPositionFilter(e.target.value)} className="pl-10" />
+        </div>
+        {(search || lushaFilter || positionFilter) && (
+          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setLushaFilter(""); setPositionFilter(""); }}>
+            <FilterX className="w-4 h-4 mr-1" /> Limpiar
+          </Button>
+        )}
       </div>
 
       {view === "kanban" ? (
