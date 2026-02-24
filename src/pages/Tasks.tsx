@@ -44,8 +44,8 @@ export default function Tasks() {
   const create = async () => {
     const { error } = await supabase.from("tasks").insert({
       title: form.title,
-      task_type: form.task_type,
-      priority: form.priority,
+      task_type: form.task_type as any,
+      priority: form.priority as any,
       due_date: form.due_date || null,
       created_by: user!.id,
       assigned_to: user!.id,
