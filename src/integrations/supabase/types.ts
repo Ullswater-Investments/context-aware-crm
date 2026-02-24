@@ -184,6 +184,165 @@ export type Database = {
           },
         ]
       }
+      email_logs: {
+        Row: {
+          body_html: string | null
+          body_text: string | null
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          error_message: string | null
+          from_email: string
+          id: string
+          organization_id: string | null
+          project_id: string | null
+          resend_id: string | null
+          sent_at: string | null
+          status: string
+          subject: string
+          to_email: string
+        }
+        Insert: {
+          body_html?: string | null
+          body_text?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          from_email: string
+          id?: string
+          organization_id?: string | null
+          project_id?: string | null
+          resend_id?: string | null
+          sent_at?: string | null
+          status?: string
+          subject: string
+          to_email: string
+        }
+        Update: {
+          body_html?: string | null
+          body_text?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          from_email?: string
+          id?: string
+          organization_id?: string | null
+          project_id?: string | null
+          resend_id?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string
+          to_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_logs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_logs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      knowledge_items: {
+        Row: {
+          ai_summary: string | null
+          contact_id: string | null
+          content_text: string | null
+          conversation_id: string | null
+          created_at: string
+          created_by: string | null
+          file_name: string
+          file_path: string | null
+          file_size: number | null
+          file_type: string | null
+          id: string
+          organization_id: string | null
+          project_id: string | null
+          source_type: string
+          tags: string[] | null
+        }
+        Insert: {
+          ai_summary?: string | null
+          contact_id?: string | null
+          content_text?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          file_name: string
+          file_path?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+          organization_id?: string | null
+          project_id?: string | null
+          source_type?: string
+          tags?: string[] | null
+        }
+        Update: {
+          ai_summary?: string | null
+          contact_id?: string | null
+          content_text?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          file_name?: string
+          file_path?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+          organization_id?: string | null
+          project_id?: string | null
+          source_type?: string
+          tags?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_items_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_items_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_items_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_items_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           country: string | null
