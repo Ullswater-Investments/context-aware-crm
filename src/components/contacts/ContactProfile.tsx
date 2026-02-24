@@ -231,9 +231,9 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
 
   if (!contact) return null;
 
-  const lushaStatus = (contact as any).lusha_status || "pending";
+  const lushaStatus = contact.lusha_status || "pending";
   const lushaConfig = LUSHA_STATUS_CONFIG[lushaStatus] || LUSHA_STATUS_CONFIG.pending;
-  const hasLushaData = (contact as any).work_email || (contact as any).personal_email || (contact as any).mobile_phone || (contact as any).work_phone;
+  const hasLushaData = contact.work_email || contact.personal_email || contact.mobile_phone || contact.work_phone;
 
   return (
     <>
@@ -282,8 +282,8 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   {contact.phone && (
                     <div className="flex items-center gap-2 text-sm"><Phone className="w-4 h-4 text-muted-foreground" />{contact.phone}</div>
                   )}
-                  {(contact as any).linkedin_url && (
-                    <a href={(contact as any).linkedin_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                  {contact.linkedin_url && (
+                    <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
                       <Linkedin className="w-4 h-4" />LinkedIn
                     </a>
                   )}
@@ -300,33 +300,33 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" />Datos Lusha</Label>
                   <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
-                    {(contact as any).work_email && (
+                    {contact.work_email && (
                       <div className="flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-muted-foreground" />Corp: {(contact as any).work_email}</span>
-                        <CopyButton value={(contact as any).work_email} />
+                        <span className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-muted-foreground" />Corp: {contact.work_email}</span>
+                        <CopyButton value={contact.work_email} />
                       </div>
                     )}
-                    {(contact as any).personal_email && (
+                    {contact.personal_email && (
                       <div className="flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-muted-foreground" />Personal: {(contact as any).personal_email}</span>
-                        <CopyButton value={(contact as any).personal_email} />
+                        <span className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-muted-foreground" />Personal: {contact.personal_email}</span>
+                        <CopyButton value={contact.personal_email} />
                       </div>
                     )}
-                    {(contact as any).mobile_phone && (
+                    {contact.mobile_phone && (
                       <div className="flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-muted-foreground" />Móvil: {(contact as any).mobile_phone}</span>
-                        <CopyButton value={(contact as any).mobile_phone} />
+                        <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-muted-foreground" />Móvil: {contact.mobile_phone}</span>
+                        <CopyButton value={contact.mobile_phone} />
                       </div>
                     )}
-                    {(contact as any).work_phone && (
+                    {contact.work_phone && (
                       <div className="flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-muted-foreground" />Trabajo: {(contact as any).work_phone}</span>
-                        <CopyButton value={(contact as any).work_phone} />
+                        <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-muted-foreground" />Trabajo: {contact.work_phone}</span>
+                        <CopyButton value={contact.work_phone} />
                       </div>
                     )}
-                    {(contact as any).last_enriched_at && (
+                    {contact.last_enriched_at && (
                       <p className="text-xs text-muted-foreground pt-1">
-                        Enriquecido: {new Date((contact as any).last_enriched_at).toLocaleString("es-ES")}
+                        Enriquecido: {new Date(contact.last_enriched_at).toLocaleString("es-ES")}
                       </p>
                     )}
                   </div>

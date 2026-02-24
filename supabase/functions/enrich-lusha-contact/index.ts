@@ -12,6 +12,30 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Validate JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "No autorizado" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabaseAuth = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabaseAuth.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      return new Response(JSON.stringify({ error: "Token inválido" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const lushaApiKey = Deno.env.get("LUSHA_API_KEY");
     if (!lushaApiKey) {
       return new Response(JSON.stringify({ error: "LUSHA_API_KEY not configured" }), {
@@ -44,7 +68,7 @@ Deno.serve(async (req) => {
     const lushaResponse = await fetch(lushaUrl, {
       method: "GET",
       headers: {
-        "api_key": `Bearer ${lushaApiKey}`,
+        "api_key": lushaApiKey,
         "Content-Type": "application/json",
       },
     });
@@ -55,7 +79,6 @@ Deno.serve(async (req) => {
     );
 
     if (!lushaResponse.ok) {
-      // Mark as not found
       await supabase
         .from("contacts")
         .update({

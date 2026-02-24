@@ -81,7 +81,11 @@ export default function Dashboard() {
                 <c.icon className={`w-5 h-5 ${c.color}`} />
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-display font-bold">{c.value}</p>
+                {loading ? (
+                  <Skeleton className="h-9 w-16" />
+                ) : (
+                  <p className="text-3xl font-display font-bold">{c.value}</p>
+                )}
               </CardContent>
             </Card>
           </Link>
