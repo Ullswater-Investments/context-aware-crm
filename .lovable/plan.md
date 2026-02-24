@@ -1,108 +1,104 @@
 
 
-# Plan: Integracion de Lusha API para Enriquecimiento de Contactos
+# Plan: Panel de Estadisticas Lusha + Filtros Avanzados en Contactos
 
 ## Resumen
 
-Integrar la API de Lusha para enriquecer contactos del CRM con emails y telefonos profesionales. Se creara una Edge Function segura que almacene la API Key, nuevos campos en la tabla `contacts`, y un boton "Enriquecer con Lusha" en la ficha de cada contacto.
+Agregar dos mejoras clave al CRM:
+1. Un panel de estadisticas de enriquecimiento Lusha en el Dashboard, con metricas de creditos consumidos y estado de los contactos.
+2. Filtros avanzados en la pagina de Contactos (por estado Lusha, cargo y texto) con boton de limpiar filtros.
 
 ---
 
-## 1. Almacenar la API Key de forma segura
+## Parte 1: Panel DashboardStats (Metricas Lusha)
 
-- Usar la herramienta de secretos para guardar `LUSHA_API_KEY` como variable de entorno en el backend
-- La clave NUNCA se expondra en el frontend
+### Que se hara
 
-## 2. Migracion de base de datos
+Agregar una nueva seccion en `src/pages/Dashboard.tsx` que muestre 4 tarjetas con metricas calculadas desde la tabla `contacts`:
 
-Agregar columnas nuevas a la tabla `contacts`:
+| Tarjeta | Metrica | Icono | Color |
+|---------|---------|-------|-------|
+| Total Contactos | COUNT(*) | Users | azul |
+| Pendientes | WHERE lusha_status = 'pending' | Clock | gris |
+| Enriquecidos | WHERE lusha_status = 'enriched' | CheckCircle | verde |
+| Creditos Estimados | = cantidad de enriched (1 credito c/u) | CreditCard | naranja |
 
-| Campo | Tipo | Descripcion |
-|-------|------|-------------|
-| `linkedin_url` | text, nullable | URL de LinkedIn del contacto |
-| `company_domain` | text, nullable | Dominio web de la empresa |
-| `work_email` | text, nullable | Email corporativo (Lusha) |
-| `personal_email` | text, nullable | Email personal (Lusha) |
-| `mobile_phone` | text, nullable | Movil (Lusha) |
-| `work_phone` | text, nullable | Telefono fijo (Lusha) |
-| `lusha_status` | text, default 'pending' | Estado: pending, enriched, not_found |
-| `last_enriched_at` | timestamptz, nullable | Fecha del ultimo enriquecimiento |
+### Detalles tecnicos
 
-## 3. Edge Function `enrich-lusha-contact`
+- Se agregan 4 consultas count al `useEffect` existente del Dashboard, filtrando por `lusha_status`
+- Se usa el componente `Skeleton` para estado de carga
+- Grid responsivo: 1 col movil, 2 tablet, 4 escritorio
+- Se integra debajo de las tarjetas principales existentes, con un titulo de seccion "Enriquecimiento Lusha"
 
-Nueva funcion en `supabase/functions/enrich-lusha-contact/index.ts`:
+### Archivo a modificar
+- `src/pages/Dashboard.tsx`
 
-- Recibe por POST: `contact_id`, `first_name`, `last_name`, `company_name`, `linkedin_url`
-- Lee `LUSHA_API_KEY` desde `Deno.env.get()`
-- Llama a `https://api.lusha.com/person` con los datos del contacto
-- Si Lusha devuelve datos: actualiza los campos de email/telefono, cambia `lusha_status` a `enriched`
-- Si no encuentra datos: cambia `lusha_status` a `not_found`
-- Devuelve JSON con el resultado al frontend
-- Incluye headers CORS y `verify_jwt = false` en config.toml
+---
 
-## 4. Actualizar el perfil del contacto (ContactProfile.tsx)
+## Parte 2: Filtros Avanzados en Contactos
 
-Agregar en la ficha de contacto:
+### Que se hara
 
-- **Badge de estado Lusha** en la cabecera: gris (pending), verde (enriched), naranja (not_found)
-- **Seccion "Datos Lusha"** que muestra work_email, personal_email, mobile_phone, work_phone con botones de copiar al portapapeles
-- **Campo LinkedIn URL** editable en el formulario de edicion
-- **Boton "Enriquecer con Lusha"**: visible solo si `lusha_status` es `pending`, con estado de carga (spinner), deshabilitado si ya fue enriquecido o no encontrado
-- Si Lusha no encuentra datos, mostrar toast de aviso
+Agregar una barra de filtros inline en `src/pages/Contacts.tsx` con 3 controles:
 
-## 5. Actualizar la interfaz de contactos
+1. **Buscador de texto** (ya existe): Extender para buscar tambien por `position` y nombre de organizacion
+2. **Filtro por Estado Lusha**: Dropdown con opciones: Todos / Pendiente / Enriquecido / No encontrado
+3. **Filtro por Cargo**: Input de texto para filtrar por `position` (coincidencia parcial)
+4. **Boton "Limpiar filtros"**: Icono FilterX que resetea todos los filtros
 
-- Actualizar la interfaz `Contact` en `Contacts.tsx` y `ContactProfile.tsx` para incluir los nuevos campos
-- Mostrar indicador visual (icono pequeno) en las tarjetas del Kanban si un contacto ha sido enriquecido
-- Agregar los campos `linkedin_url` y `company_domain` al formulario de creacion de contacto
+### Detalles tecnicos
+
+- Nuevos estados: `lushaFilter` (string: "" | "pending" | "enriched" | "not_found") y `positionFilter` (string)
+- Los filtros se aplican en el lado del cliente sobre los contactos ya cargados (no requiere nuevas queries a la BD)
+- Se usa `Select` de shadcn/ui para el dropdown de estado Lusha
+- Se agrega el icono `FilterX` para limpiar filtros
+- La barra de filtros reemplaza el buscador simple actual con un layout en grid responsivo
+
+### Archivo a modificar
+- `src/pages/Contacts.tsx`
 
 ---
 
 ## Seccion Tecnica
 
-### Archivos a crear:
-1. `supabase/functions/enrich-lusha-contact/index.ts` - Edge Function segura
-
 ### Archivos a modificar:
-1. `supabase/config.toml` - Agregar configuracion de la nueva funcion (verify_jwt = false)
-2. `src/components/contacts/ContactProfile.tsx` - Boton Lusha, datos enriquecidos, badge de estado, boton copiar
-3. `src/pages/Contacts.tsx` - Actualizar interfaz Contact, campos linkedin/domain en formulario de creacion, indicador visual en Kanban
+1. **src/pages/Dashboard.tsx** - Agregar seccion de metricas Lusha con Skeleton loading
+2. **src/pages/Contacts.tsx** - Agregar filtros por lusha_status, position y boton limpiar
 
-### Migracion SQL:
-- ALTER TABLE contacts ADD COLUMN para los 8 nuevos campos
+### No se necesitan cambios de base de datos
+- Todas las columnas necesarias (`lusha_status`, `position`) ya existen en la tabla `contacts`
 
-### Flujo tecnico:
+### Flujo de las metricas del Dashboard:
 
 ```text
-Usuario abre ficha de contacto
+useEffect al montar Dashboard
         |
         v
-Ve badge "Pendiente" y boton "Enriquecer con Lusha"
-        |
-  Click boton --> estado "Cargando..."
-        |
-        v
-Frontend llama a Edge Function via supabase.functions.invoke()
-        |
-        v
-Edge Function lee LUSHA_API_KEY del entorno
+Promise.all([
+  ...consultas existentes (orgs, contacts, projects, tasks, docs),
+  contacts WHERE lusha_status = 'pending' (count),
+  contacts WHERE lusha_status = 'enriched' (count),
+  contacts WHERE lusha_status = 'not_found' (count)
+])
         |
         v
-POST a https://api.lusha.com/person con nombre + empresa + linkedin
-        |
-        v
-+-- Datos encontrados --> UPDATE contacts SET work_email, mobile_phone... lusha_status='enriched'
-+-- Sin datos --> UPDATE contacts SET lusha_status='not_found'
-        |
-        v
-Respuesta JSON al frontend
-        |
-        v
-UI se actualiza: badge verde/naranja, datos visibles con boton copiar
+Renderizar 4 tarjetas con Skeleton mientras carga
 ```
 
-### Proteccion de creditos:
-- El boton se desactiva automaticamente tras el primer uso (estado enriched o not_found)
-- Se registra `last_enriched_at` para trazabilidad
-- Solo enriquecimiento manual (contacto por contacto), nunca automatico masivo
+### Flujo de filtros en Contactos:
+
+```text
+Usuario cambia filtro (texto, estado Lusha, cargo)
+        |
+        v
+Array.filter() sobre contactos en memoria
+        |
+        v
+Filtro texto: full_name, email, tags, position, org name
+Filtro Lusha: lusha_status === valor seleccionado
+Filtro cargo: position.includes(texto)
+        |
+        v
+Lista/Kanban se actualiza en tiempo real
+```
 
