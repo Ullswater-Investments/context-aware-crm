@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Plus, Users, Search, Mail, Phone, Briefcase } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, Send, Clock } from "lucide-react";
+import ComposeEmail from "@/components/email/ComposeEmail";
 
 interface Contact {
   id: string;
@@ -19,6 +20,15 @@ interface Contact {
   organizations?: { name: string } | null;
 }
 
+interface EmailLog {
+  id: string;
+  to_email: string;
+  subject: string;
+  status: string;
+  sent_at: string | null;
+  created_at: string;
+}
+
 export default function Contacts() {
   const { user } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -26,6 +36,15 @@ export default function Contacts() {
   const [open, setOpen] = useState(false);
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", position: "", organization_id: "" });
+
+  // Email compose state
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+
+  // Email history state
+  const [emailsContact, setEmailsContact] = useState<Contact | null>(null);
+  const [emails, setEmails] = useState<EmailLog[]>([]);
+  const [emailsOpen, setEmailsOpen] = useState(false);
 
   const load = async () => {
     const { data } = await supabase
@@ -49,6 +68,22 @@ export default function Contacts() {
     setForm({ full_name: "", email: "", phone: "", position: "", organization_id: "" });
     setOpen(false);
     load();
+  };
+
+  const openCompose = (contact: Contact) => {
+    setSelectedContact(contact);
+    setComposeOpen(true);
+  };
+
+  const openEmails = async (contact: Contact) => {
+    setEmailsContact(contact);
+    setEmailsOpen(true);
+    const { data } = await supabase
+      .from("email_logs")
+      .select("id, to_email, subject, status, sent_at, created_at")
+      .eq("contact_id", contact.id)
+      .order("created_at", { ascending: false });
+    setEmails((data as EmailLog[]) || []);
   };
 
   const filtered = contacts.filter((c) =>
@@ -100,7 +135,7 @@ export default function Contacts() {
                 <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center shrink-0">
                   <Users className="w-5 h-5 text-accent" />
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <CardTitle className="text-base truncate">{c.full_name}</CardTitle>
                   {c.organizations?.name && <p className="text-sm text-muted-foreground">{c.organizations.name}</p>}
                 </div>
@@ -110,6 +145,16 @@ export default function Contacts() {
               {c.position && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Briefcase className="w-3.5 h-3.5" />{c.position}</div>}
               {c.email && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Mail className="w-3.5 h-3.5" />{c.email}</div>}
               {c.phone && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Phone className="w-3.5 h-3.5" />{c.phone}</div>}
+              <div className="flex gap-2 pt-2">
+                {c.email && (
+                  <Button size="sm" variant="outline" onClick={() => openCompose(c)}>
+                    <Send className="w-3.5 h-3.5 mr-1" />Email
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => openEmails(c)}>
+                  <Clock className="w-3.5 h-3.5 mr-1" />Historial
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -121,6 +166,46 @@ export default function Contacts() {
           <p>No hay contactos todavía</p>
         </div>
       )}
+
+      {/* Compose Email Modal */}
+      <ComposeEmail
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        defaultTo={selectedContact?.email || ""}
+        contactId={selectedContact?.id}
+        organizationId={selectedContact?.organization_id || undefined}
+        onSent={() => {
+          if (emailsContact?.id === selectedContact?.id) openEmails(selectedContact!);
+        }}
+      />
+
+      {/* Email History Dialog */}
+      <Dialog open={emailsOpen} onOpenChange={setEmailsOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Emails enviados a {emailsContact?.full_name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 max-h-[400px] overflow-y-auto">
+            {emails.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No hay emails enviados a este contacto</p>
+            ) : (
+              emails.map((e) => (
+                <div key={e.id} className="border rounded-lg p-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium truncate">{e.subject}</p>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${e.status === "sent" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                      {e.status === "sent" ? "Enviado" : "Fallido"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(e.sent_at || e.created_at).toLocaleString("es-ES")}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
