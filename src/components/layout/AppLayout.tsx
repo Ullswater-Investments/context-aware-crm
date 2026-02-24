@@ -1,13 +1,12 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
   Bot, LayoutDashboard, Building2, Users, FolderKanban,
-  FileText, CheckSquare, LogOut, Menu, X
+  FileText, CheckSquare, LogOut, Menu, X, Moon, Sun
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
 
 const navItems = [
   { to: "/", icon: Bot, label: "Chat IA" },
@@ -23,6 +22,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { signOut, user } = useAuth();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [dark, setDark] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("theme") === "dark" || (!localStorage.getItem("theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+    localStorage.setItem("theme", dark ? "dark" : "light");
+  }, [dark]);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -68,8 +78,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="px-3 py-4 border-t border-sidebar-border">
-          <div className="flex items-center gap-3 px-3 py-2 mb-2">
+        <div className="px-3 py-4 border-t border-sidebar-border space-y-2">
+          {/* Dark mode toggle */}
+          <button
+            onClick={() => setDark(!dark)}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium w-full text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
+          >
+            {dark ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
+            {dark ? "Modo claro" : "Modo oscuro"}
+          </button>
+
+          <div className="flex items-center gap-3 px-3 py-2">
             <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center text-xs font-bold text-sidebar-primary">
               {user?.email?.[0]?.toUpperCase() ?? "U"}
             </div>

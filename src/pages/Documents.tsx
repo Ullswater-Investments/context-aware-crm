@@ -4,14 +4,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Upload, FileText, Search, Download } from "lucide-react";
+import { Upload, FileText, Search, Download, Trash2 } from "lucide-react";
 
 export default function Documents() {
   const { user } = useAuth();
   const [docs, setDocs] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [deleteDoc, setDeleteDoc] = useState<any>(null);
 
   const load = async () => {
     const { data } = await supabase.from("documents").select("*").order("created_at", { ascending: false });
@@ -42,6 +44,17 @@ export default function Documents() {
   const download = async (doc: any) => {
     const { data } = await supabase.storage.from("documents").createSignedUrl(doc.file_path, 60);
     if (data?.signedUrl) window.open(data.signedUrl);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDoc) return;
+    // Delete from storage first, then from DB
+    await supabase.storage.from("documents").remove([deleteDoc.file_path]);
+    const { error } = await supabase.from("documents").delete().eq("id", deleteDoc.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Documento eliminado");
+    setDeleteDoc(null);
+    load();
   };
 
   const filtered = docs.filter((d) => d.name.toLowerCase().includes(search.toLowerCase()));
@@ -77,17 +90,20 @@ export default function Documents() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((d) => (
-          <Card key={d.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => download(d)}>
+          <Card key={d.id} className="hover:shadow-md transition-shadow group">
             <CardHeader className="pb-3">
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center shrink-0 cursor-pointer" onClick={() => download(d)}>
                   <FileText className="w-5 h-5 text-success" />
                 </div>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 cursor-pointer" onClick={() => download(d)}>
                   <CardTitle className="text-base truncate">{d.name}</CardTitle>
                   <p className="text-sm text-muted-foreground">{d.file_size ? formatSize(d.file_size) : ""}</p>
                 </div>
-                <Download className="w-4 h-4 text-muted-foreground shrink-0" />
+                <div className="flex gap-1">
+                  <button onClick={() => download(d)} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"><Download className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => setDeleteDoc(d)} className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -103,6 +119,20 @@ export default function Documents() {
           <p>No hay documentos todavía</p>
         </div>
       )}
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteDoc} onOpenChange={(v) => !v && setDeleteDoc(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar documento?</AlertDialogTitle>
+            <AlertDialogDescription>Se eliminará "{deleteDoc?.name}" permanentemente del almacenamiento.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
