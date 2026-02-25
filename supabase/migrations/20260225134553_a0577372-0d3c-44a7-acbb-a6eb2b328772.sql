@@ -1,0 +1,1 @@
+ALTER TABLE public.email_logs RENAME COLUMN resend_id TO message_id;

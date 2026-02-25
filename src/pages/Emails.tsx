@@ -50,19 +50,17 @@ export default function Emails() {
     if (!user) return;
     setLoading(true);
 
-    // Count query
-    const countQuery = supabase
-      .from("email_logs")
-      .select("id, status", { count: "exact", head: false });
-
-    const { data: countData } = await countQuery;
-    if (countData) {
-      setCounts({
-        all: countData.length,
-        sent: countData.filter((e) => e.status === "sent").length,
-        failed: countData.filter((e) => e.status === "failed").length,
-      });
-    }
+    // Count queries (lightweight, head-only)
+    const [allRes, sentRes, failedRes] = await Promise.all([
+      supabase.from("email_logs").select("*", { count: "exact", head: true }),
+      supabase.from("email_logs").select("*", { count: "exact", head: true }).eq("status", "sent"),
+      supabase.from("email_logs").select("*", { count: "exact", head: true }).eq("status", "failed"),
+    ]);
+    setCounts({
+      all: allRes.count ?? 0,
+      sent: sentRes.count ?? 0,
+      failed: failedRes.count ?? 0,
+    });
 
     // Main query
     let query = supabase
