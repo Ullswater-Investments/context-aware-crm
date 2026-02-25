@@ -1,56 +1,58 @@
 
 
-## Plan: Añadir dirección postal a contactos
+## Plan: Correcciones y Mejoras en Contactos
 
-### 1. Migración de base de datos
+### Errores encontrados
 
-Añadir columna `postal_address` (text, nullable) a la tabla `contacts`:
+#### 1. Direcciones postales no actualizadas (BUG PRINCIPAL)
+La migracion SQL solo contiene `ALTER TABLE public.contacts ADD COLUMN postal_address text;` pero **no incluye el bloque UPDATE** con las direcciones postales. De los 83 contactos, solo 4 tienen direccion postal (Alicia Cervera del Rio y Angela Paredes, que coinciden con la lista proporcionada).
 
-```text
-ALTER TABLE public.contacts ADD COLUMN postal_address text;
-```
+Ademas, la mayoria de nombres de la lista (Marta Bilbao, Esperanza Gross, etc.) **no existen** como contactos en la base de datos. Los contactos actuales son otros (Jorge Blanco, Isabel Ruiz, etc.). Por tanto, se necesita:
+- Crear una nueva migracion que actualice los contactos existentes que si coincidan (Alicia Cervera del Rio, Angela Paredes)
+- Importar los nuevos contactos de la lista junto con sus direcciones postales
 
-### 2. Actualizar tipo Contact
+**Accion**: Crear una migracion SQL para insertar los contactos de la lista que no existen, con su empresa, y direccion postal. Los que ya existen y coinciden, actualizar solo la direccion.
 
-En `src/types/contact.ts`, añadir `postal_address?: string | null` al interface.
+#### 2. Contactos duplicados en la base de datos
+Hay contactos duplicados: Alicia Cervera del Rio (x2), Angela Paredes (x2), Carmen Hurtado de la Pena (x2), Claudia Gonzalez Blanco (x2), Cristina Lucas (x2), Eduardo Blanco (x2), Francisco Grau (x2), etc.
 
-### 3. Actualizar tarjetas Kanban (`src/pages/Contacts.tsx`)
+**Accion**: Crear una migracion que elimine duplicados, conservando el registro mas reciente (o el que tenga mas datos).
 
-- Importar icono `MapPin` de lucide-react
-- Mostrar la dirección postal en cada tarjeta de contacto (tanto vista Kanban como Lista), debajo del teléfono, con icono MapPin
-- Añadir campo "Dirección postal" al formulario de nuevo contacto
+#### 3. Uso innecesario de `(c as any).apollo_status`
+En `src/pages/Contacts.tsx` (lineas 190, 285, 350-351, 407, 414) y `src/components/contacts/ContactProfile.tsx` (linea 285), se usa `(c as any).apollo_status` a pesar de que `apollo_status` ya esta definido en el interface `Contact`.
 
-### 4. Actualizar perfil de contacto (`src/components/contacts/ContactProfile.tsx`)
+**Accion**: Reemplazar todas las instancias de `(c as any).apollo_status` por `c.apollo_status`.
 
-- Mostrar dirección postal en la sección de información (con icono MapPin)
-- Añadir campo "Dirección postal" al formulario de edición
-- Incluir `postal_address` en `editData` y en `saveEdit`
+#### 4. Warning de React: forwardRef en App component
+El log muestra: "Function components cannot be given refs" en el componente App.
 
-### 5. Actualizar importador (`src/components/contacts/ContactImporter.tsx`)
+**Accion**: Revisar y corregir el componente App para usar forwardRef donde sea necesario.
 
-- Añadir patrones de columna para dirección postal: "dirección", "direccion", "address", "postal", "sede"
-- Mapear al campo `postal_address` en la inserción
+---
 
-### 6. Script de actualización masiva
+### Mejoras propuestas
 
-Crear una migración SQL que actualice los contactos existentes con las direcciones postales proporcionadas, haciendo match por `full_name`. Se usará un bloque UPDATE con CASE/WHEN para todos los contactos de la lista:
+#### 5. Mejorar rendimiento de carga
+Actualmente se cargan todos los contactos sin paginacion. Con 83+ contactos no es critico, pero crecera.
 
-```text
-UPDATE public.contacts SET postal_address = CASE
-  WHEN full_name ILIKE 'Marta Bilbao' THEN 'C. de la Basílica, 17, 28020 Madrid, España'
-  WHEN full_name ILIKE 'Esperanza Gross Trujillo' THEN 'Peter Merian-Weg 12, 4002 Basilea, Suiza / Alcobendas, Madrid'
-  ... (todos los contactos de la lista con dirección válida)
-END
-WHERE full_name ILIKE ANY(ARRAY['Marta Bilbao', 'Esperanza Gross Trujillo', ...]);
-```
+**Accion**: Anadir paginacion o carga lazy al listado de contactos.
 
-Se excluirán los contactos cuya dirección sea "No disponible públicamente" o "Requiere búsqueda local".
+#### 6. Contacto con nombre invalido
+Hay un contacto cuyo `full_name` es `ismael.gilabert@hsn.net` (un email en vez de nombre).
 
-### Archivos a crear/modificar
+**Accion**: Limpiar este dato en una migracion.
 
-1. **Migración SQL** -- añadir columna `postal_address` + actualización masiva de datos
-2. **`src/types/contact.ts`** -- añadir campo `postal_address`
-3. **`src/pages/Contacts.tsx`** -- mostrar dirección en tarjetas + campo en formulario
-4. **`src/components/contacts/ContactProfile.tsx`** -- mostrar y editar dirección postal
-5. **`src/components/contacts/ContactImporter.tsx`** -- soporte para importar dirección postal
+---
+
+### Archivos a modificar
+
+1. **Nueva migracion SQL** -- Importar contactos de la lista con direcciones postales + limpiar duplicados + corregir dato invalido
+2. **`src/pages/Contacts.tsx`** -- Eliminar castings `(c as any).apollo_status` a `c.apollo_status`
+3. **`src/components/contacts/ContactProfile.tsx`** -- Eliminar casting `(c as any).apollo_status` a `c.apollo_status`
+
+### Prioridad de implementacion
+
+1. Migracion: importar contactos nuevos con direcciones + eliminar duplicados
+2. Fix de tipos TypeScript (`as any` innecesario)
+3. Correccion de dato invalido (email como nombre)
 
