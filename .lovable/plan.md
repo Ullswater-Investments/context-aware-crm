@@ -1,49 +1,58 @@
 
 
-## Plan: Asegurar que todas las tarjetas muestran email/telefono y pueden usar Hunter/Lusha/Apollo
+## Plan: Corregir errores y mejoras en Contactos
 
-### Problema detectado
-- **226 de 265 contactos** no tienen `company_domain` ni `email`, lo que impide que Hunter.io y Apollo funcionen desde las tarjetas.
-- Sin embargo, muchas de sus organizaciones SI tienen el campo `website` (ej: `unidental.es`, `blife.es`, `clinicamenorca.com`).
-- Las tarjetas solo muestran email/telefono si ya existen datos -- no hay indicacion visual de que faltan ni forma rapida de enriquecer sin dominio.
-- Los botones de Hunter/Apollo solo aparecen en las tarjetas Kanban cuando `company_domain` existe.
+### Errores detectados
 
-### Cambios a realizar
+#### 1. Bug: Lusha no se ejecuta directamente desde la tarjeta Kanban
+En `Contacts.tsx` linea 439, el boton "Lusha" en la tarjeta Kanban solo abre el perfil (`openProfile(c)`) en vez de ejecutar la funcion de enriquecimiento directamente. Deberia llamar a la API de Lusha igual que Hunter y Apollo.
 
-#### 1. Migracion SQL: Copiar website de organizacion a company_domain del contacto
-Actualizar los ~226 contactos que no tienen `company_domain` pero cuya organizacion tiene `website`, copiando el dominio limpio (sin `https://www.`).
-
-```text
-UPDATE contacts c
-SET company_domain = (dominio limpio de la organizacion)
-WHERE c.company_domain IS NULL 
-  AND c.organization_id IS NOT NULL
-  AND la organizacion tiene website
+#### 2. Bug: mobile_phone nunca se muestra como dato adicional (condicion siempre falsa)
+En `Contacts.tsx` linea 397 y 530:
 ```
+c.mobile_phone !== (c.phone || c.mobile_phone || c.work_phone)
+```
+Si `c.phone` es null y `c.mobile_phone` existe, la expresion `(c.phone || c.mobile_phone)` devuelve `c.mobile_phone`, por lo que la comparacion siempre es `false`. Lo mismo con work_phone. La logica correcta seria mostrar mobile_phone solo si es distinto del telefono principal ya mostrado.
 
-Esto desbloqueara inmediatamente Hunter y Apollo para la mayoria de contactos.
+#### 3. Bug: ComposeEmail en el perfil solo usa `contact.email`, ignora work_email/personal_email
+En `ContactProfile.tsx` linea 500:
+```
+defaultTo={contact.email || ""}
+```
+Si el contacto no tiene `email` pero si `work_email` o `personal_email`, el compositor se abre vacio. Deberia usar `contact.email || contact.work_email || contact.personal_email || ""`.
 
-#### 2. Tarjetas Kanban (src/pages/Contacts.tsx)
-- Mostrar siempre una seccion de email y telefono, incluso cuando estan vacios (con texto "Sin email" / "Sin telefono" en gris).
-- Mostrar botones Hunter/Apollo para contactos que tienen `company_domain` (ahora muchos mas tras la migracion).
-- Agregar boton Lusha directamente en la tarjeta Kanban (actualmente solo esta en el perfil).
+#### 4. Bug: Boton "Enviar email" en el perfil solo aparece si existe `contact.email`
+En `ContactProfile.tsx` linea 362, la condicion es `{contact.email && ...}`. Deberia incluir tambien `work_email` y `personal_email`.
 
-#### 3. Tarjetas Lista (src/pages/Contacts.tsx)
-- Mismo cambio: mostrar siempre email y telefono, con placeholder cuando faltan.
-- Agregar botones de enriquecimiento rapido (Hunter, Apollo, Lusha).
+#### 5. Bug: Lusha solo se muestra si status es "pending"
+En `ContactProfile.tsx` linea 409, el boton Lusha solo aparece cuando `lushaStatus === "pending"`, pero no cuando es `"not_found"`. Hunter y Apollo si permiten reintentar con `"not_found"`. Lusha deberia ser consistente.
 
-#### 4. Perfil de contacto (src/components/contacts/ContactProfile.tsx)
-- En la vista de lectura, mostrar siempre los campos email y telefono aunque esten vacios, con texto "No disponible".
-- Si el contacto no tiene `company_domain` pero su organizacion tiene `website`, usar el website como fallback para Hunter.
-- Mostrar boton Lusha siempre que el status sea `pending` (ya funciona asi).
+### Mejoras propuestas
 
-### Archivos a modificar
+#### 6. Mejora: Enriquecimiento Lusha directo desde tarjetas (sin abrir perfil)
+Crear una funcion `enrichWithLusha` a nivel de `Contacts.tsx` (similar a `enrichWithHunter` y `enrichWithApollo`) para que el boton Lusha en las tarjetas ejecute el enriquecimiento directamente.
 
-1. **Nueva migracion SQL** -- UPDATE masivo para copiar `organizations.website` a `contacts.company_domain` donde falta
-2. **src/pages/Contacts.tsx** -- Mostrar email/phone siempre en tarjetas; agregar botones Lusha en Kanban; usar org website como fallback para Hunter/Apollo
-3. **src/components/contacts/ContactProfile.tsx** -- Mostrar campos vacios con "No disponible"; usar org website como fallback
+#### 7. Mejora: Boton "Enviar email" en perfil deberia desaparecer si ya hay email clicable arriba
+Actualmente hay duplicidad: el email es clicable Y ademas hay un boton separado "Enviar email". Se puede eliminar el boton redundante ya que el email clicable cumple la misma funcion.
+
+### Detalles tecnicos
+
+**Archivos a modificar:**
+
+1. **src/pages/Contacts.tsx**
+   - Agregar funcion `enrichWithLusha` (similar a las existentes de Hunter/Apollo) con estado `enrichingLushaId`
+   - Actualizar boton Lusha en Kanban (linea 438-444) para llamar a `enrichWithLusha` directamente
+   - Actualizar boton Lusha en Lista (linea 567-574) igual
+   - Corregir condicion de mobile_phone duplicado (lineas 397 y 530): cambiar a `c.mobile_phone && c.phone && c.mobile_phone !== c.phone`
+   - Corregir condicion de work_email duplicado (lineas 392 y 525): cambiar a `c.work_email && c.email && c.work_email !== c.email`
+
+2. **src/components/contacts/ContactProfile.tsx**
+   - Linea 500: cambiar `defaultTo` a `contact.email || contact.work_email || contact.personal_email || ""`
+   - Linea 362: cambiar condicion del boton "Enviar email" a `(contact.email || contact.work_email || contact.personal_email)` -- o eliminarlo ya que el email clicable ya abre el compositor
+   - Linea 409: agregar `|| lushaStatus === "not_found"` para permitir reintentar Lusha
 
 ### Resultado esperado
-- Todas las tarjetas mostraran secciones de email y telefono (con datos o con indicador de que faltan)
-- Hunter, Apollo y Lusha estaran disponibles directamente desde las tarjetas para la gran mayoria de contactos
-- Tras la migracion, ~150+ contactos adicionales tendran `company_domain` y podran ser enriquecidos
+- Lusha funciona directamente desde las tarjetas sin abrir el perfil
+- El compositor de email siempre recibe el email correcto (email, work_email o personal_email)
+- Los datos adicionales (mobile_phone, work_email) se muestran correctamente sin duplicacion
+- Lusha permite reintento igual que Hunter y Apollo
