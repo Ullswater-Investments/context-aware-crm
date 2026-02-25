@@ -85,7 +85,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const [composeOpen, setComposeOpen] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editData, setEditData] = useState({ full_name: "", email: "", phone: "", position: "", linkedin_url: "" });
+  const [editData, setEditData] = useState({ full_name: "", email: "", phone: "", position: "", linkedin_url: "", company_domain: "" });
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [enrichingHunter, setEnrichingHunter] = useState(false);
@@ -118,6 +118,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       phone: contact.phone || "",
       position: contact.position || "",
       linkedin_url: contact.linkedin_url || "",
+      company_domain: contact.company_domain || "",
     });
     setEditing(true);
   };
@@ -130,6 +131,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       phone: editData.phone || null,
       position: editData.position || null,
       linkedin_url: editData.linkedin_url || null,
+      company_domain: editData.company_domain || null,
     } as any).eq("id", contact.id);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto actualizado");
@@ -292,6 +294,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   <div><Label>Teléfono</Label><Input value={editData.phone} onChange={(e) => setEditData({ ...editData, phone: e.target.value })} /></div>
                   <div><Label>Cargo</Label><Input value={editData.position} onChange={(e) => setEditData({ ...editData, position: e.target.value })} /></div>
                   <div><Label>LinkedIn URL</Label><Input value={editData.linkedin_url} onChange={(e) => setEditData({ ...editData, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
+                  <div><Label>Dominio empresa</Label><Input value={editData.company_domain} onChange={(e) => setEditData({ ...editData, company_domain: e.target.value })} placeholder="empresa.com" /></div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={saveEdit} disabled={!editData.full_name}><Save className="w-3.5 h-3.5 mr-1" />Guardar</Button>
                     <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
@@ -314,6 +317,11 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   {contact.linkedin_url && (
                     <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
                       <Linkedin className="w-4 h-4" />LinkedIn
+                    </a>
+                  )}
+                  {contact.company_domain && (
+                    <a href={`https://${contact.company_domain}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                      <Globe className="w-4 h-4" />{contact.company_domain}
                     </a>
                   )}
                   {contact.email && (
