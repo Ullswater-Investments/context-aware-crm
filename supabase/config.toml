@@ -8,3 +8,9 @@ verify_jwt = false
 
 [functions.enrich-lusha-contact]
 verify_jwt = false
+
+[functions.enrich-hunter-contact]
+verify_jwt = false
+
+[functions.hunter-domain-search]
+verify_jwt = false
