@@ -2,13 +2,14 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Search, Download, Wand2, Loader2, Mail, Globe, ShieldCheck, ShieldX, ShieldQuestion, Building2, MapPin, Users, Linkedin } from "lucide-react";
+import { Search, Download, Wand2, Loader2, Mail, Globe, ShieldCheck, ShieldX, ShieldQuestion, Building2, MapPin, Users, Linkedin, User, Phone } from "lucide-react";
 
 interface HunterEmail {
   email: string;
@@ -122,6 +123,24 @@ export default function HunterSearch({ open, onOpenChange, defaultDomain = "", o
     } catch (e: any) {
       setVerifications((prev) => ({ ...prev, [email]: { status: "error", score: null, loading: false } }));
       toast.error(e.message || "Error al verificar");
+    }
+  };
+
+  // People Finder
+  const [peopleData, setPeopleData] = useState<Record<string, any>>({});
+
+  const findPerson = async (emailAddr: string) => {
+    setPeopleData((prev) => ({ ...prev, [emailAddr]: { loading: true } }));
+    try {
+      const { data, error } = await supabase.functions.invoke("hunter-domain-search", {
+        body: { domain: "x", action: "people-find", email: emailAddr },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); setPeopleData((prev) => ({ ...prev, [emailAddr]: { loading: false, error: true } })); return; }
+      setPeopleData((prev) => ({ ...prev, [emailAddr]: { ...data, loading: false } }));
+    } catch (e: any) {
+      toast.error(e.message || "Error");
+      setPeopleData((prev) => ({ ...prev, [emailAddr]: { loading: false, error: true } }));
     }
   };
 
@@ -333,14 +352,39 @@ export default function HunterSearch({ open, onOpenChange, defaultDomain = "", o
                             {e.position && <span className="truncate">· {e.position}</span>}
                           </div>
                         </div>
-                        <button
-                          onClick={(ev) => { ev.stopPropagation(); verifyEmail(e.email); }}
-                          className="shrink-0 text-xs text-primary hover:underline flex items-center gap-1"
-                          disabled={v?.loading}
-                        >
-                          {v?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
-                          {v && !v.loading ? "Re-verificar" : "Verificar"}
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0" onClick={(ev) => ev.stopPropagation()}>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                onClick={() => { if (!peopleData[e.email]) findPerson(e.email); }}
+                                className="text-xs text-primary hover:underline flex items-center gap-1"
+                              >
+                                {peopleData[e.email]?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
+                                Info
+                              </button>
+                            </PopoverTrigger>
+                            {peopleData[e.email] && !peopleData[e.email].loading && !peopleData[e.email].error && (
+                              <PopoverContent className="w-64 text-xs space-y-1.5">
+                                <p className="font-semibold text-sm">{peopleData[e.email].full_name || [peopleData[e.email].first_name, peopleData[e.email].last_name].filter(Boolean).join(" ")}</p>
+                                {peopleData[e.email].position && <p className="text-muted-foreground flex items-center gap-1"><Building2 className="w-3 h-3" />{peopleData[e.email].position}</p>}
+                                {peopleData[e.email].department && <p className="text-muted-foreground">Dept: {peopleData[e.email].department}</p>}
+                                {peopleData[e.email].seniority && <p className="text-muted-foreground">Nivel: {peopleData[e.email].seniority}</p>}
+                                {peopleData[e.email].country && <p className="text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{peopleData[e.email].country}</p>}
+                                {peopleData[e.email].phone_number && <p className="text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{peopleData[e.email].phone_number}</p>}
+                                {peopleData[e.email].linkedin_url && <a href={peopleData[e.email].linkedin_url} target="_blank" rel="noreferrer" className="text-primary hover:underline flex items-center gap-1"><Linkedin className="w-3 h-3" />LinkedIn</a>}
+                                {peopleData[e.email].twitter && <p className="text-muted-foreground">Twitter: @{peopleData[e.email].twitter}</p>}
+                              </PopoverContent>
+                            )}
+                          </Popover>
+                          <button
+                            onClick={() => verifyEmail(e.email)}
+                            className="text-xs text-primary hover:underline flex items-center gap-1"
+                            disabled={v?.loading}
+                          >
+                            {v?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                            {v && !v.loading ? "" : "Verificar"}
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
