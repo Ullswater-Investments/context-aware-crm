@@ -10,7 +10,6 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    // Validate JWT
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "No autorizado" }), {
@@ -25,21 +24,23 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData?.user) {
       return new Response(JSON.stringify({ error: "Token inválido" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const userId = claimsData.claims.sub;
+    const userId = userData.user.id;
 
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
 
-    const { to, subject, html, text, from, contact_id, organization_id, project_id } = await req.json();
+    const {
+      to, subject, html, text, from,
+      contact_id, organization_id, project_id,
+      attachments: attachmentPaths,
+    } = await req.json();
 
     if (!to || !subject) {
       return new Response(
@@ -50,35 +51,64 @@ Deno.serve(async (req) => {
 
     const fromEmail = from || "EuroCRM <onboarding@resend.dev>";
 
+    // Download attachments from storage and encode to base64
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const resendAttachments: { filename: string; content: string }[] = [];
+    const attachmentRecords: { file_name: string; file_path: string; file_size?: number; file_type?: string }[] = [];
+
+    if (attachmentPaths && Array.isArray(attachmentPaths)) {
+      for (const att of attachmentPaths) {
+        const { data: fileData, error: dlErr } = await supabaseAdmin.storage
+          .from("email-attachments")
+          .download(att.path);
+        if (dlErr || !fileData) {
+          console.error(`Failed to download attachment ${att.path}:`, dlErr);
+          continue;
+        }
+        const arrayBuffer = await fileData.arrayBuffer();
+        const base64 = btoa(
+          new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), "")
+        );
+        resendAttachments.push({ filename: att.filename, content: base64 });
+        attachmentRecords.push({
+          file_name: att.filename,
+          file_path: att.path,
+          file_size: arrayBuffer.byteLength,
+        });
+      }
+    }
+
     // Send via Resend
+    const resendBody: Record<string, unknown> = {
+      from: fromEmail,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html: html || undefined,
+      text: text || undefined,
+    };
+    if (resendAttachments.length > 0) {
+      resendBody.attachments = resendAttachments;
+    }
+
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${RESEND_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: Array.isArray(to) ? to : [to],
-        subject,
-        html: html || undefined,
-        text: text || undefined,
-      }),
+      body: JSON.stringify(resendBody),
     });
 
     const resendData = await resendRes.json();
-
     const status = resendRes.ok ? "sent" : "failed";
     const errorMessage = resendRes.ok ? null : JSON.stringify(resendData);
 
-    // Use service role client for logging
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-
     // Log to database
-    await supabaseAdmin.from("email_logs").insert({
+    const { data: logData } = await supabaseAdmin.from("email_logs").insert({
       created_by: userId,
       contact_id: contact_id || null,
       organization_id: organization_id || null,
@@ -92,7 +122,20 @@ Deno.serve(async (req) => {
       resend_id: resendData.id || null,
       error_message: errorMessage,
       sent_at: status === "sent" ? new Date().toISOString() : null,
-    });
+    }).select("id").single();
+
+    // Save attachment records
+    if (logData?.id && attachmentRecords.length > 0) {
+      await supabaseAdmin.from("email_attachments").insert(
+        attachmentRecords.map((a) => ({
+          email_log_id: logData.id,
+          file_name: a.file_name,
+          file_path: a.file_path,
+          file_size: a.file_size,
+          created_by: userId,
+        }))
+      );
+    }
 
     if (!resendRes.ok) {
       console.error("Resend error:", resendData);
