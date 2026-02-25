@@ -12,6 +12,32 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // JWT validation
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "No autorizado" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabaseAuth = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabaseAuth.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      return new Response(JSON.stringify({ error: "Token inválido" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const userId = claimsData.claims.sub;
+
     const body = await req.json();
     const { contact_id, email, domain, full_name } = body;
 
@@ -42,19 +68,32 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Get current contact to avoid overwriting
-    const { data: currentContact } = await supabase
+    // Verify contact belongs to the authenticated user
+    const { data: contactOwner, error: ownerError } = await supabase
       .from("contacts")
-      .select("position, linkedin_url, work_email, work_phone, company_domain")
+      .select("created_by, position, linkedin_url, work_email, work_phone, company_domain")
       .eq("id", contact_id)
       .single();
+
+    if (ownerError || !contactOwner) {
+      return new Response(JSON.stringify({ error: "Contacto no encontrado" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (contactOwner.created_by !== userId) {
+      return new Response(JSON.stringify({ error: "No autorizado para modificar este contacto" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     let person: Record<string, any> = {};
     let foundEmail: string | null = null;
     let isValid = false;
 
     if (domain && full_name) {
-      // Mode: Email Finder by domain + full_name
       const nameParts = full_name.trim().split(/\s+/);
       const firstName = nameParts[0];
       const lastName = nameParts.slice(1).join(" ");
@@ -66,11 +105,9 @@ Deno.serve(async (req) => {
       if (finderData?.data) {
         person = finderData.data;
         foundEmail = person.email || null;
-        // confidence score > 0 means likely valid
         isValid = (person.score || 0) > 30;
       }
     } else if (email) {
-      // Mode: Email Verifier (original behavior)
       const verifyUrl = `https://api.hunter.io/v2/email-verifier?email=${encodeURIComponent(email)}&api_key=${hunterKey}`;
       const verifyRes = await fetch(verifyUrl);
       const verifyData = verifyRes.ok ? await verifyRes.json() : null;
@@ -79,7 +116,6 @@ Deno.serve(async (req) => {
       isValid = verification?.status === "valid" || verification?.result === "deliverable";
       foundEmail = email;
 
-      // Also try email-finder for additional data
       const hunterUrl = `https://api.hunter.io/v2/email-finder?email=${encodeURIComponent(email)}&api_key=${hunterKey}`;
       const hunterRes = await fetch(hunterUrl);
       const hunterData = hunterRes.ok ? await hunterRes.json() : null;
@@ -104,19 +140,19 @@ Deno.serve(async (req) => {
       last_enriched_at: new Date().toISOString(),
     };
 
-    if (foundEmail && isValid && !currentContact?.work_email) {
+    if (foundEmail && isValid && !contactOwner.work_email) {
       updates.work_email = foundEmail;
     }
-    if (person.position && !currentContact?.position) {
+    if (person.position && !contactOwner.position) {
       updates.position = person.position;
     }
-    if (person.linkedin && !currentContact?.linkedin_url) {
+    if (person.linkedin && !contactOwner.linkedin_url) {
       updates.linkedin_url = person.linkedin;
     }
-    if (person.phone_number && !currentContact?.work_phone) {
+    if (person.phone_number && !contactOwner.work_phone) {
       updates.work_phone = person.phone_number;
     }
-    if (person.domain && !currentContact?.company_domain) {
+    if (person.domain && !contactOwner.company_domain) {
       updates.company_domain = person.domain;
     }
 

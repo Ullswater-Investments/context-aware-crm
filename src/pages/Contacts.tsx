@@ -14,6 +14,7 @@ import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVert
 import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
 import HunterSearch from "@/components/contacts/HunterSearch";
+import { Contact } from "@/types/contact";
 
 const PIPELINE_COLUMNS = [
   { key: "new_lead", label: "Nuevo Lead", color: "bg-blue-500/10 border-blue-500/30" },
@@ -23,27 +24,7 @@ const PIPELINE_COLUMNS = [
   { key: "lost", label: "Perdido", color: "bg-red-500/10 border-red-500/30" },
 ];
 
-interface Contact {
-  id: string;
-  full_name: string;
-  email: string | null;
-  phone: string | null;
-  position: string | null;
-  organization_id: string | null;
-  organizations?: { name: string } | null;
-  status: string;
-  tags: string[] | null;
-  notes: string | null;
-  linkedin_url?: string | null;
-  company_domain?: string | null;
-  work_email?: string | null;
-  personal_email?: string | null;
-  mobile_phone?: string | null;
-  work_phone?: string | null;
-  lusha_status?: string | null;
-  hunter_status?: string | null;
-  last_enriched_at?: string | null;
-}
+const VALID_DOMAIN_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$/;
 
 function hasMissingData(c: Contact): boolean {
   const hasEmail = !!(c.email || c.work_email || c.personal_email);
@@ -71,7 +52,7 @@ export default function Contacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState("");
   const [lushaFilter, setLushaFilter] = useState("");
-  const [positionFilter, setPositionFilter] = useState("");
+  const [hunterFilter, setHunterFilter] = useState("");
   const [open, setOpen] = useState(false);
   const [importerOpen, setImporterOpen] = useState(false);
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
@@ -84,10 +65,16 @@ export default function Contacts() {
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
 
   const enrichWithHunter = async (contactId: string, fullName: string, companyDomain: string) => {
+    // Validate domain format
+    const cleanDomain = companyDomain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!VALID_DOMAIN_REGEX.test(cleanDomain)) {
+      toast.error("El dominio no tiene un formato válido (ej: empresa.com)");
+      return;
+    }
     setEnrichingId(contactId);
     try {
       const { data, error } = await supabase.functions.invoke("enrich-hunter-contact", {
-        body: { contact_id: contactId, domain: companyDomain, full_name: fullName },
+        body: { contact_id: contactId, domain: cleanDomain, full_name: fullName },
       });
       if (error) throw error;
       if (data?.status === "enriched") {
@@ -176,8 +163,8 @@ export default function Contacts() {
       c.organizations?.name?.toLowerCase().includes(searchLower) ||
       (c.tags || []).some((t) => t.toLowerCase().includes(searchLower));
     const matchesLusha = !lushaFilter || lushaFilter === "all" || c.lusha_status === lushaFilter;
-    const matchesPosition = !positionFilter || c.position?.toLowerCase().includes(positionFilter.toLowerCase());
-    return matchesSearch && matchesLusha && matchesPosition;
+    const matchesHunter = !hunterFilter || hunterFilter === "all" || c.hunter_status === hunterFilter;
+    return matchesSearch && matchesLusha && matchesHunter;
   });
 
   const getColumnContacts = (status: string) =>
@@ -267,12 +254,19 @@ export default function Contacts() {
             <SelectItem value="not_found">No encontrado</SelectItem>
           </SelectContent>
         </Select>
-        <div className="relative">
-          <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Filtrar por cargo..." value={positionFilter} onChange={(e) => setPositionFilter(e.target.value)} className="pl-10" />
-        </div>
-        {(search || lushaFilter || positionFilter) && (
-          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setLushaFilter(""); setPositionFilter(""); }}>
+        <Select value={hunterFilter} onValueChange={setHunterFilter}>
+          <SelectTrigger>
+            <SelectValue placeholder="Estado Hunter" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los estados</SelectItem>
+            <SelectItem value="pending">Pendiente</SelectItem>
+            <SelectItem value="enriched">Enriquecido</SelectItem>
+            <SelectItem value="not_found">No encontrado</SelectItem>
+          </SelectContent>
+        </Select>
+        {(search || lushaFilter || hunterFilter) && (
+          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setLushaFilter(""); setHunterFilter(""); }}>
             <FilterX className="w-4 h-4 mr-1" /> Limpiar
           </Button>
         )}
@@ -314,7 +308,9 @@ export default function Contacts() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1">
                               <p className="font-medium text-sm truncate">{c.full_name}</p>
-                              {(c as any).lusha_status === "enriched" && <Sparkles className="w-3 h-3 text-green-500 shrink-0" />}
+                              {c.lusha_status === "enriched" && <Sparkles className="w-3 h-3 text-green-500 shrink-0" />}
+                              {c.hunter_status === "enriched" && <Globe className="w-3 h-3 text-green-500 shrink-0" />}
+                              {c.hunter_status === "not_found" && <Globe className="w-3 h-3 text-orange-500 shrink-0" />}
                               {missing && <MissingDataAlert />}
                             </div>
                             {c.organizations?.name && (
@@ -355,14 +351,14 @@ export default function Contacts() {
                                 <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-muted-foreground truncate flex items-center gap-1 hover:text-primary">
                                   <Globe className="w-3 h-3" />{c.company_domain}
                                 </a>
-                                {c.hunter_status === "pending" && (
+                                {(c.hunter_status === "pending" || c.hunter_status === "not_found") && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }}
                                     disabled={enrichingId === c.id}
                                     className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0"
                                   >
                                     {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                                    Hunter
+                                    {c.hunter_status === "not_found" ? "Reintentar" : "Hunter"}
                                   </button>
                                 )}
                               </div>
@@ -444,14 +440,14 @@ export default function Contacts() {
                       <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
                         <Globe className="w-3.5 h-3.5" />{c.company_domain}
                       </a>
-                      {c.hunter_status === "pending" && (
+                      {(c.hunter_status === "pending" || c.hunter_status === "not_found") && (
                         <button
                           onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }}
                           disabled={enrichingId === c.id}
                           className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
                         >
                           {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                          Hunter
+                          {c.hunter_status === "not_found" ? "Reintentar" : "Hunter"}
                         </button>
                       )}
                     </div>

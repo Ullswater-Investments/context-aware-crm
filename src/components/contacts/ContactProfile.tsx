@@ -12,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe } from "lucide-react";
 import ComposeEmail from "@/components/email/ComposeEmail";
+import { Contact } from "@/types/contact";
 
 const STATUS_LABELS: Record<string, string> = {
   new_lead: "Nuevo Lead",
@@ -28,28 +29,6 @@ const LUSHA_STATUS_CONFIG: Record<string, { label: string; className: string }> 
   enriched: { label: "Enriquecido", className: "bg-green-500/15 text-green-700 border-green-500/30" },
   not_found: { label: "No encontrado", className: "bg-orange-500/15 text-orange-700 border-orange-500/30" },
 };
-
-interface Contact {
-  id: string;
-  full_name: string;
-  email: string | null;
-  phone: string | null;
-  position: string | null;
-  organization_id: string | null;
-  organizations?: { name: string } | null;
-  status: string;
-  tags: string[] | null;
-  notes: string | null;
-  linkedin_url?: string | null;
-  company_domain?: string | null;
-  work_email?: string | null;
-  personal_email?: string | null;
-  mobile_phone?: string | null;
-  work_phone?: string | null;
-  lusha_status?: string | null;
-  hunter_status?: string | null;
-  last_enriched_at?: string | null;
-}
 
 interface ContactNote {
   id: string;
@@ -234,11 +213,18 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   };
 
   const enrichWithHunter = async () => {
-    if (!contact || !contact.email) return;
+    if (!contact || (!contact.email && !contact.company_domain)) return;
     setEnrichingHunter(true);
     try {
+      const body: Record<string, string> = { contact_id: contact.id };
+      if (contact.email) {
+        body.email = contact.email;
+      } else if (contact.company_domain && contact.full_name) {
+        body.domain = contact.company_domain;
+        body.full_name = contact.full_name;
+      }
       const { data, error } = await supabase.functions.invoke("enrich-hunter-contact", {
-        body: { contact_id: contact.id, email: contact.email },
+        body,
       });
       if (error) {
         toast.error("Error al conectar con Hunter.io");
@@ -380,12 +366,12 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   )}
                 </Button>
               )}
-              {hunterStatus === "pending" && contact.email && (
+              {(hunterStatus === "pending" || hunterStatus === "not_found") && (contact.email || contact.company_domain) && (
                 <Button onClick={enrichWithHunter} disabled={enrichingHunter} className="w-full" variant="outline">
                   {enrichingHunter ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Buscando en Hunter.io...</>
                   ) : (
-                    <><Globe className="w-4 h-4 mr-2" />🔍 Enriquecer con Hunter.io</>
+                    <><Globe className="w-4 h-4 mr-2" />{hunterStatus === "not_found" ? "🔄 Reintentar Hunter.io" : "🔍 Enriquecer con Hunter.io"}</>
                   )}
                 </Button>
               )}
