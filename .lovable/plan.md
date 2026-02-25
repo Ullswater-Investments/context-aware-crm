@@ -1,76 +1,56 @@
 
 
-## Plan: Gestor de Emails integrado
+## Plan: Añadir dirección postal a contactos
 
-### Enfoque
+### 1. Migración de base de datos
 
-En lugar de integrar un gestor de emails externo (que requeriria conexion IMAP/OAuth con Gmail/Outlook y seria complejo), vamos a construir un **gestor de emails interno** que aprovecha la infraestructura que ya tienes:
-
-- Ya tienes **Resend** configurado para enviar emails
-- Ya tienes la tabla **email_logs** con todo el historial de envios
-- Ya tienes el componente **ComposeEmail** para redactar
-
-El gestor sera una pagina completa con: bandeja de enviados, redaccion de nuevos emails, vista detallada de cada email, filtros y busqueda.
-
----
-
-### Cambios a realizar
-
-#### 1. Nueva pagina: `src/pages/Emails.tsx`
-
-Pagina principal del gestor con tres secciones:
-
-- **Barra lateral izquierda**: Acciones rapidas (Redactar nuevo) y filtros (Todos, Enviados, Fallidos, Por contacto, Por organizacion)
-- **Lista central**: Tabla/lista de emails de `email_logs` ordenados por fecha, con busqueda por destinatario o asunto
-- **Panel derecho** (opcional): Vista previa del email seleccionado mostrando el HTML renderizado
-
-Funcionalidades:
-- Consulta `email_logs` filtrado por `created_by = usuario actual`
-- Busqueda por `to_email`, `subject`
-- Filtros por `status` (sent/failed)
-- Paginacion
-- Boton "Redactar" que abre el componente ComposeEmail existente
-- Vista detallada de cada email enviado (asunto, destinatario, fecha, cuerpo HTML, estado, contacto/organizacion asociados)
-- Indicador visual de estado (verde=enviado, rojo=fallido)
-
-#### 2. Actualizar sidebar: `src/components/layout/AppLayout.tsx`
-
-- Importar icono `Mail` de lucide-react
-- Anadir `{ to: "/emails", icon: Mail, label: "Emails" }` al array `navItems`, entre "Tareas" y el final
-
-#### 3. Actualizar rutas: `src/App.tsx`
-
-- Importar la nueva pagina `Emails`
-- Anadir `<Route path="/emails" element={<Emails />} />` dentro de las rutas protegidas
-
-#### 4. Mejorar ComposeEmail: `src/components/email/ComposeEmail.tsx`
-
-- Anadir campo CC y BCC (opcionales, colapsables)
-- Callback `onSent` ya existe, se reutiliza para refrescar la lista
-
----
-
-### Diseno de la pagina Emails
+Añadir columna `postal_address` (text, nullable) a la tabla `contacts`:
 
 ```text
-+------------------+-----------------------------+---------------------+
-|  ACCIONES        |  LISTA DE EMAILS            |  VISTA PREVIA       |
-|                  |                             |                     |
-|  [+ Redactar]    |  Buscar... [____]           |  Asunto: ...        |
-|                  |                             |  Para: ...          |
-|  FILTROS         |  email1@... - Asunto 1  OK  |  Fecha: ...         |
-|  - Todos (24)    |  email2@... - Asunto 2  OK  |  Estado: Enviado    |
-|  - Enviados (22) |  email3@... - Asunto 3  ERR |                     |
-|  - Fallidos (2)  |  ...                        |  [Cuerpo HTML]      |
-|                  |                             |                     |
-+------------------+-----------------------------+---------------------+
+ALTER TABLE public.contacts ADD COLUMN postal_address text;
 ```
+
+### 2. Actualizar tipo Contact
+
+En `src/types/contact.ts`, añadir `postal_address?: string | null` al interface.
+
+### 3. Actualizar tarjetas Kanban (`src/pages/Contacts.tsx`)
+
+- Importar icono `MapPin` de lucide-react
+- Mostrar la dirección postal en cada tarjeta de contacto (tanto vista Kanban como Lista), debajo del teléfono, con icono MapPin
+- Añadir campo "Dirección postal" al formulario de nuevo contacto
+
+### 4. Actualizar perfil de contacto (`src/components/contacts/ContactProfile.tsx`)
+
+- Mostrar dirección postal en la sección de información (con icono MapPin)
+- Añadir campo "Dirección postal" al formulario de edición
+- Incluir `postal_address` en `editData` y en `saveEdit`
+
+### 5. Actualizar importador (`src/components/contacts/ContactImporter.tsx`)
+
+- Añadir patrones de columna para dirección postal: "dirección", "direccion", "address", "postal", "sede"
+- Mapear al campo `postal_address` en la inserción
+
+### 6. Script de actualización masiva
+
+Crear una migración SQL que actualice los contactos existentes con las direcciones postales proporcionadas, haciendo match por `full_name`. Se usará un bloque UPDATE con CASE/WHEN para todos los contactos de la lista:
+
+```text
+UPDATE public.contacts SET postal_address = CASE
+  WHEN full_name ILIKE 'Marta Bilbao' THEN 'C. de la Basílica, 17, 28020 Madrid, España'
+  WHEN full_name ILIKE 'Esperanza Gross Trujillo' THEN 'Peter Merian-Weg 12, 4002 Basilea, Suiza / Alcobendas, Madrid'
+  ... (todos los contactos de la lista con dirección válida)
+END
+WHERE full_name ILIKE ANY(ARRAY['Marta Bilbao', 'Esperanza Gross Trujillo', ...]);
+```
+
+Se excluirán los contactos cuya dirección sea "No disponible públicamente" o "Requiere búsqueda local".
 
 ### Archivos a crear/modificar
 
-1. **`src/pages/Emails.tsx`** -- nueva pagina completa del gestor
-2. **`src/components/layout/AppLayout.tsx`** -- anadir "Emails" al menu
-3. **`src/App.tsx`** -- anadir ruta `/emails`
-
-No se necesitan cambios en base de datos ni edge functions: la tabla `email_logs` ya tiene toda la informacion necesaria.
+1. **Migración SQL** -- añadir columna `postal_address` + actualización masiva de datos
+2. **`src/types/contact.ts`** -- añadir campo `postal_address`
+3. **`src/pages/Contacts.tsx`** -- mostrar dirección en tarjetas + campo en formulario
+4. **`src/components/contacts/ContactProfile.tsx`** -- mostrar y editar dirección postal
+5. **`src/components/contacts/ContactImporter.tsx`** -- soporte para importar dirección postal
 
