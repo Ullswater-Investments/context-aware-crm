@@ -157,7 +157,18 @@ export default function Contacts() {
   });
 
   const getColumnContacts = (status: string) =>
-    filtered.filter((c) => c.status === status);
+    filtered
+      .filter((c) => c.status === status)
+      .sort((a, b) => {
+        const score = (c: Contact) => {
+          const hasEmail = !!(c.email || c.work_email || c.personal_email);
+          const hasPhone = !!(c.phone || c.mobile_phone || c.work_phone);
+          if (hasEmail && hasPhone) return 0;
+          if (hasEmail) return 1;
+          return 2;
+        };
+        return score(a) - score(b);
+      });
 
   return (
     <div className="p-6 max-w-full mx-auto space-y-6">
