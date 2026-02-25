@@ -255,6 +255,47 @@ export type Database = {
           },
         ]
       }
+      email_attachments: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          email_log_id: string | null
+          file_name: string
+          file_path: string
+          file_size: number | null
+          file_type: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          email_log_id?: string | null
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          email_log_id?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_attachments_email_log_id_fkey"
+            columns: ["email_log_id"]
+            isOneToOne: false
+            referencedRelation: "email_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_logs: {
         Row: {
           body_html: string | null
@@ -330,6 +371,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      email_signatures: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          image_path: string
+          is_default: boolean
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          image_path: string
+          is_default?: boolean
+          name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          image_path?: string
+          is_default?: boolean
+          name?: string
+        }
+        Relationships: []
       }
       knowledge_items: {
         Row: {
