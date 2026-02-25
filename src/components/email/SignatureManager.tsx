@@ -124,8 +124,21 @@ export default function SignatureManager({ open, onOpenChange, onSignaturesChang
     onSignaturesChange?.();
   };
 
-  const getPublicUrl = (path: string) =>
-    supabase.storage.from("email-signatures").getPublicUrl(path).data.publicUrl;
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const loadUrls = async () => {
+      const urls: Record<string, string> = {};
+      for (const sig of signatures) {
+        const { data } = await supabase.storage
+          .from("email-signatures")
+          .createSignedUrl(sig.image_path, 3600);
+        if (data?.signedUrl) urls[sig.id] = data.signedUrl;
+      }
+      setSignedUrls(urls);
+    };
+    if (signatures.length > 0) loadUrls();
+  }, [signatures]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -174,7 +187,7 @@ export default function SignatureManager({ open, onOpenChange, onSignaturesChang
             signatures.map((sig) => (
               <div key={sig.id} className="flex items-center gap-3 p-2 rounded-lg border border-border">
                 <img
-                  src={getPublicUrl(sig.image_path)}
+                  src={signedUrls[sig.id] || ""}
                   alt={sig.name}
                   className="h-10 w-auto max-w-[120px] object-contain"
                 />
