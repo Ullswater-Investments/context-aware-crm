@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
 
     const {
-      to, subject, html, text, from,
+      to, cc, subject, html, text, from,
       contact_id, organization_id, project_id,
       attachments: attachmentPaths,
     } = await req.json();
@@ -83,6 +83,11 @@ Deno.serve(async (req) => {
     }
 
     // Send via Resend
+    // Parse CC emails
+    const ccEmails: string[] = cc
+      ? (typeof cc === "string" ? cc.split(",").map((e: string) => e.trim()).filter(Boolean) : Array.isArray(cc) ? cc : [])
+      : [];
+
     const resendBody: Record<string, unknown> = {
       from: fromEmail,
       to: Array.isArray(to) ? to : [to],
@@ -90,6 +95,7 @@ Deno.serve(async (req) => {
       html: html || undefined,
       text: text || undefined,
     };
+    if (ccEmails.length > 0) resendBody.cc = ccEmails;
     if (resendAttachments.length > 0) {
       resendBody.attachments = resendAttachments;
     }
@@ -115,6 +121,7 @@ Deno.serve(async (req) => {
       project_id: project_id || null,
       from_email: fromEmail,
       to_email: Array.isArray(to) ? to.join(", ") : to,
+      cc_emails: ccEmails.length > 0 ? ccEmails.join(", ") : null,
       subject,
       body_html: html || null,
       body_text: text || null,

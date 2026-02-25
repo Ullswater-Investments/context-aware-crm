@@ -20,6 +20,7 @@ type EmailLog = {
   subject: string;
   body_html: string | null;
   body_text: string | null;
+  cc_emails: string | null;
   status: string;
   error_message: string | null;
   created_at: string;
@@ -242,6 +243,9 @@ export default function Emails() {
               <h2 className="text-base font-semibold leading-tight">{selected.subject}</h2>
               <div className="text-sm text-muted-foreground space-y-0.5">
                 <p><span className="font-medium text-foreground">Para:</span> {selected.to_email}</p>
+                {selected.cc_emails && (
+                  <p><span className="font-medium text-foreground">CC:</span> {selected.cc_emails}</p>
+                )}
                 <p><span className="font-medium text-foreground">De:</span> {selected.from_email}</p>
                 <p>
                   <span className="font-medium text-foreground">Fecha:</span>{" "}
