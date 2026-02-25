@@ -1,0 +1,1 @@
+ALTER TABLE public.contacts ADD COLUMN hunter_status text NOT NULL DEFAULT 'pending';

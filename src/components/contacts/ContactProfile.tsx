@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin } from "lucide-react";
+import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe } from "lucide-react";
 import ComposeEmail from "@/components/email/ComposeEmail";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -47,6 +47,7 @@ interface Contact {
   mobile_phone?: string | null;
   work_phone?: string | null;
   lusha_status?: string | null;
+  hunter_status?: string | null;
   last_enriched_at?: string | null;
 }
 
@@ -87,6 +88,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const [editData, setEditData] = useState({ full_name: "", email: "", phone: "", position: "", linkedin_url: "" });
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [enrichingHunter, setEnrichingHunter] = useState(false);
 
   const loadNotes = async (contactId: string) => {
     setLoadingNotes(true);
@@ -229,10 +231,36 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
     }
   };
 
+  const enrichWithHunter = async () => {
+    if (!contact || !contact.email) return;
+    setEnrichingHunter(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("enrich-hunter-contact", {
+        body: { contact_id: contact.id, email: contact.email },
+      });
+      if (error) {
+        toast.error("Error al conectar con Hunter.io");
+        return;
+      }
+      if (data?.status === "enriched") {
+        toast.success("¡Contacto enriquecido con Hunter.io!");
+      } else {
+        toast.warning("Hunter.io no encontró datos para este contacto");
+      }
+      onUpdate();
+    } catch {
+      toast.error("Error inesperado al enriquecer con Hunter.io");
+    } finally {
+      setEnrichingHunter(false);
+    }
+  };
+
   if (!contact) return null;
 
   const lushaStatus = contact.lusha_status || "pending";
   const lushaConfig = LUSHA_STATUS_CONFIG[lushaStatus] || LUSHA_STATUS_CONFIG.pending;
+  const hunterStatus = contact.hunter_status || "pending";
+  const hunterConfig = LUSHA_STATUS_CONFIG[hunterStatus] || LUSHA_STATUS_CONFIG.pending;
   const hasLushaData = contact.work_email || contact.personal_email || contact.mobile_phone || contact.work_phone;
 
   return (
@@ -243,7 +271,8 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
             <div className="flex items-center justify-between pr-6">
               <div className="flex items-center gap-2">
                 <DialogTitle className="text-xl">{editing ? "Editar contacto" : contact.full_name}</DialogTitle>
-                <Badge className={lushaConfig.className}>{lushaConfig.label}</Badge>
+                <Badge className={lushaConfig.className}>Lusha: {lushaConfig.label}</Badge>
+                <Badge className={hunterConfig.className}>Hunter: {hunterConfig.label}</Badge>
               </div>
               <div className="flex gap-1">
                 {!editing && (
@@ -333,13 +362,22 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                 </div>
               )}
 
-              {/* Enrich Button */}
+              {/* Enrich Buttons */}
               {lushaStatus === "pending" && (
                 <Button onClick={enrichWithLusha} disabled={enriching} className="w-full" variant="outline">
                   {enriching ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Buscando en Lusha...</>
                   ) : (
                     <><Sparkles className="w-4 h-4 mr-2" />🪄 Enriquecer con Lusha</>
+                  )}
+                </Button>
+              )}
+              {hunterStatus === "pending" && contact.email && (
+                <Button onClick={enrichWithHunter} disabled={enrichingHunter} className="w-full" variant="outline">
+                  {enrichingHunter ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Buscando en Hunter.io...</>
+                  ) : (
+                    <><Globe className="w-4 h-4 mr-2" />🔍 Enriquecer con Hunter.io</>
                   )}
                 </Button>
               )}
