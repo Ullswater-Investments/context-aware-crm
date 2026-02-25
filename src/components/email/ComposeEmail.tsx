@@ -126,10 +126,10 @@ export default function ComposeEmail({
       if (selectedSignatureId && selectedSignatureId !== "none") {
         const sig = signatures.find((s) => s.id === selectedSignatureId);
         if (sig) {
-          const { data: signedData } = await supabase.storage
+          const { data: publicData } = supabase.storage
             .from("email-signatures")
-            .createSignedUrl(sig.image_path, 3600);
-          if (signedData?.signedUrl) signatureImageUrl = signedData.signedUrl;
+            .getPublicUrl(sig.image_path);
+          if (publicData?.publicUrl) signatureImageUrl = publicData.publicUrl;
         }
       }
 
@@ -169,7 +169,7 @@ export default function ComposeEmail({
         if (currentContact && currentContact.status === "new_lead") {
           await supabase
             .from("contacts")
-            .update({ status: "contacted" } as any)
+            .update({ status: "contacted" as const })
             .eq("id", contactId);
         }
       }
@@ -190,10 +190,10 @@ export default function ComposeEmail({
 
   useEffect(() => {
     if (selectedSig) {
-      supabase.storage
+      const { data } = supabase.storage
         .from("email-signatures")
-        .createSignedUrl(selectedSig.image_path, 3600)
-        .then(({ data }) => setSigPreviewUrl(data?.signedUrl || null));
+        .getPublicUrl(selectedSig.image_path);
+      setSigPreviewUrl(data?.publicUrl || null);
     } else {
       setSigPreviewUrl(null);
     }

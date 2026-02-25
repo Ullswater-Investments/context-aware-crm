@@ -307,9 +307,9 @@ export type Database = {
           error_message: string | null
           from_email: string
           id: string
+          message_id: string | null
           organization_id: string | null
           project_id: string | null
-          resend_id: string | null
           sent_at: string | null
           status: string
           subject: string
@@ -325,9 +325,9 @@ export type Database = {
           error_message?: string | null
           from_email: string
           id?: string
+          message_id?: string | null
           organization_id?: string | null
           project_id?: string | null
-          resend_id?: string | null
           sent_at?: string | null
           status?: string
           subject: string
@@ -343,9 +343,9 @@ export type Database = {
           error_message?: string | null
           from_email?: string
           id?: string
+          message_id?: string | null
           organization_id?: string | null
           project_id?: string | null
-          resend_id?: string | null
           sent_at?: string | null
           status?: string
           subject?: string

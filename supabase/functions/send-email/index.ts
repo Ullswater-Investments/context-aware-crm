@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
       body_html: html || null,
       body_text: text || null,
       status,
-      resend_id: messageId,
+      message_id: messageId,
       error_message: errorMessage,
       sent_at: status === "sent" ? new Date().toISOString() : null,
     }).select("id").single();
