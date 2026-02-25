@@ -88,7 +88,6 @@ Deno.serve(async (req) => {
     // Build Apollo API request body
     const apolloBody: Record<string, any> = {
       reveal_personal_emails: true,
-      reveal_phone_number: true,
     };
     if (firstName) apolloBody.first_name = firstName;
     if (lastName) apolloBody.last_name = lastName;
@@ -106,24 +105,21 @@ Deno.serve(async (req) => {
     });
 
     if (!apolloResponse.ok) {
-      await supabase
-        .from("contacts")
-        .update({
-          apollo_status: "not_found",
-          last_enriched_at: new Date().toISOString(),
-        })
-        .eq("id", contact_id);
-
+      const errorBody = await apolloResponse.text();
+      console.error(`Apollo API error: HTTP ${apolloResponse.status}`, errorBody);
+      // Do NOT update apollo_status — allow retry
       return new Response(
-        JSON.stringify({ success: false, status: "not_found", message: "Apollo.io no encontró datos para este contacto" }),
+        JSON.stringify({ success: false, status: "api_error", message: `Apollo API error: ${apolloResponse.status}`, details: errorBody }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const data = await apolloResponse.json();
+    console.log("Apollo match result:", data.person?.name, "email:", data.person?.email, "title:", data.person?.title, "org:", data.person?.organization?.name);
     const person = data.person;
 
     if (!person) {
+      console.warn("Apollo returned 200 but no person. Full response:", JSON.stringify(data));
       await supabase
         .from("contacts")
         .update({
