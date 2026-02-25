@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Search, Download, Wand2, Loader2, Mail, Globe } from "lucide-react";
+import { Search, Download, Wand2, Loader2, Mail, Globe, ShieldCheck, ShieldX, ShieldQuestion } from "lucide-react";
 
 interface HunterEmail {
   email: string;
@@ -84,6 +84,27 @@ export default function HunterSearch({ open, onOpenChange, defaultDomain = "", o
       toast.error(e.message || "Error al buscar");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Email verification
+  const [verifications, setVerifications] = useState<Record<string, { status: string; score: number | null; loading: boolean }>>({});
+
+  const verifyEmail = async (email: string) => {
+    setVerifications((prev) => ({ ...prev, [email]: { status: "loading", score: null, loading: true } }));
+    try {
+      const { data, error } = await supabase.functions.invoke("hunter-domain-search", {
+        body: { domain: "x", action: "email-verifier", email },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      setVerifications((prev) => ({
+        ...prev,
+        [email]: { status: data.result || data.status || "unknown", score: data.score, loading: false },
+      }));
+    } catch (e: any) {
+      setVerifications((prev) => ({ ...prev, [email]: { status: "error", score: null, loading: false } }));
+      toast.error(e.message || "Error al verificar");
     }
   };
 
@@ -242,28 +263,48 @@ export default function HunterSearch({ open, onOpenChange, defaultDomain = "", o
                 </div>
 
                 <div className="space-y-1 max-h-60 overflow-y-auto">
-                  {result.emails.map((e, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer"
-                      onClick={() => toggleSelect(idx)}
-                    >
-                      <Checkbox checked={selected.has(idx)} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate">
-                            {[e.first_name, e.last_name].filter(Boolean).join(" ") || "—"}
-                          </span>
-                          {confidenceBadge(e.confidence)}
+                  {result.emails.map((e, idx) => {
+                    const v = verifications[e.email];
+                    return (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer"
+                        onClick={() => toggleSelect(idx)}
+                      >
+                        <Checkbox checked={selected.has(idx)} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium truncate">
+                              {[e.first_name, e.last_name].filter(Boolean).join(" ") || "—"}
+                            </span>
+                            {confidenceBadge(e.confidence)}
+                            {v && !v.loading && (
+                              v.status === "deliverable" ? (
+                                <Badge className="bg-green-500/15 text-green-700 border-green-500/30 hover:bg-green-500/20 gap-1"><ShieldCheck className="w-3 h-3" />Válido</Badge>
+                              ) : v.status === "risky" ? (
+                                <Badge className="bg-yellow-500/15 text-yellow-700 border-yellow-500/30 hover:bg-yellow-500/20 gap-1"><ShieldQuestion className="w-3 h-3" />Riesgo</Badge>
+                              ) : (
+                                <Badge className="bg-red-500/15 text-red-700 border-red-500/30 hover:bg-red-500/20 gap-1"><ShieldX className="w-3 h-3" />Inválido</Badge>
+                              )
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Mail className="w-3 h-3" />
+                            <span className="truncate">{e.email}</span>
+                            {e.position && <span className="truncate">· {e.position}</span>}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Mail className="w-3 h-3" />
-                          <span className="truncate">{e.email}</span>
-                          {e.position && <span className="truncate">· {e.position}</span>}
-                        </div>
+                        <button
+                          onClick={(ev) => { ev.stopPropagation(); verifyEmail(e.email); }}
+                          className="shrink-0 text-xs text-primary hover:underline flex items-center gap-1"
+                          disabled={v?.loading}
+                        >
+                          {v?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                          {v && !v.loading ? "Re-verificar" : "Verificar"}
+                        </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

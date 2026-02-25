@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { domain, action, first_name, last_name } = body;
+    const { domain, action, first_name, last_name, email } = body;
 
     if (!domain) {
       return new Response(JSON.stringify({ error: "Domain is required" }), {
@@ -57,6 +57,37 @@ Deno.serve(async (req) => {
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "Hunter API key not configured" }), {
         status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Email Finder mode
+    // Email Verifier mode
+    if (action === "email-verifier") {
+      if (!email) {
+        return new Response(JSON.stringify({ error: "email is required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const url = `https://api.hunter.io/v2/email-verifier?email=${encodeURIComponent(email)}&api_key=${apiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.errors) {
+        return new Response(JSON.stringify({ error: data.errors[0]?.details || "Hunter API error" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({
+        email: data.data?.email || email,
+        status: data.data?.status || "unknown",
+        result: data.data?.result || "unknown",
+        score: data.data?.score ?? null,
+        regexp: data.data?.regexp ?? null,
+        smtp_server: data.data?.smtp_server ?? null,
+        smtp_check: data.data?.smtp_check ?? null,
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
