@@ -53,6 +53,7 @@ export default function Contacts() {
   const [search, setSearch] = useState("");
   const [lushaFilter, setLushaFilter] = useState("");
   const [hunterFilter, setHunterFilter] = useState("");
+  const [apolloFilter, setApolloFilter] = useState("");
   const [open, setOpen] = useState(false);
   const [importerOpen, setImporterOpen] = useState(false);
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
@@ -63,6 +64,27 @@ export default function Contacts() {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [hunterOpen, setHunterOpen] = useState(false);
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
+  const [enrichingApolloId, setEnrichingApolloId] = useState<string | null>(null);
+
+  const enrichWithApollo = async (contactId: string, fullName: string, companyDomain?: string | null, email?: string | null, linkedinUrl?: string | null) => {
+    setEnrichingApolloId(contactId);
+    try {
+      const { data, error } = await supabase.functions.invoke("enrich-apollo-contact", {
+        body: { contact_id: contactId, full_name: fullName, company_domain: companyDomain || undefined, email: email || undefined, linkedin_url: linkedinUrl || undefined },
+      });
+      if (error) throw error;
+      if (data?.status === "enriched") {
+        toast.success("Contacto enriquecido con Apollo.io");
+      } else {
+        toast.info("Apollo.io no encontró datos adicionales");
+      }
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Error al enriquecer con Apollo.io");
+    } finally {
+      setEnrichingApolloId(null);
+    }
+  };
 
   const enrichWithHunter = async (contactId: string, fullName: string, companyDomain: string) => {
     // Validate domain format
@@ -164,7 +186,8 @@ export default function Contacts() {
       (c.tags || []).some((t) => t.toLowerCase().includes(searchLower));
     const matchesLusha = !lushaFilter || lushaFilter === "all" || c.lusha_status === lushaFilter;
     const matchesHunter = !hunterFilter || hunterFilter === "all" || c.hunter_status === hunterFilter;
-    return matchesSearch && matchesLusha && matchesHunter;
+    const matchesApollo = !apolloFilter || apolloFilter === "all" || (c as any).apollo_status === apolloFilter;
+    return matchesSearch && matchesLusha && matchesHunter && matchesApollo;
   });
 
   const getColumnContacts = (status: string) =>
@@ -238,7 +261,7 @@ export default function Contacts() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Buscar por nombre, email, cargo, etiqueta..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
@@ -265,8 +288,19 @@ export default function Contacts() {
             <SelectItem value="not_found">No encontrado</SelectItem>
           </SelectContent>
         </Select>
-        {(search || lushaFilter || hunterFilter) && (
-          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setLushaFilter(""); setHunterFilter(""); }}>
+        <Select value={apolloFilter} onValueChange={setApolloFilter}>
+          <SelectTrigger>
+            <SelectValue placeholder="Estado Apollo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los estados</SelectItem>
+            <SelectItem value="pending">Pendiente</SelectItem>
+            <SelectItem value="enriched">Enriquecido</SelectItem>
+            <SelectItem value="not_found">No encontrado</SelectItem>
+          </SelectContent>
+        </Select>
+        {(search || lushaFilter || hunterFilter || apolloFilter) && (
+          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setLushaFilter(""); setHunterFilter(""); setApolloFilter(""); }}>
             <FilterX className="w-4 h-4 mr-1" /> Limpiar
           </Button>
         )}
@@ -311,6 +345,8 @@ export default function Contacts() {
                               {c.lusha_status === "enriched" && <Sparkles className="w-3 h-3 text-green-500 shrink-0" />}
                               {c.hunter_status === "enriched" && <Globe className="w-3 h-3 text-green-500 shrink-0" />}
                               {c.hunter_status === "not_found" && <Globe className="w-3 h-3 text-orange-500 shrink-0" />}
+                              {(c as any).apollo_status === "enriched" && <Sparkles className="w-3 h-3 text-blue-500 shrink-0" />}
+                              {(c as any).apollo_status === "not_found" && <Sparkles className="w-3 h-3 text-orange-500 shrink-0" />}
                               {missing && <MissingDataAlert />}
                             </div>
                             {c.organizations?.name && (
@@ -359,6 +395,16 @@ export default function Contacts() {
                                   >
                                     {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
                                     {c.hunter_status === "not_found" ? "Reintentar" : "Hunter"}
+                                  </button>
+                                )}
+                                {((c as any).apollo_status === "pending" || (c as any).apollo_status === "not_found") && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }}
+                                    disabled={enrichingApolloId === c.id}
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0"
+                                  >
+                                    {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                    {(c as any).apollo_status === "not_found" ? "Reintentar" : "Apollo"}
                                   </button>
                                 )}
                               </div>
@@ -448,6 +494,16 @@ export default function Contacts() {
                         >
                           {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
                           {c.hunter_status === "not_found" ? "Reintentar" : "Hunter"}
+                        </button>
+                      )}
+                      {((c as any).apollo_status === "pending" || (c as any).apollo_status === "not_found") && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }}
+                          disabled={enrichingApolloId === c.id}
+                          className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
+                        >
+                          {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                          {(c as any).apollo_status === "not_found" ? "Reintentar" : "Apollo"}
                         </button>
                       )}
                     </div>

@@ -126,6 +126,24 @@ const tools = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "enrich_contact_apollo",
+      description: "Enriquece un contacto usando Apollo.io para obtener emails, teléfonos y cargo profesional. Necesita el ID del contacto y opcionalmente nombre, dominio, email o LinkedIn URL.",
+      parameters: {
+        type: "object",
+        properties: {
+          contact_id: { type: "string", description: "ID del contacto a enriquecer" },
+          full_name: { type: "string", description: "Nombre completo del contacto" },
+          company_domain: { type: "string", description: "Dominio de la empresa (ej: empresa.com)" },
+          email: { type: "string", description: "Email del contacto" },
+          linkedin_url: { type: "string", description: "URL de LinkedIn del contacto" },
+        },
+        required: ["contact_id"],
+      },
+    },
+  },
 ];
 
 // ─── Tool executors ───
@@ -356,6 +374,81 @@ async function executeSendCampaignEmail(
   });
 }
 
+async function executeEnrichContactApollo(
+  supabase: any,
+  userId: string,
+  args: { contact_id: string; full_name?: string; company_domain?: string; email?: string; linkedin_url?: string }
+): Promise<string> {
+  const APOLLO_API_KEY = Deno.env.get("APOLLO_API_KEY");
+  if (!APOLLO_API_KEY) return JSON.stringify({ success: false, error: "APOLLO_API_KEY not configured" });
+
+  // Get contact data
+  const { data: contact, error } = await supabase
+    .from("contacts")
+    .select("id, full_name, email, company_domain, linkedin_url")
+    .eq("id", args.contact_id)
+    .single();
+
+  if (error || !contact) return JSON.stringify({ success: false, error: "Contacto no encontrado" });
+
+  const fullName = args.full_name || contact.full_name || "";
+  const nameParts = fullName.trim().split(/\s+/);
+
+  const apolloBody: Record<string, any> = {
+    reveal_personal_emails: true,
+    reveal_phone_number: true,
+  };
+  if (nameParts[0]) apolloBody.first_name = nameParts[0];
+  if (nameParts.length > 1) apolloBody.last_name = nameParts.slice(1).join(" ");
+  const domain = args.company_domain || contact.company_domain;
+  if (domain) apolloBody.domain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  if (args.email || contact.email) apolloBody.email = args.email || contact.email;
+  if (args.linkedin_url || contact.linkedin_url) apolloBody.linkedin_url = args.linkedin_url || contact.linkedin_url;
+
+  try {
+    const res = await fetch("https://api.apollo.io/api/v1/people/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": APOLLO_API_KEY },
+      body: JSON.stringify(apolloBody),
+    });
+
+    if (!res.ok) {
+      const supabaseAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await supabaseAdmin.from("contacts").update({ apollo_status: "not_found", last_enriched_at: new Date().toISOString() }).eq("id", args.contact_id);
+      return JSON.stringify({ success: false, status: "not_found" });
+    }
+
+    const data = await res.json();
+    const person = data.person;
+    if (!person) {
+      const supabaseAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await supabaseAdmin.from("contacts").update({ apollo_status: "not_found", last_enriched_at: new Date().toISOString() }).eq("id", args.contact_id);
+      return JSON.stringify({ success: false, status: "not_found" });
+    }
+
+    const supabaseAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const updates: Record<string, any> = {
+      apollo_status: "enriched",
+      last_enriched_at: new Date().toISOString(),
+    };
+    if (person.email) updates.work_email = person.email;
+    if (person.personal_emails?.length > 0) updates.personal_email = person.personal_emails[0];
+    if (person.phone_numbers?.length > 0) updates.mobile_phone = person.phone_numbers[0].sanitized_number;
+    if (person.title) updates.position = person.title;
+    if (person.linkedin_url) updates.linkedin_url = person.linkedin_url;
+
+    await supabaseAdmin.from("contacts").update(updates).eq("id", args.contact_id);
+
+    return JSON.stringify({
+      success: true,
+      status: "enriched",
+      data: { work_email: person.email, position: person.title, linkedin_url: person.linkedin_url },
+    });
+  } catch (e) {
+    return JSON.stringify({ success: false, error: e.message });
+  }
+}
+
 // ─── System prompt ───
 
 const SYSTEM_PROMPT = `Eres el asistente IA de EuroCRM, un CRM especializado en la gestión de proyectos europeos.
@@ -375,6 +468,11 @@ CAPACIDADES AGÉNTICAS:
 - SIEMPRE busca primero si el contacto ya existe antes de crearlo para evitar duplicados.
 - Cuando crees un contacto, incluye ETIQUETAS relevantes basadas en el contexto (sector, origen, tipo de relación). Por ejemplo: si es del sector dental, agrega la etiqueta "dental". Si es un partner europeo, agrega "partner-europeo".
 - Después de crear un contacto exitosamente, incluye en tu respuesta el marcador [CONTACT_CREATED:ID_DEL_CONTACTO] para que el frontend muestre una tarjeta visual.
+
+ENRIQUECIMIENTO CON APOLLO.IO:
+- Puedes enriquecer contactos con Apollo.io usando enrich_contact_apollo.
+- Necesitas el ID del contacto. Opcionalmente puedes pasar nombre, dominio, email o LinkedIn URL para mejorar la precisión.
+- Cuando el usuario pida enriquecer un contacto con Apollo, usa esta herramienta.
 
 CAMPAÑAS DE EMAIL POR ETIQUETA:
 - Puedes LISTAR todas las etiquetas disponibles con list_available_tags.
@@ -532,6 +630,9 @@ Deno.serve(async (req) => {
             break;
           case "send_campaign_email":
             result = await executeSendCampaignEmail(supabase, userId, fnArgs);
+            break;
+          case "enrich_contact_apollo":
+            result = await executeEnrichContactApollo(supabase, userId, fnArgs);
             break;
           default:
             result = JSON.stringify({ error: `Unknown tool: ${fnName}` });

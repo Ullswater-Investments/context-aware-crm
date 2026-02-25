@@ -17,5 +17,6 @@ export interface Contact {
   work_phone?: string | null;
   lusha_status?: string | null;
   hunter_status?: string | null;
+  apollo_status?: string | null;
   last_enriched_at?: string | null;
 }

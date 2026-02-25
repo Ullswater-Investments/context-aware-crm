@@ -1,0 +1,1 @@
+ALTER TABLE public.contacts ADD COLUMN apollo_status text NOT NULL DEFAULT 'pending';

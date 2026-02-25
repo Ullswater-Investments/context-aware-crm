@@ -68,6 +68,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [enrichingHunter, setEnrichingHunter] = useState(false);
+  const [enrichingApollo, setEnrichingApollo] = useState(false);
 
   const loadNotes = async (contactId: string) => {
     setLoadingNotes(true);
@@ -243,12 +244,44 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
     }
   };
 
+  const enrichWithApollo = async () => {
+    if (!contact) return;
+    setEnrichingApollo(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("enrich-apollo-contact", {
+        body: {
+          contact_id: contact.id,
+          full_name: contact.full_name,
+          company_domain: contact.company_domain || undefined,
+          email: contact.email || undefined,
+          linkedin_url: contact.linkedin_url || undefined,
+        },
+      });
+      if (error) {
+        toast.error("Error al conectar con Apollo.io");
+        return;
+      }
+      if (data?.status === "enriched") {
+        toast.success("¡Contacto enriquecido con Apollo.io!");
+      } else {
+        toast.warning("Apollo.io no encontró datos para este contacto");
+      }
+      onUpdate();
+    } catch {
+      toast.error("Error inesperado al enriquecer con Apollo.io");
+    } finally {
+      setEnrichingApollo(false);
+    }
+  };
+
   if (!contact) return null;
 
   const lushaStatus = contact.lusha_status || "pending";
   const lushaConfig = LUSHA_STATUS_CONFIG[lushaStatus] || LUSHA_STATUS_CONFIG.pending;
   const hunterStatus = contact.hunter_status || "pending";
   const hunterConfig = LUSHA_STATUS_CONFIG[hunterStatus] || LUSHA_STATUS_CONFIG.pending;
+  const apolloStatus = (contact as any).apollo_status || "pending";
+  const apolloConfig = LUSHA_STATUS_CONFIG[apolloStatus] || LUSHA_STATUS_CONFIG.pending;
   const hasLushaData = contact.work_email || contact.personal_email || contact.mobile_phone || contact.work_phone;
 
   return (
@@ -261,6 +294,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                 <DialogTitle className="text-xl">{editing ? "Editar contacto" : contact.full_name}</DialogTitle>
                 <Badge className={lushaConfig.className}>Lusha: {lushaConfig.label}</Badge>
                 <Badge className={hunterConfig.className}>Hunter: {hunterConfig.label}</Badge>
+                <Badge className={apolloConfig.className}>Apollo: {apolloConfig.label}</Badge>
               </div>
               <div className="flex gap-1">
                 {!editing && (
@@ -375,8 +409,16 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   )}
                 </Button>
               )}
+              {(apolloStatus === "pending" || apolloStatus === "not_found") && (
+                <Button onClick={enrichWithApollo} disabled={enrichingApollo} className="w-full" variant="outline">
+                  {enrichingApollo ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Buscando en Apollo.io...</>
+                  ) : (
+                    <><Sparkles className="w-4 h-4 mr-2" />{apolloStatus === "not_found" ? "🔄 Reintentar Apollo.io" : "🚀 Enriquecer con Apollo.io"}</>
+                  )}
+                </Button>
+              )}
 
-              {/* Status */}
               <div className="space-y-2">
                 <Label className="text-sm font-semibold">Estado del embudo</Label>
                 <div className="flex flex-wrap gap-1.5">
