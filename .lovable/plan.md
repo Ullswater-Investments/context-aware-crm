@@ -1,94 +1,91 @@
 
 
-## Plan: Adjuntos y firmas de email en el compositor
+## Plan: Importar contactos con datos completos desde los 3 CSVs
 
-### Funcionalidad
+### Analisis de los archivos
 
-1. **Adjuntar archivos** al redactar un email (PDFs, imagenes, documentos)
-2. **Gestionar firmas de email** - subir una imagen de firma y seleccionarla al componer
-3. La firma se inserta automaticamente al final del cuerpo HTML del email
+Tienes 3 archivos CSV con 25 contactos del sector Healthcare:
 
-### Cambios en la base de datos
+1. **Export_User_Data_2026-02-25.csv** - Datos de Lusha con emails, telefonos, LinkedIn (25 contactos, DATOS COMPLETOS)
+2. **Export_User_Data_2026-02-25_1.csv** - Mismos contactos SIN emails/telefonos (redundante, se ignora)
+3. **Export_Contacts_2026-02-25.csv** - Datos de Apollo con emails, telefonos, empresa, dominio, descripcion (186 contactos, DATOS COMPLETOS)
 
-#### 1. Nuevo bucket de storage: `email-attachments` (publico para URLs de Resend)
-Para almacenar los archivos adjuntos temporalmente antes de enviarlos.
+El archivo 1 y 3 se solapan parcialmente (los mismos 25 contactos aparecen en ambos, pero el archivo 3 tiene 161 contactos adicionales + datos de empresa mas ricos).
 
-#### 2. Nuevo bucket de storage: `email-signatures` (privado)
-Para almacenar las imagenes de firma de cada usuario.
+### Estrategia
 
-#### 3. Nueva tabla: `email_signatures`
-```text
-id          uuid (PK, default gen_random_uuid())
-created_by  uuid (not null)
-name        text (not null) -- ej: "Firma principal", "Firma formal"
-image_path  text (not null) -- ruta en el bucket email-signatures
-is_default  boolean (default false)
-created_at  timestamptz (default now())
-```
-Con RLS policies para que cada usuario solo vea/edite sus propias firmas.
+1. **Combinar archivos 1 y 3** - El archivo 3 (Apollo) sera la fuente principal ya que tiene 186 contactos con datos de empresa. El archivo 1 (Lusha) tiene datos adicionales como "Work email 2", "Mobile 2", "Private email" para los 25 contactos compartidos.
+2. **Ignorar archivo 2** - Es una version vacia del archivo 1.
+3. **Deduplicar por nombre** antes de insertar.
 
-#### 4. Nueva tabla: `email_attachments`
-```text
-id            uuid (PK, default gen_random_uuid())
-email_log_id  uuid (FK -> email_logs.id)
-file_name     text (not null)
-file_path     text (not null) -- ruta en bucket email-attachments
-file_size     bigint
-file_type     text
-created_at    timestamptz (default now())
-created_by    uuid
-```
-Con RLS policies vinculadas al created_by.
+### Cambios en el importador
 
-### Cambios en el frontend
+**`src/components/contacts/ContactImporter.tsx`**
 
-#### `src/components/email/ComposeEmail.tsx`
-- Agregar input de tipo file (multiple) para adjuntar archivos
-- Mostrar lista de archivos adjuntos con opcion de eliminar cada uno
-- Los archivos se suben al bucket `email-attachments` antes de enviar
-- Agregar selector de firma (dropdown) que carga las firmas del usuario
-- Agregar boton "Gestionar firmas" que abre un mini-dialog para subir/eliminar firmas
-- La firma seleccionada se convierte a `<img>` y se anade al final del HTML
+Ampliar el `ParsedRow` y el `mapColumns` para reconocer las columnas de Lusha y Apollo:
 
-#### `src/components/email/SignatureManager.tsx` (nuevo)
-- Dialog para gestionar firmas: subir imagen, dar nombre, marcar como predeterminada, eliminar
-- Preview de la firma antes de guardar
-- Permite multiples firmas con una marcada como default
+| Columna CSV | Campo en BD |
+|---|---|
+| Contact name / First Name + Last Name | full_name |
+| Work email / Work Email | work_email + email (principal) |
+| Work email 2 / Additional Email 1 | personal_email |
+| Private email / Direct Email | personal_email |
+| Mobile / Phone 1 (mobile) | mobile_phone |
+| Direct phone / Phone 1 (direct) | work_phone |
+| Mobile 2 / Phone 2 | phone (secundario) |
+| Job title / Job Title | position |
+| Contact LI / LinkedIn URL | linkedin_url |
+| Company name / Company Name | organization lookup |
+| Company Domain | company_domain |
+| Industry / Company Main Industry | tags[] |
+| Sub industry / Company Sub Industry | tags[] |
+| Company Website | organization.website |
+| Company Description | organization.notes |
 
-### Cambios en el backend
+Tambien actualizar la creacion de organizaciones para incluir `website`, `sector` y `notes` cuando esten disponibles.
 
-#### `supabase/functions/send-email/index.ts`
-- Aceptar campo `attachments` en el body (array de objetos con `filename`, `path`)
-- Descargar cada archivo del bucket `email-attachments` usando el service role client
-- Convertir a base64 y pasarlos a la API de Resend como attachments:
-  ```text
-  attachments: [{ filename: "doc.pdf", content: base64Content }]
-  ```
-- Aceptar campo `signature_image_url` para incluir la firma como imagen en el HTML
-- Guardar referencia de los adjuntos en la tabla `email_attachments`
+### Flujo de importacion
+
+1. Se procesan primero los 186 contactos de Apollo (archivo 3) que tiene datos mas ricos
+2. Se procesan los 25 de Lusha (archivo 1) haciendo merge por nombre con los ya importados
+3. Si un contacto ya existe (mismo nombre), se actualizan los campos vacios con los nuevos datos (upsert)
+
+### Implementacion concreta
+
+Dado que la importacion se hara directamente por codigo (no via UI), el plan es:
+
+1. **Actualizar `ContactImporter.tsx`** - Ampliar mapColumns y ParsedRow para soportar todos los campos nuevos (linkedin_url, work_email, personal_email, mobile_phone, work_phone, company_domain)
+2. **Mejorar la logica de insert** - Incluir todos los campos en el insert a la tabla contacts
+3. **Enriquecer organizaciones** - Al crear organizaciones, incluir website, sector y notes si estan disponibles en el CSV
+4. **Añadir upsert por nombre** - Si ya existe un contacto con el mismo nombre, actualizar los campos que esten vacios en lugar de crear un duplicado
+5. **Ejecutar la importacion** - Importar los 3 archivos programaticamente: primero el de Apollo (186 contactos), luego el de Lusha (25 con datos adicionales)
+
+### Archivos a modificar
+
+1. **`src/components/contacts/ContactImporter.tsx`** - Ampliar ParsedRow, mapColumns, parseRows y la logica de insert para soportar todos los campos
+2. **`src/pages/Contacts.tsx`** - No requiere cambios, ya muestra todos los campos
 
 ### Detalles tecnicos
 
-**Limite de archivos adjuntos:** Maximo 5 archivos, 10MB cada uno (limite de Resend)
+**Nuevos patrones de columnas en mapColumns:**
 
-**Flujo de adjuntos:**
-1. Usuario selecciona archivos en el compositor
-2. Al pulsar "Enviar", se suben al bucket `email-attachments/{userId}/{timestamp}/`
-3. Se pasan las rutas al edge function
-4. El edge function descarga los archivos, los codifica en base64, y los envia via Resend
-5. Se registran en la tabla `email_attachments`
+```text
+linkedin: ["contact li", "linkedin url", "linkedin", "li"]
+work_email: ["work email", "work_email"]  
+personal_email: ["private email", "direct email", "personal email", "additional email"]
+mobile_phone: ["mobile", "móvil"]
+work_phone: ["direct phone", "work phone"]
+company_domain: ["company domain", "domain", "dominio"]
+company_website: ["company website", "website"]
+company_description: ["company description"]
+```
 
-**Flujo de firmas:**
-1. Usuario sube imagen de firma via SignatureManager
-2. Se almacena en bucket `email-signatures/{userId}/`
-3. Se registra en tabla `email_signatures`
-4. Al componer email, se carga la firma default o la seleccionada
-5. Se genera URL publica firmada y se inserta como `<img>` al final del HTML
+**Logica de upsert:**
 
-### Archivos a crear/modificar
+```text
+1. Buscar contacto existente por full_name (case-insensitive)
+2. Si existe: UPDATE solo campos que son null/vacios en el registro existente
+3. Si no existe: INSERT normal con todos los datos
+```
 
-1. **Migracion SQL** - Crear tablas, buckets y RLS policies
-2. **`src/components/email/SignatureManager.tsx`** - Nuevo componente para gestionar firmas
-3. **`src/components/email/ComposeEmail.tsx`** - Agregar adjuntos y selector de firma
-4. **`supabase/functions/send-email/index.ts`** - Soporte para adjuntos y firma en Resend API
-
+**Resultado esperado:** ~186 contactos nuevos del archivo Apollo + actualizacion de los 25 comunes con datos adicionales de Lusha = todos los contactos con email, telefono, LinkedIn, empresa y dominio completos.
