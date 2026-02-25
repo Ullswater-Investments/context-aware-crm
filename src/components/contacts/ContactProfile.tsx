@@ -359,11 +359,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   {contact.postal_address && (
                     <div className="flex items-center gap-2 text-sm"><MapPin className="w-4 h-4 text-muted-foreground shrink-0" />{contact.postal_address}</div>
                   )}
-                  {contact.email && (
-                    <Button size="sm" variant="outline" className="mt-2" onClick={() => setComposeOpen(true)}>
-                      <Send className="w-3.5 h-3.5 mr-1" />Enviar email
-                    </Button>
-                  )}
+                  {/* Removed redundant "Enviar email" button - the email row above is already clickable */}
                 </div>
               )}
 
@@ -406,12 +402,12 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
               )}
 
               {/* Enrich Buttons */}
-              {lushaStatus === "pending" && (
+              {(lushaStatus === "pending" || lushaStatus === "not_found") && (
                 <Button onClick={enrichWithLusha} disabled={enriching} className="w-full" variant="outline">
                   {enriching ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Buscando en Lusha...</>
                   ) : (
-                    <><Sparkles className="w-4 h-4 mr-2" />🪄 Enriquecer con Lusha</>
+                    <><Sparkles className="w-4 h-4 mr-2" />{lushaStatus === "not_found" ? "🔄 Reintentar Lusha" : "🪄 Enriquecer con Lusha"}</>
                   )}
                 </Button>
               )}
@@ -497,7 +493,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
         </DialogContent>
       </Dialog>
 
-      <ComposeEmail open={composeOpen} onOpenChange={setComposeOpen} defaultTo={contact.email || ""} contactId={contact.id} organizationId={contact.organization_id || undefined} />
+      <ComposeEmail open={composeOpen} onOpenChange={setComposeOpen} defaultTo={contact.email || contact.work_email || contact.personal_email || ""} contactId={contact.id} organizationId={contact.organization_id || undefined} />
 
       {/* Delete Contact Confirmation */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
