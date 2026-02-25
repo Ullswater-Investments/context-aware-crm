@@ -8,10 +8,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-import { Send, Bot, User, Loader2, Plus, UserPlus, X, Paperclip, FileText, Image as ImageIcon } from "lucide-react";
+import { Send, Bot, User, Loader2, Plus, X, Paperclip, FileText, Image as ImageIcon, UserCheck, Tag, Building2, Mail, Phone } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const MAX_FILES = 10;
-const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const TEXT_TYPES = ["text/plain", "text/csv", "text/markdown", "application/json", "application/xml", "text/xml"];
 
@@ -28,7 +29,7 @@ function readFileAsBase64(file: File): Promise<string> {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      resolve(result.split(",")[1]); // strip data:...;base64,
+      resolve(result.split(",")[1]);
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
@@ -52,44 +53,67 @@ function formatFileSize(bytes: number) {
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-interface DetectedContact {
-  name: string | null;
-  email: string | null;
-  phone: string | null;
+interface CreatedContact {
+  id: string;
+  full_name: string;
+  email?: string | null;
+  phone?: string | null;
+  position?: string | null;
+  tags?: string[] | null;
+  company?: string | null;
 }
 
-interface PendingContact extends DetectedContact {
-  messageIndex: number;
-  status: "pending" | "saved" | "skipped";
+// Extract [CONTACT_CREATED:uuid] markers from text and fetch contact data
+function extractContactIds(text: string): string[] {
+  const matches = text.matchAll(/\[CONTACT_CREATED:([a-f0-9-]+)\]/gi);
+  return [...matches].map((m) => m[1]);
 }
 
-// Extract emails and phones from text
-function extractContactInfo(text: string): DetectedContact | null {
-  const emailMatch = text.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
-  const phoneMatch = text.match(/(?:\+?\d{1,4}[\s.-]?)?\(?\d{1,4}\)?[\s.-]?\d{2,4}[\s.-]?\d{2,4}[\s.-]?\d{0,4}/);
-  
-  // Try to extract name: look for patterns like "nombre: X", "se llama X", or capitalized words near email
-  let name: string | null = null;
-  const namePatterns = [
-    /(?:se\s+llama|nombre(?:\s+es)?|contacto(?:\s+es)?)[:\s]+([A-ZÁÉÍÓÚÑa-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]+){0,3})/i,
-    /([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})(?=\s*[,.]?\s*(?:su\s+email|email|correo|teléfono|tel))/i,
-  ];
-  for (const pattern of namePatterns) {
-    const m = text.match(pattern);
-    if (m?.[1]) { name = m[1].trim(); break; }
-  }
+// Remove markers from display text
+function cleanMarkers(text: string): string {
+  return text.replace(/\[CONTACT_CREATED:[a-f0-9-]+\]/gi, "").trim();
+}
 
-  if (!emailMatch && !phoneMatch) return null;
-
-  const email = emailMatch?.[0] || null;
-  const phone = phoneMatch?.[0]?.trim() || null;
-  
-  // Filter out very short phone matches that are likely not phones
-  const validPhone = phone && phone.replace(/\D/g, "").length >= 7 ? phone : null;
-
-  if (!email && !validPhone) return null;
-
-  return { name, email, phone: validPhone };
+function ContactCard({ contact }: { contact: CreatedContact }) {
+  const navigate = useNavigate();
+  return (
+    <div
+      className="mt-2 rounded-xl border border-primary/20 bg-primary/5 p-4 max-w-sm cursor-pointer hover:bg-primary/10 transition-colors"
+      onClick={() => navigate("/contacts")}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <UserCheck className="w-5 h-5 text-primary" />
+        <span className="text-sm font-semibold text-primary">Contacto creado</span>
+      </div>
+      <div className="space-y-1 text-sm">
+        <p className="font-medium">{contact.full_name}</p>
+        {contact.email && (
+          <p className="text-muted-foreground flex items-center gap-1.5">
+            <Mail className="w-3.5 h-3.5" /> {contact.email}
+          </p>
+        )}
+        {contact.phone && (
+          <p className="text-muted-foreground flex items-center gap-1.5">
+            <Phone className="w-3.5 h-3.5" /> {contact.phone}
+          </p>
+        )}
+        {contact.position && (
+          <p className="text-muted-foreground flex items-center gap-1.5">
+            <Building2 className="w-3.5 h-3.5" /> {contact.position}
+          </p>
+        )}
+        {contact.tags && contact.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {contact.tags.map((tag) => (
+              <Badge key={tag} variant="secondary" className="text-xs gap-1">
+                <Tag className="w-3 h-3" /> {tag}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function ChatPage() {
@@ -99,9 +123,8 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<{ id: string; title: string; updated_at: string }[]>([]);
-  const [pendingContacts, setPendingContacts] = useState<PendingContact[]>([]);
-  const [savingContact, setSavingContact] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [createdContacts, setCreatedContacts] = useState<Record<string, CreatedContact>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -111,7 +134,34 @@ export default function ChatPage() {
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, pendingContacts]);
+  }, [messages]);
+
+  // Fetch contact data when we detect new CONTACT_CREATED markers
+  const fetchCreatedContacts = async (text: string) => {
+    const ids = extractContactIds(text);
+    for (const id of ids) {
+      if (createdContacts[id]) continue;
+      const { data } = await supabase
+        .from("contacts")
+        .select("id, full_name, email, phone, position, tags, organizations(name)")
+        .eq("id", id)
+        .single();
+      if (data) {
+        setCreatedContacts((prev) => ({
+          ...prev,
+          [id]: {
+            id: data.id,
+            full_name: data.full_name,
+            email: data.email,
+            phone: data.phone,
+            position: data.position,
+            tags: data.tags,
+            company: (data as any).organizations?.name || null,
+          },
+        }));
+      }
+    }
+  };
 
   const loadConversations = async () => {
     const { data } = await supabase
@@ -128,28 +178,32 @@ export default function ChatPage() {
       .select("role, content")
       .eq("conversation_id", convId)
       .order("created_at", { ascending: true });
-    if (data) setMessages(data as Msg[]);
+    if (data) {
+      const msgs = data as Msg[];
+      setMessages(msgs);
+      // Fetch any contact cards from loaded messages
+      for (const m of msgs) {
+        if (m.role === "assistant") fetchCreatedContacts(m.content);
+      }
+    }
     setConversationId(convId);
-    setPendingContacts([]);
   };
 
   const newConversation = () => {
     setMessages([]);
     setConversationId(null);
-    setPendingContacts([]);
     setAttachedFiles([]);
+    setCreatedContacts({});
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    
     const totalAfter = attachedFiles.length + files.length;
     if (totalAfter > MAX_FILES) {
       toast.error(`Máximo ${MAX_FILES} archivos. Ya tienes ${attachedFiles.length}.`);
       return;
     }
-    
     const validFiles: File[] = [];
     for (const f of files) {
       if (f.size > MAX_FILE_SIZE) {
@@ -158,13 +212,12 @@ export default function ChatPage() {
       }
       validFiles.push(f);
     }
-    
-    setAttachedFiles(prev => [...prev, ...validFiles]);
+    setAttachedFiles((prev) => [...prev, ...validFiles]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const removeFile = (index: number) => {
-    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const processAttachments = async (files: File[]): Promise<ChatAttachment[]> => {
@@ -177,7 +230,6 @@ export default function ChatPage() {
         const text = await readFileAsText(file);
         attachments.push({ name: file.name, type: file.type || "text/plain", content: text });
       } else {
-        // For PDFs and other binary files, just reference by name
         attachments.push({ name: file.name, type: file.type || "application/octet-stream", content: `[Archivo binario: ${file.name} (${formatFileSize(file.size)})]` });
       }
     }
@@ -200,55 +252,6 @@ export default function ChatPage() {
     }
   };
 
-  // Check if contact already exists by email or phone
-  const checkExistingContact = async (info: DetectedContact): Promise<boolean> => {
-    if (info.email) {
-      const { data } = await supabase
-        .from("contacts")
-        .select("id")
-        .eq("email", info.email)
-        .limit(1);
-      if (data && data.length > 0) return true;
-    }
-    if (info.phone) {
-      const { data } = await supabase
-        .from("contacts")
-        .select("id")
-        .eq("phone", info.phone)
-        .limit(1);
-      if (data && data.length > 0) return true;
-    }
-    return false;
-  };
-
-  const saveDetectedContact = async (pending: PendingContact) => {
-    setSavingContact(true);
-    try {
-      const { error } = await supabase.from("contacts").insert({
-        full_name: pending.name || pending.email || "Sin nombre",
-        email: pending.email,
-        phone: pending.phone,
-        created_by: user!.id,
-      });
-      if (error) throw error;
-      
-      setPendingContacts((prev) =>
-        prev.map((p) => p.messageIndex === pending.messageIndex ? { ...p, status: "saved" } : p)
-      );
-      toast.success(`Contacto "${pending.name || pending.email}" guardado correctamente`);
-    } catch (e: any) {
-      toast.error(e.message || "Error al guardar contacto");
-    } finally {
-      setSavingContact(false);
-    }
-  };
-
-  const skipContact = (messageIndex: number) => {
-    setPendingContacts((prev) =>
-      prev.map((p) => p.messageIndex === messageIndex ? { ...p, status: "skipped" } : p)
-    );
-  };
-
   const send = async () => {
     const text = input.trim();
     if ((!text && attachedFiles.length === 0) || isLoading) return;
@@ -256,18 +259,12 @@ export default function ChatPage() {
     const filesToSend = [...attachedFiles];
     setAttachedFiles([]);
 
-    // Build display content with file names
-    const fileNames = filesToSend.map(f => f.name);
-    const displayContent = fileNames.length > 0
-      ? `${text}\n\n📎 ${fileNames.join(", ")}`
-      : text;
+    const fileNames = filesToSend.map((f) => f.name);
+    const displayContent = fileNames.length > 0 ? `${text}\n\n📎 ${fileNames.join(", ")}` : text;
 
     const userMsg: Msg = { role: "user", content: displayContent };
-    const currentMsgIndex = messages.length;
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
-
-    const contactInfo = extractContactInfo(text);
 
     let convId = conversationId;
     if (!convId) {
@@ -289,25 +286,11 @@ export default function ChatPage() {
         role: "user",
         content: displayContent,
       });
-
-      // Upload files to storage in background
       if (filesToSend.length > 0) {
         uploadFilesToStorage(filesToSend, convId).catch(console.error);
       }
     }
 
-    if (contactInfo) {
-      checkExistingContact(contactInfo).then((exists) => {
-        if (!exists) {
-          setPendingContacts((prev) => [
-            ...prev,
-            { ...contactInfo, messageIndex: currentMsgIndex + 1, status: "pending" },
-          ]);
-        }
-      });
-    }
-
-    // Process file attachments for the AI
     let attachments: ChatAttachment[] | undefined;
     if (filesToSend.length > 0) {
       try {
@@ -331,7 +314,6 @@ export default function ChatPage() {
     };
 
     try {
-      // Send text-only content to the AI (without the file badge line)
       const aiMsg: Msg = { role: "user", content: text || "Analiza los archivos adjuntos." };
       await streamChat({
         messages: [...messages, aiMsg],
@@ -339,6 +321,10 @@ export default function ChatPage() {
         onDelta: upsertAssistant,
         onDone: async () => {
           setIsLoading(false);
+          // Fetch any created contacts from the response
+          if (assistantSoFar) {
+            fetchCreatedContacts(assistantSoFar);
+          }
           if (convId && assistantSoFar) {
             await supabase.from("chat_messages").insert({
               conversation_id: convId,
@@ -360,9 +346,6 @@ export default function ChatPage() {
       send();
     }
   };
-
-  const getPendingForIndex = (index: number) =>
-    pendingContacts.find((p) => p.messageIndex === index);
 
   return (
     <div className="flex h-full">
@@ -404,17 +387,17 @@ export default function ChatPage() {
               <h2 className="text-2xl font-display font-bold">Asistente IA EuroCRM</h2>
               <p className="text-muted-foreground leading-relaxed">
                 Pregúntame sobre tus contactos, proyectos europeos, o pídeme que redacte emails.
-                Puedo ayudarte a gestionar tu base de conocimiento.
+                También puedo crear contactos directamente: solo dime los datos y las etiquetas.
               </p>
               <div className="flex flex-wrap gap-2 justify-center">
                 {[
-                  "¿Qué proyectos tenemos activos?",
+                  "Guarda a Juan Pérez, email juan@dental.com, sector dental",
+                  "¿Qué contactos tengo del sector tech?",
                   "Redáctame un email formal",
-                  "Resumen de contactos recientes",
                 ].map((q) => (
                   <button
                     key={q}
-                    onClick={() => { setInput(q); }}
+                    onClick={() => setInput(q)}
                     className="px-3 py-1.5 rounded-full bg-secondary text-secondary-foreground text-sm hover:bg-secondary/80 transition-colors"
                   >
                     {q}
@@ -427,7 +410,9 @@ export default function ChatPage() {
           <ScrollArea className="flex-1 p-4">
             <div className="max-w-3xl mx-auto space-y-4">
               {messages.map((m, i) => {
-                const pending = getPendingForIndex(i);
+                const contactIds = m.role === "assistant" ? extractContactIds(m.content) : [];
+                const cleanContent = m.role === "assistant" ? cleanMarkers(m.content) : m.content;
+
                 return (
                   <div key={i}>
                     <div className={`flex gap-3 ${m.role === "user" ? "justify-end" : ""}`}>
@@ -445,7 +430,7 @@ export default function ChatPage() {
                       >
                         {m.role === "assistant" ? (
                           <div className="prose prose-sm dark:prose-invert max-w-none">
-                            <ReactMarkdown>{m.content}</ReactMarkdown>
+                            <ReactMarkdown>{cleanContent}</ReactMarkdown>
                           </div>
                         ) : (
                           m.content
@@ -458,55 +443,15 @@ export default function ChatPage() {
                       )}
                     </div>
 
-                    {/* Contact detection banner */}
-                    {pending && pending.status === "pending" && (
-                      <div className="ml-11 mt-2 rounded-xl border border-primary/20 bg-primary/5 p-4 max-w-[80%]">
-                        <div className="flex items-start gap-3">
-                          <UserPlus className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                          <div className="space-y-2 flex-1">
-                            <p className="text-sm font-medium">
-                              He identificado que este usuario no está guardado en contactos. ¿Quieres que guarde este nuevo contacto?
-                            </p>
-                      <div className="text-xs text-muted-foreground space-y-0.5">
-                              {pending.name && <p>Nombre: {pending.name}</p>}
-                              {pending.email && <p>Email: {pending.email}</p>}
-                              {pending.phone && <p>Tel: {pending.phone}</p>}
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => saveDetectedContact(pending)}
-                                disabled={savingContact}
-                              >
-                                {savingContact ? (
-                                  <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                                ) : (
-                                  <UserPlus className="w-3.5 h-3.5 mr-1" />
-                                )}
-                                Sí, guardar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => skipContact(pending.messageIndex)}
-                              >
-                                <X className="w-3.5 h-3.5 mr-1" />
-                                No, continuar sin guardar
-                              </Button>
-                            </div>
-                          </div>
+                    {/* Inline contact cards */}
+                    {contactIds.map((cid) => {
+                      const contact = createdContacts[cid];
+                      return contact ? (
+                        <div key={cid} className="ml-11">
+                          <ContactCard contact={contact} />
                         </div>
-                      </div>
-                    )}
-
-                    {pending && pending.status === "saved" && (
-                      <div className="ml-11 mt-2 rounded-xl border border-primary/20 bg-primary/5 p-3 max-w-[80%]">
-                        <p className="text-sm text-primary flex items-center gap-2">
-                          <UserPlus className="w-4 h-4" />
-                          Contacto guardado correctamente ✓
-                        </p>
-                      </div>
-                    )}
+                      ) : null;
+                    })}
                   </div>
                 );
               })}
