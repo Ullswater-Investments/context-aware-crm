@@ -91,6 +91,42 @@ Deno.serve(async (req) => {
       });
     }
 
+    // People Finder mode
+    if (action === "people-find") {
+      if (!email) {
+        return new Response(JSON.stringify({ error: "email is required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const url = `https://api.hunter.io/v2/people/find?email=${encodeURIComponent(email)}&api_key=${apiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.errors) {
+        return new Response(JSON.stringify({ error: data.errors[0]?.details || "Hunter API error" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const p = data.data || {};
+      return new Response(JSON.stringify({
+        first_name: p.first_name || null,
+        last_name: p.last_name || null,
+        full_name: p.full_name || null,
+        email: email,
+        position: p.position || null,
+        seniority: p.seniority || null,
+        department: p.department || null,
+        linkedin_url: p.linkedin_url || null,
+        twitter: p.twitter || null,
+        phone_number: p.phone_number || null,
+        company: p.company || null,
+        country: p.country || null,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Email Verifier mode
     if (action === "email-verifier") {
       if (!email) {
