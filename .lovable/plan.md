@@ -1,91 +1,70 @@
 
 
-## Plan: Importar contactos con datos completos desde los 3 CSVs
+## Plan: Formulario completo de nuevo contacto + Documentos adjuntos en perfil
 
-### Analisis de los archivos
+### Problema detectado
 
-Tienes 3 archivos CSV con 25 contactos del sector Healthcare:
+1. **Contactos de los CSVs no importados**: Los 186 contactos de Apollo y 25 de Lusha que subiste **nunca se importaron** a la base de datos. Solo existen los 333 contactos anteriores, la mayoria sin email ni telefono. Para importarlos, necesitas usar el boton "Importar" en la pagina de Contactos y subir primero el archivo Apollo (`Export_Contacts_2026-02-25.csv`) y luego el de Lusha (`Export_User_Data_2026-02-25.csv`).
 
-1. **Export_User_Data_2026-02-25.csv** - Datos de Lusha con emails, telefonos, LinkedIn (25 contactos, DATOS COMPLETOS)
-2. **Export_User_Data_2026-02-25_1.csv** - Mismos contactos SIN emails/telefonos (redundante, se ignora)
-3. **Export_Contacts_2026-02-25.csv** - Datos de Apollo con emails, telefonos, empresa, dominio, descripcion (186 contactos, DATOS COMPLETOS)
+2. **Formulario "Nuevo contacto" incompleto**: El formulario actual solo captura 8 campos (nombre, email, telefono, cargo, empresa, LinkedIn, dominio, direccion). Faltan campos importantes: work_email, personal_email, mobile_phone, work_phone, tags y notas.
 
-El archivo 1 y 3 se solapan parcialmente (los mismos 25 contactos aparecen en ambos, pero el archivo 3 tiene 161 contactos adicionales + datos de empresa mas ricos).
+3. **No se ven documentos adjuntos en el perfil del contacto**: La tabla `documents` tiene un campo `contact_id` pero el perfil del contacto no muestra ni permite gestionar documentos vinculados.
 
-### Estrategia
+### Cambios propuestos
 
-1. **Combinar archivos 1 y 3** - El archivo 3 (Apollo) sera la fuente principal ya que tiene 186 contactos con datos de empresa. El archivo 1 (Lusha) tiene datos adicionales como "Work email 2", "Mobile 2", "Private email" para los 25 contactos compartidos.
-2. **Ignorar archivo 2** - Es una version vacia del archivo 1.
-3. **Deduplicar por nombre** antes de insertar.
+#### 1. Ampliar formulario "Nuevo contacto" (`src/pages/Contacts.tsx`)
 
-### Cambios en el importador
+Agregar los campos que faltan al formulario de creacion:
+- Work email (email corporativo)
+- Personal email (email personal)
+- Mobile phone (movil)
+- Work phone (telefono de trabajo)
+- Tags (etiquetas, con input tipo chip)
+- Notas
 
-**`src/components/contacts/ContactImporter.tsx`**
+Reorganizar el formulario en 2 columnas para que no sea demasiado largo.
 
-Ampliar el `ParsedRow` y el `mapColumns` para reconocer las columnas de Lusha y Apollo:
+#### 2. Ampliar edicion en perfil (`src/components/contacts/ContactProfile.tsx`)
 
-| Columna CSV | Campo en BD |
-|---|---|
-| Contact name / First Name + Last Name | full_name |
-| Work email / Work Email | work_email + email (principal) |
-| Work email 2 / Additional Email 1 | personal_email |
-| Private email / Direct Email | personal_email |
-| Mobile / Phone 1 (mobile) | mobile_phone |
-| Direct phone / Phone 1 (direct) | work_phone |
-| Mobile 2 / Phone 2 | phone (secundario) |
-| Job title / Job Title | position |
-| Contact LI / LinkedIn URL | linkedin_url |
-| Company name / Company Name | organization lookup |
-| Company Domain | company_domain |
-| Industry / Company Main Industry | tags[] |
-| Sub industry / Company Sub Industry | tags[] |
-| Company Website | organization.website |
-| Company Description | organization.notes |
+Actualizar `editData` y `saveEdit` para incluir los nuevos campos (work_email, personal_email, mobile_phone, work_phone) que actualmente no se pueden editar desde el perfil.
 
-Tambien actualizar la creacion de organizaciones para incluir `website`, `sector` y `notes` cuando esten disponibles.
+#### 3. Seccion de documentos en el perfil del contacto (`src/components/contacts/ContactProfile.tsx`)
 
-### Flujo de importacion
-
-1. Se procesan primero los 186 contactos de Apollo (archivo 3) que tiene datos mas ricos
-2. Se procesan los 25 de Lusha (archivo 1) haciendo merge por nombre con los ya importados
-3. Si un contacto ya existe (mismo nombre), se actualizan los campos vacios con los nuevos datos (upsert)
-
-### Implementacion concreta
-
-Dado que la importacion se hara directamente por codigo (no via UI), el plan es:
-
-1. **Actualizar `ContactImporter.tsx`** - Ampliar mapColumns y ParsedRow para soportar todos los campos nuevos (linkedin_url, work_email, personal_email, mobile_phone, work_phone, company_domain)
-2. **Mejorar la logica de insert** - Incluir todos los campos en el insert a la tabla contacts
-3. **Enriquecer organizaciones** - Al crear organizaciones, incluir website, sector y notes si estan disponibles en el CSV
-4. **Añadir upsert por nombre** - Si ya existe un contacto con el mismo nombre, actualizar los campos que esten vacios en lugar de crear un duplicado
-5. **Ejecutar la importacion** - Importar los 3 archivos programaticamente: primero el de Apollo (186 contactos), luego el de Lusha (25 con datos adicionales)
+Agregar una seccion "Documentos" al perfil que:
+- Liste los documentos vinculados al contacto (query por `contact_id`)
+- Permita subir nuevos documentos vinculados al contacto
+- Permita descargar y eliminar documentos
+- Muestre nombre, tipo y fecha del documento
 
 ### Archivos a modificar
 
-1. **`src/components/contacts/ContactImporter.tsx`** - Ampliar ParsedRow, mapColumns, parseRows y la logica de insert para soportar todos los campos
-2. **`src/pages/Contacts.tsx`** - No requiere cambios, ya muestra todos los campos
+1. **`src/pages/Contacts.tsx`** - Ampliar formulario de creacion con todos los campos del contacto
+2. **`src/components/contacts/ContactProfile.tsx`** - Ampliar campos editables + agregar seccion de documentos adjuntos
 
 ### Detalles tecnicos
 
-**Nuevos patrones de columnas en mapColumns:**
-
+**Formulario ampliado - campos del state:**
 ```text
-linkedin: ["contact li", "linkedin url", "linkedin", "li"]
-work_email: ["work email", "work_email"]  
-personal_email: ["private email", "direct email", "personal email", "additional email"]
-mobile_phone: ["mobile", "móvil"]
-work_phone: ["direct phone", "work phone"]
-company_domain: ["company domain", "domain", "dominio"]
-company_website: ["company website", "website"]
-company_description: ["company description"]
+form: {
+  full_name, email, phone, position, organization_id,
+  linkedin_url, company_domain, postal_address,
+  work_email, personal_email, mobile_phone, work_phone  // nuevos
+}
 ```
 
-**Logica de upsert:**
-
+**Documentos en perfil - query:**
 ```text
-1. Buscar contacto existente por full_name (case-insensitive)
-2. Si existe: UPDATE solo campos que son null/vacios en el registro existente
-3. Si no existe: INSERT normal con todos los datos
+supabase.from("documents")
+  .select("*")
+  .eq("contact_id", contact.id)
+  .order("created_at", { ascending: false })
 ```
 
-**Resultado esperado:** ~186 contactos nuevos del archivo Apollo + actualizacion de los 25 comunes con datos adicionales de Lusha = todos los contactos con email, telefono, LinkedIn, empresa y dominio completos.
+**Upload de documento vinculado:**
+```text
+1. Subir archivo al bucket "documents" con path: {userId}/{contactId}/{timestamp}_{filename}
+2. Insertar registro en tabla documents con contact_id = contact.id
+```
+
+No se necesitan cambios en la base de datos ya que la tabla `documents` ya tiene el campo `contact_id` y el bucket `documents` ya existe.
+
