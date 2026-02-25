@@ -1,101 +1,134 @@
 
 
-# Revision de Errores y Mejoras del CRM
+# Plan: Chat IA Agentico con Creacion de Contactos y Etiquetas
 
-## Errores Detectados
+## Resumen
 
-### 1. CRITICO - Lusha API: Header de autorizacion incorrecto
-En `supabase/functions/enrich-lusha-contact/index.ts` (linea 47), el header se envia como `"api_key": "Bearer ..."`. Segun la documentacion de Lusha, el header correcto es `"api_key": "TU_API_KEY"` (sin el prefijo "Bearer"). Esto causa que TODAS las llamadas a Lusha fallen con error de autorizacion.
+Transformar el chat en un agente IA capaz de crear contactos directamente en la base de datos cuando el usuario lo solicite, incluyendo etiquetas personalizadas para clasificar el origen o sector del contacto (ej: "dental", "farmaceutico", "tech").
 
-**Correccion:** Cambiar linea 47 de:
-```
-"api_key": `Bearer ${lushaApiKey}`,
-```
-a:
-```
-"api_key": lushaApiKey,
-```
+## Arquitectura: Function Calling
 
-### 2. CRITICO - Seguridad: Edge Functions sin verificacion JWT
-Las 3 Edge Functions (`chat`, `send-email`, `enrich-lusha-contact`) tienen `verify_jwt = false` en `supabase/config.toml`. Cualquier persona puede llamar a estas funciones sin estar autenticado, lo que permite:
-- Usar creditos de IA del chat sin limite
-- Enviar emails desde tu cuenta
-- Gastar creditos de Lusha sin control
-
-**Correccion:** Cambiar `verify_jwt = true` para las 3 funciones y ajustar las llamadas del frontend para incluir el token de autorizacion del usuario (ya lo hace `chat-stream.ts` parcialmente pero usando la anon key, no el token del usuario).
-
-### 3. CRITICO - Seguridad: RLS permisivas (USING true)
-4 politicas RLS usan `true` como condicion, dejando tablas abiertas a cualquier usuario autenticado:
-- `projects`: cualquier usuario puede ver, editar y eliminar TODOS los proyectos de TODOS los usuarios
-- `project_partners`: cualquier usuario puede gestionar partners de cualquier proyecto
-- `profiles`: lectura publica (aceptable)
-
-**Correccion:** Cambiar las politicas de `projects` y `project_partners` para filtrar por `created_by = auth.uid()` o un campo de membresía.
-
-### 4. MEDIO - Dashboard: falta Skeleton en tarjetas principales
-Las tarjetas de la seccion principal del Dashboard (Empresas, Contactos, etc.) no tienen estado de carga. Muestran "0" mientras se cargan los datos, dando impresion de base vacia.
-
-**Correccion:** Usar `Skeleton` en las 5 tarjetas principales, igual que ya se hace en la seccion Lusha.
-
-### 5. MENOR - Tipado: uso excesivo de `as any`
-En `ContactProfile.tsx`, los campos Lusha se acceden con `(contact as any).work_email`, `(contact as any).lusha_status`, etc. Aunque la interfaz `Contact` ya define estos campos como opcionales, el codigo los castea innecesariamente.
-
-**Correccion:** Eliminar los cast `as any` y usar directamente `contact.work_email`, `contact.lusha_status`, etc., ya que la interfaz ya los tiene definidos.
-
-### 6. MENOR - Chat: posible fuga de memoria
-En `Index.tsx`, `uploadFilesToStorage` se ejecuta con `.catch(console.error)` en segundo plano sin cancelacion. Si el usuario navega fuera antes de completar, la promesa queda huerfana.
-
----
-
-## Mejoras Propuestas
-
-### 7. Enriquecer Lusha en lote (batch controlado)
-Agregar un boton "Enriquecer pendientes" en la pagina de Contactos que procese de a 1 contacto con confirmacion, mostrando progreso. Esto evita clics repetitivos sin gastar todos los creditos de golpe.
-
-### 8. Chat IA con acceso a datos reales del CRM
-Actualmente el chat no consulta la base de datos. Agregar herramientas (function calling) para que la IA pueda responder preguntas como "cuantos leads tengo" o "dame el email de Juan" consultando las tablas directamente.
-
-### 9. Grafico de embudo de ventas en Dashboard
-Agregar un grafico de barras/embudo con Recharts mostrando contactos por etapa (Nuevo Lead, Contactado, Propuesta, Cliente, Perdido).
-
-### 10. Actividad reciente en Dashboard
-Mostrar las ultimas 5-10 acciones: contactos creados, emails enviados, tareas completadas, enriquecimientos Lusha.
-
----
-
-## Plan de Implementacion
-
-### Archivos a modificar:
-1. **supabase/functions/enrich-lusha-contact/index.ts** - Corregir header `api_key` (quitar "Bearer")
-2. **supabase/config.toml** - Cambiar `verify_jwt = true` en las 3 funciones
-3. **src/lib/chat-stream.ts** - Enviar token JWT del usuario en lugar de la anon key
-4. **src/components/contacts/ContactProfile.tsx** - Pasar token JWT en `supabase.functions.invoke`, eliminar casts `as any`
-5. **src/pages/Dashboard.tsx** - Agregar Skeleton a tarjetas principales
-6. **Migracion SQL** - Corregir RLS de `projects` y `project_partners` para filtrar por usuario
-
-### Seccion tecnica - Correccion JWT en chat-stream:
+En lugar de detectar contactos con regex en el frontend (metodo actual, limitado), la IA usara **function calling** (herramientas) para decidir autonomamente cuando crear un contacto. El flujo sera:
 
 ```text
-Actual:  Authorization: Bearer {ANON_KEY}
-Correcto: Authorization: Bearer {USER_SESSION_TOKEN}
+Usuario: "Guarda a Juan Perez, email juan@dental.com, es del sector dental"
+     |
+     v
+IA detecta intencion -> llama tool "create_contact"
+     |
+     v
+Edge Function ejecuta INSERT en Supabase
+     |
+     v
+IA responde: "He creado el contacto Juan Perez con etiqueta 'dental'"
+     |
+     v
+Frontend muestra tarjeta del contacto creado
 ```
 
-Para obtener el token del usuario se usa `supabase.auth.getSession()` y se pasa `session.access_token` en el header. Esto permite que las Edge Functions validen que el usuario esta autenticado.
+## Cambios
 
-### Seccion tecnica - Correccion RLS projects:
+### 1. Edge Function `chat/index.ts` - Agregar tools y ejecucion
+
+- Definir herramienta `create_contact` con parametros: `full_name`, `email`, `phone`, `position`, `company_name`, `tags` (array de etiquetas)
+- Cuando la IA invoque la herramienta, ejecutar el INSERT en la tabla `contacts` con el `user_id` del JWT
+- Buscar si ya existe una organizacion con ese nombre; si no, crearla
+- Devolver el resultado al modelo para que continue la respuesta
+- Cambiar de streaming simple a un loop de function calling (non-streaming para tool calls, streaming para respuesta final)
+
+### 2. Edge Function `chat/index.ts` - Herramienta `search_contacts`
+
+- Agregar una segunda herramienta para que la IA pueda buscar contactos existentes antes de crear duplicados
+- Parametros: `query` (texto libre para buscar por nombre, email o empresa)
+- Ejecuta SELECT con ilike en la tabla contacts
+
+### 3. Frontend `Index.tsx` - Mostrar tarjetas de contactos creados
+
+- Detectar en la respuesta del asistente marcadores especiales (ej: `[CONTACT_CREATED:uuid]`) que indiquen que se creo un contacto
+- Renderizar una tarjeta visual inline con los datos del contacto creado y un enlace para verlo
+- Eliminar la deteccion regex actual de contactos (ya no es necesaria, la IA lo hace mejor)
+
+### 4. Frontend `Index.tsx` - Manejo del streaming con tool calls
+
+- Actualizar `chat-stream.ts` para manejar respuestas que incluyan marcadores de contactos creados
+- El edge function insertara marcadores en el texto de respuesta cuando cree un contacto
+
+---
+
+## Seccion Tecnica
+
+### Definicion de herramientas para el modelo:
+
+```json
+{
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "create_contact",
+        "description": "Crea un nuevo contacto en el CRM. Usa esta herramienta cuando el usuario pida guardar, registrar o crear un contacto nuevo.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "full_name": { "type": "string", "description": "Nombre completo" },
+            "email": { "type": "string", "description": "Email principal" },
+            "phone": { "type": "string", "description": "Telefono" },
+            "position": { "type": "string", "description": "Cargo o puesto" },
+            "company_name": { "type": "string", "description": "Nombre de la empresa" },
+            "tags": { "type": "array", "items": { "type": "string" }, "description": "Etiquetas para clasificar (ej: dental, farmaceutico, tech, lead-frio)" }
+          },
+          "required": ["full_name"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "search_contacts",
+        "description": "Busca contactos existentes en el CRM por nombre, email o empresa.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "description": "Texto de busqueda" }
+          },
+          "required": ["query"]
+        }
+      }
+    }
+  ]
+}
+```
+
+### Flujo en la Edge Function (loop de tool calling):
+
+```text
+1. Enviar mensajes + tools al modelo (sin streaming)
+2. Si respuesta tiene tool_calls:
+   a. Ejecutar cada tool call (INSERT contact, SELECT contacts)
+   b. Agregar tool results al historial
+   c. Volver a llamar al modelo con los resultados
+   d. Repetir hasta que no haya mas tool_calls
+3. Cuando el modelo responde con texto final, hacer streaming al frontend
+```
+
+### INSERT de contacto con etiquetas:
 
 ```sql
--- Reemplazar politicas permisivas por restrictivas
-DROP POLICY "Authenticated can view projects" ON projects;
-CREATE POLICY "Users can view own projects" ON projects
-  FOR SELECT USING (created_by = auth.uid());
-
--- Repetir para UPDATE, DELETE, INSERT
+INSERT INTO contacts (full_name, email, phone, position, tags, created_by)
+VALUES ($1, $2, $3, $4, $5::text[], $6)
 ```
 
-### Orden de ejecucion:
-1. Corregir header Lusha (impacto inmediato en funcionalidad)
-2. Corregir seguridad JWT + RLS (proteccion de datos)
-3. Agregar Skeleton y limpiar tipado (calidad de codigo)
-4. Mejoras opcionales (embudo, actividad, batch Lusha)
+Las etiquetas se guardan en la columna `tags` (tipo text[]) que ya existe en la tabla contacts.
+
+### Busqueda de organizacion existente:
+
+Cuando el usuario indica empresa, buscar primero en `organizations` con ilike. Si existe, vincular con `organization_id`. Si no existe, crear la organizacion automaticamente.
+
+### Archivos a modificar:
+1. **supabase/functions/chat/index.ts** - Agregar tools, loop de function calling, ejecucion de herramientas
+2. **src/pages/Index.tsx** - Mostrar tarjetas de contactos creados, eliminar deteccion regex
+3. **src/lib/chat-stream.ts** - Sin cambios mayores (el streaming sigue igual, solo cambia el contenido)
+
+### Sistema de mensajes del prompt:
+Actualizar el system prompt para instruir a la IA sobre cuando usar las herramientas y como manejar etiquetas.
 
