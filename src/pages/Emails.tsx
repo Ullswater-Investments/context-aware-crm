@@ -54,6 +54,7 @@ export default function Emails() {
   const [syncing, setSyncing] = useState(false);
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [folderCounts, setFolderCounts] = useState<Record<string, { inbox: number; sent: number }>>({});
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   // Fetch accounts
   useEffect(() => {
@@ -73,40 +74,65 @@ export default function Emails() {
       });
   }, [user]);
 
-  // Fetch folder counts when accounts change
+  const fetchCounts = useCallback(async () => {
+    if (!user || accounts.length === 0) return;
+
+    const newCounts: Record<string, { inbox: number; sent: number }> = {};
+    const newUnread: Record<string, number> = {};
+
+    await Promise.all(
+      accounts.map(async (acc) => {
+        const [inboxRes, sentRes, unreadRes] = await Promise.all([
+          supabase
+            .from("email_logs")
+            .select("*", { count: "exact", head: true })
+            .eq("direction", "inbound")
+            .ilike("to_email", `%${acc.email_address}%`),
+          supabase
+            .from("email_logs")
+            .select("*", { count: "exact", head: true })
+            .eq("direction", "outbound")
+            .ilike("from_email", `%${acc.email_address}%`),
+          supabase
+            .from("email_logs")
+            .select("*", { count: "exact", head: true })
+            .eq("direction", "inbound")
+            .eq("is_read", false)
+            .ilike("to_email", `%${acc.email_address}%`),
+        ]);
+        newCounts[acc.id] = { inbox: inboxRes.count ?? 0, sent: sentRes.count ?? 0 };
+        newUnread[acc.id] = unreadRes.count ?? 0;
+      })
+    );
+
+    setFolderCounts(newCounts);
+    setUnreadCounts(newUnread);
+  }, [user, accounts]);
+
+  useEffect(() => {
+    fetchCounts();
+  }, [fetchCounts]);
+
+  // Realtime: update counts when email_logs changes
   useEffect(() => {
     if (!user || accounts.length === 0) return;
 
-    const fetchCounts = async () => {
-      const newCounts: Record<string, { inbox: number; sent: number }> = {};
-      let totalInbox = 0; // kept for potential future use
+    const channel = supabase
+      .channel("email-unread-counts")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "email_logs" },
+        () => {
+          fetchCounts();
+          fetchEmails();
+        }
+      )
+      .subscribe();
 
-      await Promise.all(
-        accounts.map(async (acc) => {
-          const [inboxRes, sentRes] = await Promise.all([
-            supabase
-              .from("email_logs")
-              .select("*", { count: "exact", head: true })
-              .eq("direction", "inbound")
-              .ilike("to_email", `%${acc.email_address}%`),
-            supabase
-              .from("email_logs")
-              .select("*", { count: "exact", head: true })
-              .eq("direction", "outbound")
-              .ilike("from_email", `%${acc.email_address}%`),
-          ]);
-          const inbox = inboxRes.count ?? 0;
-          const sent = sentRes.count ?? 0;
-          newCounts[acc.id] = { inbox, sent };
-          totalInbox += inbox;
-        })
-      );
-
-      setFolderCounts(newCounts);
+    return () => {
+      supabase.removeChannel(channel);
     };
-
-    fetchCounts();
-  }, [user, accounts]);
+  }, [user, accounts, fetchCounts]);
 
   const fetchEmails = useCallback(async () => {
     if (!user || !selectedAccountId) return;
@@ -185,6 +211,7 @@ export default function Emails() {
         selectedAccountId={selectedAccountId}
         selectedFolder={selectedFolder}
         folderCounts={folderCounts}
+        unreadCounts={unreadCounts}
         syncing={syncing}
         onFolderSelect={handleFolderSelect}
         onCompose={() => setComposeOpen(true)}
@@ -255,7 +282,12 @@ export default function Emails() {
                 return (
                   <button
                     key={email.id}
-                    onClick={() => setSelected(email)}
+                    onClick={async () => {
+                      setSelected(email);
+                      if (email.direction === "inbound" && !(email as any).is_read) {
+                        await supabase.from("email_logs").update({ is_read: true } as any).eq("id", email.id);
+                      }
+                    }}
                     className={cn(
                       "w-full text-left px-4 py-3 hover:bg-accent/30 transition-colors",
                       selected?.id === email.id && "bg-accent/50"
