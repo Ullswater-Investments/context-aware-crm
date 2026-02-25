@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  Plus, Inbox, Send, RefreshCw, Loader2, LayoutGrid,
+  Plus, Inbox, Send, RefreshCw, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -26,7 +26,6 @@ interface EmailSidebarProps {
   selectedAccountId: string;
   selectedFolder: string;
   folderCounts: FolderCounts;
-  unifiedCount: number;
   syncing: boolean;
   onFolderSelect: (accountId: string, folder: string) => void;
   onCompose: () => void;
@@ -62,14 +61,11 @@ export default function EmailSidebar({
   selectedAccountId,
   selectedFolder,
   folderCounts,
-  unifiedCount,
   syncing,
   onFolderSelect,
   onCompose,
   onSync,
 }: EmailSidebarProps) {
-  const isUnified = selectedAccountId === "all";
-
   return (
     <div className="w-56 shrink-0 border-r border-border p-4 space-y-4 hidden md:flex flex-col">
       <Button onClick={onCompose} className="w-full">
@@ -104,26 +100,6 @@ export default function EmailSidebar({
           Sincronizar
         </Button>
       )}
-
-      {/* Unified Inbox */}
-      <div className="space-y-1 pt-2">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2 mb-2">
-          Vistas Globales
-        </p>
-        <button
-          onClick={() => onFolderSelect("all", "inbox")}
-          className={cn(
-            "flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-            isUnified
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-          )}
-        >
-          <LayoutGrid className="w-4 h-4" />
-          Bandeja Unificada
-          <span className="ml-auto text-xs opacity-70">{unifiedCount}</span>
-        </button>
-      </div>
 
       {/* Per-account folders */}
       {accounts.length > 0 && (

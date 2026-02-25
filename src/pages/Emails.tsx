@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   Plus, Search, Mail, Loader2, ChevronLeft, ChevronRight, Forward,
-  RefreshCw, ArrowDownLeft, ArrowUpRight, Inbox, Send, LayoutGrid,
+  RefreshCw, ArrowDownLeft, ArrowUpRight, Inbox, Send,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -44,7 +44,7 @@ export default function Emails() {
   const [emails, setEmails] = useState<EmailLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selectedAccountId, setSelectedAccountId] = useState("all");
+  const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedFolder, setSelectedFolder] = useState("inbox");
   const [selected, setSelected] = useState<EmailLog | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
@@ -54,7 +54,6 @@ export default function Emails() {
   const [syncing, setSyncing] = useState(false);
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [folderCounts, setFolderCounts] = useState<Record<string, { inbox: number; sent: number }>>({});
-  const [unifiedCount, setUnifiedCount] = useState(0);
 
   // Fetch accounts
   useEffect(() => {
@@ -64,7 +63,13 @@ export default function Emails() {
       .select("id, email_address, display_name")
       .eq("is_active", true)
       .then(({ data }) => {
-        if (data) setAccounts(data as EmailAccount[]);
+        if (data) {
+          setAccounts(data as EmailAccount[]);
+          // Auto-select first account if none selected
+          if (!selectedAccountId && data.length > 0) {
+            setSelectedAccountId(data[0].id);
+          }
+        }
       });
   }, [user]);
 
@@ -74,7 +79,7 @@ export default function Emails() {
 
     const fetchCounts = async () => {
       const newCounts: Record<string, { inbox: number; sent: number }> = {};
-      let totalInbox = 0;
+      let totalInbox = 0; // kept for potential future use
 
       await Promise.all(
         accounts.map(async (acc) => {
@@ -98,14 +103,13 @@ export default function Emails() {
       );
 
       setFolderCounts(newCounts);
-      setUnifiedCount(totalInbox);
     };
 
     fetchCounts();
   }, [user, accounts]);
 
   const fetchEmails = useCallback(async () => {
-    if (!user) return;
+    if (!user || !selectedAccountId) return;
     setLoading(true);
 
     let query = supabase
@@ -114,22 +118,16 @@ export default function Emails() {
       .order("created_at", { ascending: false })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-    if (selectedAccountId === "all") {
-      // Unified inbox: all inbound
-      query = query.eq("direction", "inbound");
-    } else {
-      // Specific account
-      const acc = accounts.find((a) => a.id === selectedAccountId);
-      if (acc) {
-        if (selectedFolder === "inbox") {
-          query = query
-            .eq("direction", "inbound")
-            .ilike("to_email", `%${acc.email_address}%`);
-        } else {
-          query = query
-            .eq("direction", "outbound")
-            .ilike("from_email", `%${acc.email_address}%`);
-        }
+    const acc = accounts.find((a) => a.id === selectedAccountId);
+    if (acc) {
+      if (selectedFolder === "inbox") {
+        query = query
+          .eq("direction", "inbound")
+          .ilike("to_email", `%${acc.email_address}%`);
+      } else {
+        query = query
+          .eq("direction", "outbound")
+          .ilike("from_email", `%${acc.email_address}%`);
       }
     }
 
@@ -177,25 +175,7 @@ export default function Emails() {
     setSelected(null);
   };
 
-  // Identify which account an email belongs to
-  const getEmailAccountIndex = (email: EmailLog): number => {
-    return accounts.findIndex((acc) => {
-      if (email.direction === "inbound") {
-        return email.to_email?.toLowerCase().includes(acc.email_address.toLowerCase());
-      }
-      return email.from_email?.toLowerCase().includes(acc.email_address.toLowerCase());
-    });
-  };
-
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-
-  // Mobile folder label
-  const getMobileFolderLabel = () => {
-    if (selectedAccountId === "all") return "Unificada";
-    const acc = accounts.find((a) => a.id === selectedAccountId);
-    const label = acc ? getAccountLabel(acc) : "";
-    return `${label} · ${selectedFolder === "inbox" ? "Inbox" : "Sent"}`;
-  };
 
   return (
     <div className="flex h-full">
@@ -205,7 +185,6 @@ export default function Emails() {
         selectedAccountId={selectedAccountId}
         selectedFolder={selectedFolder}
         folderCounts={folderCounts}
-        unifiedCount={unifiedCount}
         syncing={syncing}
         onFolderSelect={handleFolderSelect}
         onCompose={() => setComposeOpen(true)}
@@ -221,16 +200,7 @@ export default function Emails() {
               <Plus className="w-4 h-4 mr-1" />
               Redactar
             </Button>
-            <button
-              onClick={() => handleFolderSelect("all", "inbox")}
-              className={cn(
-                "text-xs px-2 py-1 rounded-md transition-colors",
-                selectedAccountId === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
-              )}
-            >
-              Unificada ({unifiedCount})
-            </button>
-            {accounts.map((acc, idx) => (
+            {accounts.map((acc) => (
               <div key={acc.id} className="flex gap-0.5">
                 <button
                   onClick={() => handleFolderSelect(acc.id, "inbox")}
@@ -281,10 +251,7 @@ export default function Emails() {
             </div>
           ) : (
             <div className="divide-y divide-border">
-              {emails.map((email) => {
-                const accIdx = getEmailAccountIndex(email);
-                const isUnified = selectedAccountId === "all";
-
+                {emails.map((email) => {
                 return (
                   <button
                     key={email.id}
@@ -299,17 +266,6 @@ export default function Emails() {
                         <ArrowDownLeft className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                       ) : (
                         <ArrowUpRight className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                      )}
-                      {/* Account badge in unified view */}
-                      {isUnified && accIdx >= 0 && (
-                        <span
-                          className={cn(
-                            "text-[10px] font-bold text-white px-1.5 py-0.5 rounded shrink-0",
-                            getAccountColor(accIdx)
-                          )}
-                        >
-                          {getAccountLabel(accounts[accIdx])}
-                        </span>
                       )}
                       <span className="text-sm font-medium truncate flex-1">
                         {email.direction === "inbound" ? email.from_email : email.to_email}
