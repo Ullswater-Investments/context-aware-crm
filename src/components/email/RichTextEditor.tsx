@@ -133,7 +133,7 @@ export default function RichTextEditor({
       },
       attributes: {
         class:
-          "prose prose-sm max-w-none min-h-[140px] px-3 py-2 focus:outline-none [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-md [&_img]:my-2",
+          "prose max-w-none min-h-[300px] px-6 py-4 text-base focus:outline-none [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-md [&_img]:my-2",
       },
     },
   });
