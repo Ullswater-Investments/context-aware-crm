@@ -59,7 +59,7 @@ export default function Contacts() {
   const [open, setOpen] = useState(false);
   const [importerOpen, setImporterOpen] = useState(false);
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
-  const [form, setForm] = useState({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "", postal_address: "" });
+  const [form, setForm] = useState({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "", postal_address: "", work_email: "", personal_email: "", mobile_phone: "", work_phone: "" });
   const [view, setView] = useState<"kanban" | "list">("kanban");
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -169,13 +169,17 @@ export default function Contacts() {
       linkedin_url: form.linkedin_url || null,
       company_domain: form.company_domain || null,
       postal_address: form.postal_address || null,
+      work_email: form.work_email || null,
+      personal_email: form.personal_email || null,
+      mobile_phone: form.mobile_phone || null,
+      work_phone: form.work_phone || null,
       created_by: user!.id,
     };
     if (form.organization_id) insert.organization_id = form.organization_id;
     const { error } = await supabase.from("contacts").insert(insert);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto creado");
-    setForm({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "", postal_address: "" });
+    setForm({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "", postal_address: "", work_email: "", personal_email: "", mobile_phone: "", work_phone: "" });
     setOpen(false);
     load();
   };
@@ -315,13 +319,13 @@ export default function Contacts() {
             <DialogTrigger asChild>
               <Button><Plus className="w-4 h-4 mr-2" />Nuevo contacto</Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-2xl">
               <DialogHeader><DialogTitle>Nuevo contacto</DialogTitle></DialogHeader>
               <div className="space-y-4">
-                <div><Label>Nombre *</Label><Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
-                <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-                <div><Label>Teléfono</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-                <div><Label>Cargo</Label><Input value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} /></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div><Label>Nombre *</Label><Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
+                  <div><Label>Cargo</Label><Input value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} /></div>
+                </div>
                 <div>
                   <Label>Empresa</Label>
                   <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={form.organization_id} onChange={(e) => setForm({ ...form, organization_id: e.target.value })}>
@@ -329,8 +333,22 @@ export default function Contacts() {
                     {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>
                 </div>
-                <div><Label>LinkedIn URL</Label><Input value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
-                <div><Label>Dominio empresa</Label><Input value={form.company_domain} onChange={(e) => setForm({ ...form, company_domain: e.target.value })} placeholder="empresa.com" /></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div><Label>Email principal</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+                  <div><Label>Email corporativo</Label><Input type="email" value={form.work_email} onChange={(e) => setForm({ ...form, work_email: e.target.value })} /></div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div><Label>Email personal</Label><Input type="email" value={form.personal_email} onChange={(e) => setForm({ ...form, personal_email: e.target.value })} /></div>
+                  <div><Label>Teléfono</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div><Label>Móvil</Label><Input value={form.mobile_phone} onChange={(e) => setForm({ ...form, mobile_phone: e.target.value })} /></div>
+                  <div><Label>Teléfono trabajo</Label><Input value={form.work_phone} onChange={(e) => setForm({ ...form, work_phone: e.target.value })} /></div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div><Label>LinkedIn URL</Label><Input value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
+                  <div><Label>Dominio empresa</Label><Input value={form.company_domain} onChange={(e) => setForm({ ...form, company_domain: e.target.value })} placeholder="empresa.com" /></div>
+                </div>
                 <div><Label>Dirección postal</Label><Input value={form.postal_address} onChange={(e) => setForm({ ...form, postal_address: e.target.value })} placeholder="C/ Ejemplo, 1, 28001 Madrid" /></div>
                 <Button onClick={create} disabled={!form.full_name} className="w-full">Crear contacto</Button>
               </div>
