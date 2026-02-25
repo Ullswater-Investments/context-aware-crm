@@ -1,75 +1,53 @@
 
 
-## Revision de errores y mejoras propuestas
+## Plan: Importar 48 contactos de Hunter con soporte para contactos sin nombre
 
-### Error critico encontrado
+### Problemas detectados en el CSV
 
-#### Bug en la funcion `find()` del importador (linea 67)
+El archivo `48-leads-2026-02-25.csv` es una exportacion de Hunter.io con 48 filas. Hay dos problemas:
 
-Hay un bug de auto-referencia en `ContactImporter.tsx`. En la funcion `find()`, la variable `idx` se usa dentro del propio callback de `findIndex` antes de ser asignada:
+#### 1. ~15 contactos sin nombre personal (CRITICO)
 
-```text
-const idx = lower.findIndex((h) => h === p && !assignedHeaders.has(headers[idx]));
-//                                                                          ^^^
-//                                                          idx aun no existe aqui
-```
-
-Esto causa que la comprobacion de `assignedHeaders` **nunca funcione correctamente** en el primer paso (exact matches). La variable `idx` es `undefined` dentro del callback, por lo que `headers[undefined]` es `undefined`, y `assignedHeaders.has(undefined)` siempre es `false`. En la practica el check de duplicados no protege nada en exact matches.
-
-**Solucion**: Cambiar la logica para verificar `assignedHeaders` usando el indice del iterador correctamente:
+Filas como la 15, 17-21, 23-25, 27-28, 31-32, 34-35 tienen las columnas "First name", "Last name" y "Full name" vacias. Solo tienen empresa + email. El importador actual los descarta en la linea 172:
 
 ```text
-for (const p of pats) {
-  const idx = lower.findIndex((h, i) => h === p && !assignedHeaders.has(headers[i]));
-  if (idx >= 0) { ... }
-}
+if (!full_name) return null;  // <-- estos 15 contactos se pierden
 ```
 
-El mismo problema existe en el segundo paso (linea 76) con `lower.indexOf(h)` que puede fallar con headers duplicados. Corregir a:
+**Solucion**: Agregar fallback para contactos sin nombre:
+1. Si hay empresa, usar el nombre de la empresa como nombre del contacto (ej: "ASPACE Zaragoza")
+2. Si no hay empresa, extraer nombre del prefijo del email (ej: "carolinalopez@..." -> "Carolinalopez")
 
-```text
-const idx = lower.findIndex((h, i) => {
-  if (assignedHeaders.has(headers[i])) return false;
-  ...
-});
-```
+#### 2. Patrones de columna que faltan para Hunter
 
----
+| Columna CSV | Estado actual | Solucion |
+|---|---|---|
+| `Full name` (con espacio) | No reconocido como exact match | Agregar "full name" al patron `full_name` |
+| `Email address` | Funciona via includes pero no es exact | Agregar "email address" al patron `email` |
+| `Phone number` | Funciona via includes pero no es exact | Agregar "phone number" al patron `phone` |
+| `Company Country` | Se confunde con "Country" via includes | Ya hay columna "Country" que se mapea correctamente |
+| `Department` | No mapeado | Agregar como tag adicional |
+| `Company size` / `Company Type` | No mapeados | Agregar a notas de la organizacion |
 
-### Estado actual de los datos
+### Cambios en `src/components/contacts/ContactImporter.tsx`
 
-- 333 contactos en la base de datos
-- Solo 19 tienen email, 0 tienen telefono movil
-- **Los contactos del CSV adjunto (162 contactos de Apollo) aun no se han importado**
-- El usuario debe usar el boton "Importar" en la pagina de Contactos y subir el archivo CSV
+1. **Agregar patrones exactos**: "full name", "email address", "phone number" a sus respectivos arrays
+2. **Fallback para contactos sin nombre**: Si `full_name` queda vacio despues de intentar first+last y full_name, usar nombre de empresa; si tampoco hay empresa, usar prefijo del email
+3. **Mapear Department**: Detectar columna "department" y agregarlo como tag
+4. **Mapear Company Size y Company Type**: Detectar estas columnas y agregarlas a las notas de la organizacion creada
 
----
+### Resultado esperado
 
-### Mejoras propuestas
-
-#### 1. Patron "title" demasiado generico en `position`
-
-El patron `"title"` en la lista de `position` puede capturar columnas como "Job Title" correctamente, pero tambien podria coincidir con otras columnas que contengan "title" en el nombre. Actualmente no es un problema grave porque se usa exact match primero, pero es mejor ser mas especifico.
-
-**Solucion**: Mover "title" al final del array de patrones de `position` para que solo se use como ultimo recurso, y solo en exact match (no en includes).
-
-#### 2. Limite de 1000 filas en queries de contactos
-
-La query `load()` en `Contacts.tsx` no tiene limite explicito. Con el default de 1000 filas del backend, si el usuario supera los 1000 contactos, dejara de ver algunos sin aviso.
-
-**Solucion**: Agregar `.limit(2000)` o implementar paginacion.
-
-#### 3. El perfil del contacto no muestra todos los emails/telefonos de forma clara
-
-Actualmente los emails y telefonos adicionales solo se muestran en la seccion "Datos Lusha" (linea 445-479), lo que es confuso porque estos datos pueden venir del importador o de Apollo, no solo de Lusha. El nombre de la seccion es engañoso.
-
-**Solucion**: Renombrar la seccion "Datos Lusha" a "Datos de contacto adicionales" para que sea mas clara, independientemente de la fuente de los datos.
-
----
+Los 48 contactos del CSV se importaran con:
+- Nombre (persona o empresa como fallback)
+- Email verificado de Hunter
+- Empresa con website, sector, tamano y tipo
+- LinkedIn URL cuando disponible
+- Cargo (Job title) cuando disponible
+- Ubicacion (City, Country)
+- Tags con industria y departamento
 
 ### Archivos a modificar
 
-1. **`src/components/contacts/ContactImporter.tsx`** - Corregir bug de auto-referencia en `find()` (lineas 67 y 76)
-2. **`src/pages/Contacts.tsx`** - Agregar limite a la query de contactos
-3. **`src/components/contacts/ContactProfile.tsx`** - Renombrar seccion "Datos Lusha" a "Datos adicionales"
+1. **`src/components/contacts/ContactImporter.tsx`** - Agregar patrones, fallback de nombre, y mapeo de department/company size/type
 
