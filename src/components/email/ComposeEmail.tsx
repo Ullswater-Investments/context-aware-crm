@@ -5,18 +5,19 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import {
-  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, ChevronUp, Settings2, PenLine,
+  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Eye,
 } from "lucide-react";
 import RichTextEditor from "./RichTextEditor";
 import SignatureManager, { type Signature } from "./SignatureManager";
 import AccountStatusDot from "./AccountStatusDot";
+import EmailPreviewModal from "./EmailPreviewModal";
 
 type EmailAccountOption = {
   id: string;
@@ -41,7 +42,7 @@ interface ComposeEmailProps {
 }
 
 const MAX_FILES = 5;
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 const tones = [
   { id: "formal", label: "Formal", icon: "👔" },
@@ -74,7 +75,7 @@ export default function ComposeEmail({
   const [selectedSignatureId, setSelectedSignatureId] = useState<string>("none");
   const [sigManagerOpen, setSigManagerOpen] = useState(false);
   const [showCcBcc, setShowCcBcc] = useState(false);
-  const [sigPreviewOpen, setSigPreviewOpen] = useState(false);
+  const [includeSignature, setIncludeSignature] = useState(true);
   const [suggestingReply, setSuggestingReply] = useState(false);
   const [fromAccount, setFromAccount] = useState<string>("");
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
@@ -89,7 +90,10 @@ export default function ComposeEmail({
       const sigs = data as Signature[];
       setSignatures(sigs);
       const def = sigs.find((s) => s.is_default);
-      if (def) setSelectedSignatureId(def.id);
+      if (def) {
+        setSelectedSignatureId(def.id);
+        setIncludeSignature(true);
+      }
     }
   };
 
@@ -182,6 +186,18 @@ export default function ComposeEmail({
     }
   };
 
+  // Build signature HTML for preview and sending
+  const getSignatureHtml = (): string | null => {
+    if (!includeSignature || selectedSignatureId === "none") return null;
+    const sig = signatures.find((s) => s.id === selectedSignatureId);
+    if (!sig) return null;
+    const { data: publicData } = supabase.storage
+      .from("email-signatures")
+      .getPublicUrl(sig.image_path);
+    if (!publicData?.publicUrl) return null;
+    return `<img src="${publicData.publicUrl}" alt="Firma" style="max-width: 400px; height: auto;" />`;
+  };
+
   const send = async () => {
     if (!to || !subject || !user) {
       toast.error("Destinatario y asunto son obligatorios");
@@ -207,20 +223,10 @@ export default function ComposeEmail({
         });
       }
 
-      let signatureImageUrl: string | null = null;
-      if (selectedSignatureId && selectedSignatureId !== "none") {
-        const sig = signatures.find((s) => s.id === selectedSignatureId);
-        if (sig) {
-          const { data: publicData } = supabase.storage
-            .from("email-signatures")
-            .getPublicUrl(sig.image_path);
-          if (publicData?.publicUrl) signatureImageUrl = publicData.publicUrl;
-        }
-      }
-
+      const signatureHtml = getSignatureHtml();
       let htmlBody = `<div style="font-family: sans-serif; line-height: 1.6;">${body}</div>`;
-      if (signatureImageUrl) {
-        htmlBody += `<br/><div style="margin-top: 16px;"><img src="${signatureImageUrl}" alt="Firma" style="max-width: 400px; height: auto;" /></div>`;
+      if (signatureHtml) {
+        htmlBody += `<br/><div style="margin-top: 16px;">${signatureHtml}</div>`;
       }
 
       const plainText = body.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim();
@@ -273,23 +279,11 @@ export default function ComposeEmail({
   };
 
   const selectedSig = signatures.find((s) => s.id === selectedSignatureId);
-  const [sigPreviewUrl, setSigPreviewUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (selectedSig) {
-      const { data } = supabase.storage
-        .from("email-signatures")
-        .getPublicUrl(selectedSig.image_path);
-      setSigPreviewUrl(data?.publicUrl || null);
-    } else {
-      setSigPreviewUrl(null);
-    }
-  }, [selectedSignatureId, signatures]);
 
   return (
     <>
       <Sheet open={open} onOpenChange={handleOpenChange}>
-        <SheetContent side="right" className="p-0 w-full sm:max-w-[600px] flex flex-col [&>button]:hidden">
+        <SheetContent side="right" className="p-0 w-full sm:max-w-4xl flex flex-col [&>button]:hidden">
           {/* HEADER FIJO */}
           <div className="shrink-0 border-b border-border">
             <SheetHeader className="px-4 py-3">
@@ -366,14 +360,14 @@ export default function ComposeEmail({
                 </>
               )}
 
-              {/* Asunto */}
+              {/* Asunto estilo canvas */}
               <div className="flex items-center gap-2">
                 <Label className="shrink-0 text-xs text-muted-foreground w-10">Asunto</Label>
                 <Input
                   placeholder="Asunto del email"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  className="h-8 text-sm"
+                  className="h-10 text-xl font-semibold border-none shadow-none bg-transparent focus-visible:ring-0 px-0"
                 />
               </div>
             </div>
@@ -381,7 +375,6 @@ export default function ComposeEmail({
 
           {/* CUERPO CON SCROLL */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            {/* Editor */}
             {user && (
               <RichTextEditor
                 content={body}
@@ -389,41 +382,6 @@ export default function ComposeEmail({
                 userId={user.id}
                 placeholder="Escribe tu mensaje aquí... (puedes pegar imágenes con Ctrl+V)"
               />
-            )}
-
-            {/* Firma colapsable */}
-            {selectedSig && sigPreviewUrl && (
-              <Collapsible open={sigPreviewOpen} onOpenChange={setSigPreviewOpen}>
-                <div className="border border-dashed border-border rounded-lg bg-muted/20">
-                  <CollapsibleTrigger asChild>
-                    <button className="w-full flex items-center justify-between px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                      <div className="flex items-center gap-2">
-                        <PenLine className="w-3 h-3" />
-                        <span className="font-medium uppercase tracking-wide">Firma:</span>
-                        <span className="truncate max-w-[200px]">{selectedSig.name}</span>
-                      </div>
-                      {sigPreviewOpen ? (
-                        <ChevronUp className="w-3.5 h-3.5" />
-                      ) : (
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div className="px-3 pb-3 space-y-2">
-                      <div className="opacity-80 scale-95 origin-top-left">
-                        <img src={sigPreviewUrl} alt="Firma" className="max-h-24 w-auto" />
-                      </div>
-                      <button
-                        onClick={() => setSigManagerOpen(true)}
-                        className="text-xs text-primary hover:underline flex items-center gap-1"
-                      >
-                        <Settings2 className="w-3 h-3" /> Gestionar firmas
-                      </button>
-                    </div>
-                  </CollapsibleContent>
-                </div>
-              </Collapsible>
             )}
 
             {/* Adjuntos */}
@@ -448,7 +406,7 @@ export default function ComposeEmail({
           {/* FOOTER FIJO */}
           <div className="shrink-0 border-t border-border bg-background px-4 py-3">
             <div className="flex items-center justify-between">
-              {/* Lado izquierdo: adjuntar + firma */}
+              {/* Lado izquierdo: adjuntar + firma oculta */}
               <div className="flex items-center gap-2">
                 <label className="cursor-pointer" title="Adjuntar archivos">
                   <Paperclip className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
@@ -462,6 +420,28 @@ export default function ComposeEmail({
                 </label>
                 {attachments.length > 0 && (
                   <span className="text-xs text-muted-foreground">{attachments.length}/{MAX_FILES}</span>
+                )}
+
+                <div className="w-px h-4 bg-border mx-1" />
+
+                {/* Firma automática Switch */}
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={includeSignature && selectedSignatureId !== "none"}
+                    onCheckedChange={setIncludeSignature}
+                    disabled={selectedSignatureId === "none" && signatures.length === 0}
+                    className="scale-75"
+                  />
+                  <Label className="text-xs text-muted-foreground cursor-pointer">
+                    Firma automática
+                  </Label>
+                </div>
+
+                {includeSignature && selectedSignatureId !== "none" && (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+                    Se añadirá al enviar
+                  </span>
                 )}
 
                 <div className="w-px h-4 bg-border mx-1" />
@@ -489,8 +469,16 @@ export default function ComposeEmail({
                 </button>
               </div>
 
-              {/* Lado derecho: IA + Enviar */}
+              {/* Lado derecho: Vista Previa + IA + Enviar */}
               <div className="flex items-center gap-2">
+                {/* Vista Previa */}
+                <EmailPreviewModal
+                  subject={subject}
+                  body={body}
+                  signatureHtml={getSignatureHtml()}
+                  recipient={to}
+                />
+
                 {/* Selector de tono IA */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

@@ -114,3 +114,11 @@
     font-family: 'Space Grotesk', system-ui, sans-serif;
   }
 }
+
+.email-content-preview img {
+  max-width: 100% !important;
+  height: auto !important;
+  display: block;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
