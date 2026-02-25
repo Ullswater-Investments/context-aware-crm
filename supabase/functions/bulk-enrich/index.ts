@@ -152,14 +152,15 @@ async function enrichWithLusha(
       headers: { api_key: lushaKey, "Content-Type": "application/json" },
     });
 
+    // FIX: Don't mark not_found on HTTP errors — only return "error" to allow retries
+    if (!res.ok) {
+      console.error(`Lusha error for ${contact.full_name}: HTTP ${res.status}`);
+      return "error";
+    }
+
     // Re-read contact to get latest data
     const { data: fresh } = await supabase.from("contacts").select("work_email, personal_email, mobile_phone, work_phone").eq("id", contact.id).single();
     const c = fresh || contact;
-
-    if (!res.ok) {
-      await supabase.from("contacts").update({ lusha_status: "not_found", last_enriched_at: new Date().toISOString() }).eq("id", contact.id);
-      return "not_found";
-    }
 
     const data = await res.json();
     const emails = data.emailAddresses || data.emails || [];
@@ -199,43 +200,52 @@ Deno.serve(async (req) => {
       });
     }
 
+    // FIX: Use getUser() instead of getClaims()
     const supabaseAuth = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabaseAuth.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user: authUser }, error: authError } = await supabaseAuth.auth.getUser();
+    if (authError || !authUser) {
       return new Response(JSON.stringify({ error: "Token inválido" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const userId = claimsData.claims.sub;
+    const userId = authUser.id;
     const hunterKey = Deno.env.get("HUNTER_API_KEY") || "";
     const apolloKey = Deno.env.get("APOLLO_API_KEY") || "";
     const lushaKey = Deno.env.get("LUSHA_API_KEY") || "";
 
-    const { offset = 0, services = ["hunter", "apollo", "lusha"] } = await req.json();
+    const { last_id = "", services = ["hunter", "apollo", "lusha"] } = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Get contacts without email/phone belonging to this user
-    const { data: contacts, error: fetchErr } = await supabase
+    // FIX: Use SQL filtering + ID-based cursor instead of offset + JS filtering
+    // Only get contacts missing ALL email AND ALL phone, and not fully processed by all 3 services
+    let query = supabase
       .from("contacts")
       .select("id, full_name, company_domain, email, phone, work_email, personal_email, mobile_phone, work_phone, position, linkedin_url, organization_id, hunter_status, apollo_status, lusha_status")
       .eq("created_by", userId)
       .or("email.is.null,email.eq.")
       .or("work_email.is.null,work_email.eq.")
+      .or("personal_email.is.null,personal_email.eq.")
       .or("phone.is.null,phone.eq.")
       .or("mobile_phone.is.null,mobile_phone.eq.")
-      .order("full_name")
-      .range(offset, offset + BATCH_SIZE - 1);
+      .or("work_phone.is.null,work_phone.eq.")
+      .order("id")
+      .limit(BATCH_SIZE);
+
+    if (last_id) {
+      query = query.gt("id", last_id);
+    }
+
+    const { data: candidates, error: fetchErr } = await query;
 
     if (fetchErr) {
       return new Response(JSON.stringify({ error: fetchErr.message }), {
@@ -243,11 +253,18 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Filter to only contacts truly without any contact info
-    const toEnrich = (contacts || []).filter((c: any) => {
+    // Post-filter: truly no email AND no phone, and at least one service still pending
+    const toEnrich = (candidates || []).filter((c: any) => {
       const hasEmail = c.email || c.work_email || c.personal_email;
       const hasPhone = c.phone || c.mobile_phone || c.work_phone;
-      return !hasEmail && !hasPhone;
+      if (hasEmail && hasPhone) return false;
+
+      // Skip if all requested services already have definitive results
+      const allDone = services.every((svc: string) => {
+        const status = c[`${svc}_status`];
+        return status === "enriched" || status === "not_found";
+      });
+      return !allDone;
     });
 
     if (toEnrich.length === 0) {
@@ -265,6 +282,7 @@ Deno.serve(async (req) => {
     }
 
     const results: EnrichResult[] = [];
+    let lastProcessedId = "";
 
     for (const contact of toEnrich) {
       const result: EnrichResult = {
@@ -275,35 +293,35 @@ Deno.serve(async (req) => {
         lusha: "skipped",
       };
 
-      // Hunter (needs domain)
-      if (services.includes("hunter") && hunterKey && contact.company_domain) {
+      // Hunter (needs domain, skip if already processed)
+      if (services.includes("hunter") && hunterKey && contact.company_domain && contact.hunter_status === "pending") {
         result.hunter = await enrichWithHunter(contact, hunterKey, supabase);
-        // Small delay to respect rate limits
         await new Promise((r) => setTimeout(r, 500));
       }
 
-      // Apollo
-      if (services.includes("apollo") && apolloKey) {
+      // Apollo (skip if already processed)
+      if (services.includes("apollo") && apolloKey && contact.apollo_status === "pending") {
         result.apollo = await enrichWithApollo(contact, apolloKey, supabase);
         await new Promise((r) => setTimeout(r, 500));
       }
 
-      // Lusha
-      if (services.includes("lusha") && lushaKey) {
+      // Lusha (skip if already processed)
+      if (services.includes("lusha") && lushaKey && contact.lusha_status === "pending") {
         const orgName = contact.organization_id ? orgMap.get(contact.organization_id) || null : null;
         result.lusha = await enrichWithLusha(contact, lushaKey, supabase, orgName);
         await new Promise((r) => setTimeout(r, 500));
       }
 
+      lastProcessedId = contact.id;
       results.push(result);
       console.log(`Enriched ${contact.full_name}: H=${result.hunter} A=${result.apollo} L=${result.lusha}`);
     }
 
     return new Response(
       JSON.stringify({
-        done: toEnrich.length < BATCH_SIZE,
+        done: (candidates || []).length < BATCH_SIZE,
         processed: toEnrich.length,
-        next_offset: offset + BATCH_SIZE,
+        last_id: lastProcessedId,
         results,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
