@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Upload, FileText, Search, Download, Trash2 } from "lucide-react";
+import { Upload, FileText, Search, Download, Trash2, MessageSquare } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 export default function Documents() {
   const { user } = useAuth();
@@ -98,7 +99,14 @@ export default function Documents() {
                 </div>
                 <div className="min-w-0 flex-1 cursor-pointer" onClick={() => download(d)}>
                   <CardTitle className="text-base truncate">{d.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{d.file_size ? formatSize(d.file_size) : ""}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm text-muted-foreground">{d.file_size ? formatSize(d.file_size) : ""}</p>
+                    {d.conversation_id && (
+                      <Badge variant="secondary" className="text-[10px] gap-1 px-1.5 py-0">
+                        <MessageSquare className="w-3 h-3" /> Chat
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-1">
                   <button onClick={() => download(d)} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"><Download className="w-3.5 h-3.5" /></button>
