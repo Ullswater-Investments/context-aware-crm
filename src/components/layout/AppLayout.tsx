@@ -48,7 +48,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <Bot className="w-5 h-5 text-sidebar-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-lg font-display font-bold text-sidebar-primary-foreground">EuroCRM</h1>
+            <h1 className="text-lg font-display font-bold text-sidebar-primary-foreground">GLOBAL DATA CARE</h1>
             <p className="text-[11px] text-sidebar-foreground/60">Proyectos Europeos</p>
           </div>
           <button onClick={() => setMobileOpen(false)} className="ml-auto lg:hidden text-sidebar-foreground/60 hover:text-sidebar-foreground">
@@ -119,7 +119,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <button onClick={() => setMobileOpen(true)}>
             <Menu className="w-6 h-6 text-foreground" />
           </button>
-          <span className="font-display font-bold text-lg">EuroCRM</span>
+          <span className="font-display font-bold text-lg">GLOBAL DATA CARE</span>
         </header>
         <main className="flex-1 overflow-y-auto">
           {children}
