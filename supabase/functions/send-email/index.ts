@@ -38,6 +38,7 @@ Deno.serve(async (req) => {
       to, cc, bcc, subject, html, text, from,
       contact_id, organization_id, project_id,
       attachments: attachmentPaths,
+      from_account,
     } = await req.json();
 
     if (!to || !subject) {
@@ -47,7 +48,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    const fromEmail = from || "EuroCRM <emilio.mulet@kitespaciodedatos.eu>";
+    // Select SMTP credentials based on from_account
+    const isSecondary = from_account === "secondary";
+    const smtpHost = isSecondary ? Deno.env.get("SMTP_HOST_2") : Deno.env.get("SMTP_HOST");
+    const smtpPort = Number(isSecondary ? Deno.env.get("SMTP_PORT_2") : Deno.env.get("SMTP_PORT")) || 465;
+    const smtpUser = isSecondary ? Deno.env.get("SMTP_USER_2") : Deno.env.get("SMTP_USER");
+    const smtpPass = isSecondary ? Deno.env.get("SMTP_PASS_2") : Deno.env.get("SMTP_PASS");
+
+    const defaultFrom = isSecondary
+      ? `EuroCRM <${Deno.env.get("SMTP_USER_2")}>`
+      : `EuroCRM <${Deno.env.get("SMTP_USER")}>`;
+    const fromEmail = from || defaultFrom;
 
     // Download attachments from storage
     const supabaseAdmin = createClient(
@@ -90,14 +101,14 @@ Deno.serve(async (req) => {
       ? (typeof bcc === "string" ? bcc.split(",").map((e: string) => e.trim()).filter(Boolean) : Array.isArray(bcc) ? bcc : [])
       : [];
 
-    // Create SMTP transporter
+    // Create SMTP transporter with selected account
     const transporter = nodemailer.createTransport({
-      host: Deno.env.get("SMTP_HOST"),
-      port: Number(Deno.env.get("SMTP_PORT") || 465),
+      host: smtpHost,
+      port: smtpPort,
       secure: true,
       auth: {
-        user: Deno.env.get("SMTP_USER"),
-        pass: Deno.env.get("SMTP_PASS"),
+        user: smtpUser,
+        pass: smtpPass,
       },
     });
 
@@ -143,6 +154,7 @@ Deno.serve(async (req) => {
       message_id: messageId,
       error_message: errorMessage,
       sent_at: status === "sent" ? new Date().toISOString() : null,
+      direction: "outbound",
     }).select("id").single();
 
     // Save attachment records

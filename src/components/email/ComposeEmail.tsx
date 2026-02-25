@@ -66,6 +66,7 @@ export default function ComposeEmail({
   const [showCcBcc, setShowCcBcc] = useState(false);
   const [sigPreviewOpen, setSigPreviewOpen] = useState(false);
   const [suggestingReply, setSuggestingReply] = useState(false);
+  const [fromAccount, setFromAccount] = useState<"primary" | "secondary">("secondary");
 
   const fetchSignatures = async () => {
     if (!user) return;
@@ -207,6 +208,7 @@ export default function ComposeEmail({
           contact_id: contactId,
           organization_id: organizationId,
           project_id: projectId,
+          from_account: fromAccount,
           attachments: uploadedAttachments.map((a) => ({
             filename: a.file_name,
             path: a.path,
@@ -285,6 +287,20 @@ export default function ComposeEmail({
                     + CC/BCC
                   </button>
                 )}
+              </div>
+
+              {/* Enviar desde */}
+              <div className="flex items-center gap-2">
+                <Label className="shrink-0 text-xs text-muted-foreground w-10">De</Label>
+                <Select value={fromAccount} onValueChange={(v) => setFromAccount(v as "primary" | "secondary")}>
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="secondary">emilio.mulet@globaldatacare.es</SelectItem>
+                    <SelectItem value="primary">emilio.mulet@kitespaciodedatos.eu</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* CC/BCC colapsables */}

@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   Plus, Search, Mail, MailCheck, MailX, Inbox,
-  Loader2, ChevronLeft, ChevronRight, Forward
+  Loader2, ChevronLeft, ChevronRight, Forward,
+  RefreshCw, ArrowDownLeft, ArrowUpRight,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -29,9 +30,10 @@ type EmailLog = {
   contact_id: string | null;
   organization_id: string | null;
   project_id: string | null;
+  direction?: string;
 };
 
-type StatusFilter = "all" | "sent" | "failed";
+type StatusFilter = "all" | "sent" | "failed" | "inbound";
 
 const PAGE_SIZE = 20;
 
@@ -46,22 +48,25 @@ export default function Emails() {
   const [resendData, setResendData] = useState<{ to: string; cc: string; subject: string; body: string } | null>(null);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
-  const [counts, setCounts] = useState({ all: 0, sent: 0, failed: 0 });
+  const [counts, setCounts] = useState({ all: 0, sent: 0, failed: 0, inbound: 0 });
+  const [syncing, setSyncing] = useState(false);
 
   const fetchEmails = async () => {
     if (!user) return;
     setLoading(true);
 
     // Count queries (lightweight, head-only)
-    const [allRes, sentRes, failedRes] = await Promise.all([
+    const [allRes, sentRes, failedRes, inboundRes] = await Promise.all([
       supabase.from("email_logs").select("*", { count: "exact", head: true }),
       supabase.from("email_logs").select("*", { count: "exact", head: true }).eq("status", "sent"),
       supabase.from("email_logs").select("*", { count: "exact", head: true }).eq("status", "failed"),
+      supabase.from("email_logs").select("*", { count: "exact", head: true }).eq("direction", "inbound"),
     ]);
     setCounts({
       all: allRes.count ?? 0,
       sent: sentRes.count ?? 0,
       failed: failedRes.count ?? 0,
+      inbound: inboundRes.count ?? 0,
     });
 
     // Main query
@@ -71,7 +76,9 @@ export default function Emails() {
       .order("created_at", { ascending: false })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-    if (statusFilter !== "all") {
+    if (statusFilter === "inbound") {
+      query = query.eq("direction", "inbound");
+    } else if (statusFilter !== "all") {
       query = query.eq("status", statusFilter);
     }
     if (search.trim()) {
@@ -93,8 +100,27 @@ export default function Emails() {
     fetchEmails();
   }, [user, statusFilter, search, page]);
 
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-emails", {
+        body: { account: "secondary", max_emails: 50 },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success(data?.message || "Sincronización completada");
+      fetchEmails();
+    } catch (err: any) {
+      console.error("Sync error:", err);
+      toast.error(err?.message || "Error al sincronizar emails");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const filters: { key: StatusFilter; label: string; icon: React.ElementType; count: number }[] = [
     { key: "all", label: "Todos", icon: Inbox, count: counts.all },
+    { key: "inbound", label: "Recibidos", icon: ArrowDownLeft, count: counts.inbound },
     { key: "sent", label: "Enviados", icon: MailCheck, count: counts.sent },
     { key: "failed", label: "Fallidos", icon: MailX, count: counts.failed },
   ];
@@ -108,6 +134,15 @@ export default function Emails() {
         <Button onClick={() => setComposeOpen(true)} className="w-full">
           <Plus className="w-4 h-4 mr-2" />
           Redactar
+        </Button>
+        <Button
+          variant="outline"
+          onClick={handleSync}
+          disabled={syncing}
+          className="w-full"
+        >
+          {syncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+          Sincronizar
         </Button>
 
         <div className="space-y-1 pt-2">
@@ -189,14 +224,19 @@ export default function Emails() {
                   )}
                 >
                   <div className="flex items-center gap-2 mb-1">
+                    {email.direction === "inbound" ? (
+                      <ArrowDownLeft className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    ) : (
+                      <ArrowUpRight className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                    )}
                     <span className="text-sm font-medium truncate flex-1">
-                      {email.to_email}
+                      {email.direction === "inbound" ? email.from_email : email.to_email}
                     </span>
                     <Badge
-                      variant={email.status === "sent" ? "default" : "destructive"}
+                      variant={email.status === "sent" ? "default" : email.status === "received" ? "secondary" : "destructive"}
                       className="text-[10px] shrink-0"
                     >
-                      {email.status === "sent" ? "Enviado" : "Fallido"}
+                      {email.status === "sent" ? "Enviado" : email.status === "received" ? "Recibido" : "Fallido"}
                     </Badge>
                   </div>
                   <p className="text-sm truncate text-foreground/80">{email.subject}</p>
