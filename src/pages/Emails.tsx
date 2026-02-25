@@ -7,10 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   Plus, Search, Mail, MailCheck, MailX, Inbox,
-  Loader2, ChevronLeft, ChevronRight, Forward
+  Loader2, ChevronLeft, ChevronRight, Forward, Sparkles, ChevronDown
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { toast } from "sonner";
 import ComposeEmail from "@/components/email/ComposeEmail";
 
 type EmailLog = {
@@ -46,6 +50,51 @@ export default function Emails() {
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [counts, setCounts] = useState({ all: 0, sent: 0, failed: 0 });
+  const [suggestingReply, setSuggestingReply] = useState(false);
+
+  const tones = [
+    { id: "formal", label: "Formal", icon: "👔" },
+    { id: "amigable", label: "Amigable", icon: "👋" },
+    { id: "persuasivo", label: "Persuasivo", icon: "🎯" },
+    { id: "conciso", label: "Conciso", icon: "⚡" },
+  ];
+
+  const stripHtml = (html: string) => {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    return doc.body.textContent || "";
+  };
+
+  const handleSuggestReply = async (tone: string) => {
+    if (!selected) return;
+    setSuggestingReply(true);
+    try {
+      const bodyText = selected.body_text || (selected.body_html ? stripHtml(selected.body_html) : "");
+      const { data, error } = await supabase.functions.invoke("suggest-reply", {
+        body: {
+          subject: selected.subject,
+          body_text: bodyText,
+          to_email: selected.to_email,
+          tone,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setResendData({
+        to: selected.to_email,
+        cc: selected.cc_emails || "",
+        subject: selected.subject.startsWith("Re: ") ? selected.subject : `Re: ${selected.subject}`,
+        body: data.suggestion,
+      });
+      setComposeOpen(true);
+      toast.success("Borrador generado con éxito");
+    } catch (err: any) {
+      console.error("suggest-reply error:", err);
+      toast.error(err?.message || "Error al generar la respuesta");
+    } finally {
+      setSuggestingReply(false);
+    }
+  };
 
   const fetchEmails = async () => {
     if (!user) return;
@@ -252,7 +301,7 @@ export default function Emails() {
                   {format(new Date(selected.created_at), "dd MMM yyyy, HH:mm", { locale: es })}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant={selected.status === "sent" ? "default" : "destructive"}>
                   {selected.status === "sent" ? "Enviado" : "Fallido"}
                 </Badge>
@@ -272,6 +321,36 @@ export default function Emails() {
                   <Forward className="w-3.5 h-3.5 mr-1" />
                   Reenviar
                 </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={suggestingReply}
+                      className="border-primary/30 text-primary hover:bg-primary/10"
+                    >
+                      {suggestingReply ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      {suggestingReply ? "Redactando..." : "Sugerir Respuesta"}
+                      {!suggestingReply && <ChevronDown className="w-3 h-3 ml-1" />}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="bg-popover">
+                    {tones.map((tone) => (
+                      <DropdownMenuItem
+                        key={tone.id}
+                        onClick={() => handleSuggestReply(tone.id)}
+                        className="cursor-pointer"
+                      >
+                        <span className="mr-2">{tone.icon}</span>
+                        {tone.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               {selected.error_message && (
                 <p className="text-xs text-destructive mt-1">{selected.error_message}</p>
