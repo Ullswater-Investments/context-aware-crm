@@ -1,58 +1,39 @@
 
 
-## Plan: Correcciones y Mejoras en Contactos
+## Plan: Crear nuevos contactos con direcciones postales
 
-### Errores encontrados
+### Contexto
+De la lista proporcionada con ~95 contactos, solo 2 (Alicia Cervera del Rio y Angela Paredes) ya existen en la base de datos. Los demas ~93 contactos necesitan ser creados junto con sus organizaciones.
 
-#### 1. Direcciones postales no actualizadas (BUG PRINCIPAL)
-La migracion SQL solo contiene `ALTER TABLE public.contacts ADD COLUMN postal_address text;` pero **no incluye el bloque UPDATE** con las direcciones postales. De los 83 contactos, solo 4 tienen direccion postal (Alicia Cervera del Rio y Angela Paredes, que coinciden con la lista proporcionada).
+### Cambios a realizar
 
-Ademas, la mayoria de nombres de la lista (Marta Bilbao, Esperanza Gross, etc.) **no existen** como contactos en la base de datos. Los contactos actuales son otros (Jorge Blanco, Isabel Ruiz, etc.). Por tanto, se necesita:
-- Crear una nueva migracion que actualice los contactos existentes que si coincidan (Alicia Cervera del Rio, Angela Paredes)
-- Importar los nuevos contactos de la lista junto con sus direcciones postales
+#### 1. Migracion SQL para crear organizaciones y contactos
 
-**Accion**: Crear una migracion SQL para insertar los contactos de la lista que no existen, con su empresa, y direccion postal. Los que ya existen y coinciden, actualizar solo la direccion.
+Una unica migracion que:
 
-#### 2. Contactos duplicados en la base de datos
-Hay contactos duplicados: Alicia Cervera del Rio (x2), Angela Paredes (x2), Carmen Hurtado de la Pena (x2), Claudia Gonzalez Blanco (x2), Cristina Lucas (x2), Eduardo Blanco (x2), Francisco Grau (x2), etc.
+1. **Crea las organizaciones nuevas** que no existen (Vitaldent, Straumann Group, 3Shape, Henry Schein, etc.) con su `website` y el `created_by` del usuario existente
+2. **Inserta los ~93 contactos nuevos** con:
+   - `full_name`
+   - `organization_id` (vinculado a la organizacion correspondiente)
+   - `postal_address` (la direccion postal de la sede)
+   - `created_by` del usuario existente
+   - `status` = 'new_lead' (por defecto)
 
-**Accion**: Crear una migracion que elimine duplicados, conservando el registro mas reciente (o el que tenga mas datos).
+Los contactos cuya direccion es "No disponible publicamente" o "Requiere busqueda local" se insertaran con `postal_address = NULL`.
 
-#### 3. Uso innecesario de `(c as any).apollo_status`
-En `src/pages/Contacts.tsx` (lineas 190, 285, 350-351, 407, 414) y `src/components/contacts/ContactProfile.tsx` (linea 285), se usa `(c as any).apollo_status` a pesar de que `apollo_status` ya esta definido en el interface `Contact`.
+Los contactos que ya existen (Alicia Cervera del Rio, Angela Paredes) ya tienen su direccion postal actualizada, asi que no se tocan.
 
-**Accion**: Reemplazar todas las instancias de `(c as any).apollo_status` por `c.apollo_status`.
+Se excluiran las entradas que son cuentas de organizacion o invalidas (como "bin zaman foundation", "Equiliqua Centro especializado", "flora luo raised floor").
 
-#### 4. Warning de React: forwardRef en App component
-El log muestra: "Function components cannot be given refs" en el componente App.
+#### 2. Organizaciones a crear (nuevas)
 
-**Accion**: Revisar y corregir el componente App para usar forwardRef donde sea necesario.
+Se crearan unas ~60 organizaciones nuevas que no existen aun, como: Vitaldent, Straumann Group, Hospital San Carlos Grupo HLA, Dassault Systemes, TURBOdeco, WTC, Moonz Ortodoncia, DONTE GROUP, Laboratorios Indas, Fundacion IDIS, BeCool Publicidad, Henry Schein, etc.
 
----
+Las organizaciones que ya existen (DONTE GROUP, Grupo Ceosa, W&H Med Iberica, Fenin, Dentsply Sirona) se reutilizaran por su ID existente.
 
-### Mejoras propuestas
+### Archivos a crear
 
-#### 5. Mejorar rendimiento de carga
-Actualmente se cargan todos los contactos sin paginacion. Con 83+ contactos no es critico, pero crecera.
+1. **Nueva migracion SQL** -- insertar organizaciones nuevas + insertar contactos nuevos con direcciones postales
 
-**Accion**: Anadir paginacion o carga lazy al listado de contactos.
-
-#### 6. Contacto con nombre invalido
-Hay un contacto cuyo `full_name` es `ismael.gilabert@hsn.net` (un email en vez de nombre).
-
-**Accion**: Limpiar este dato en una migracion.
-
----
-
-### Archivos a modificar
-
-1. **Nueva migracion SQL** -- Importar contactos de la lista con direcciones postales + limpiar duplicados + corregir dato invalido
-2. **`src/pages/Contacts.tsx`** -- Eliminar castings `(c as any).apollo_status` a `c.apollo_status`
-3. **`src/components/contacts/ContactProfile.tsx`** -- Eliminar casting `(c as any).apollo_status` a `c.apollo_status`
-
-### Prioridad de implementacion
-
-1. Migracion: importar contactos nuevos con direcciones + eliminar duplicados
-2. Fix de tipos TypeScript (`as any` innecesario)
-3. Correccion de dato invalido (email como nombre)
-
+### Resultado esperado
+Despues de la migracion, la base de datos tendra ~155 contactos (62 existentes + ~93 nuevos) y las tarjetas mostraran la direccion postal con el icono MapPin que ya esta implementado en la UI.
