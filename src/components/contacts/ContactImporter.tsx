@@ -32,6 +32,7 @@ interface ParsedRow {
   company_website?: string;
   company_description?: string;
   sub_sector?: string;
+  _company_address?: string;
 }
 
 function mapColumns(headers: string[]): Record<string, string> {
@@ -41,18 +42,18 @@ function mapColumns(headers: string[]): Record<string, string> {
   const patterns: Record<string, string[]> = {
     full_name: ["nombre completo", "full_name", "fullname", "contact name"],
     email: ["email", "correo", "e-mail", "mail"],
-    phone: ["teléfono", "telefono", "phone", "tel"],
-    position: ["cargo", "position", "puesto", "título", "titulo", "job title", "role"],
+    phone: ["teléfono", "telefono", "phone", "tel", "corporate phone"],
+    position: ["cargo", "position", "puesto", "título", "titulo", "job title", "role", "title"],
     company: ["empresa", "company name", "company", "organización", "organizacion", "org", "compañía", "compania"],
     sector: ["sector", "industria", "industry", "company main industry", "industry_tags", "etiqueta", "tag"],
     postal_address: ["dirección", "direccion", "address", "postal", "sede", "dirección postal", "postal_address"],
     linkedin_url: ["contact li", "linkedin url", "linkedin", "li url"],
     work_email: ["work email", "work_email"],
-    personal_email: ["private email", "direct email", "personal email", "additional email 1"],
+    personal_email: ["private email", "direct email", "personal email", "additional email 1", "secondary email"],
     mobile_phone: ["mobile", "móvil"],
     work_phone: ["direct phone", "work phone"],
     company_domain: ["company domain", "domain", "dominio"],
-    company_website: ["company website"],
+    company_website: ["company website", "website"],
     company_description: ["company description"],
     sub_sector: ["sub industry", "company sub industry", "sub sector"],
   };
@@ -130,6 +131,22 @@ function mapColumns(headers: string[]): Record<string, string> {
   const m2 = lower.findIndex((h) => h === "mobile 2");
   if (m2 >= 0) mapping["_mobile2"] = headers[m2];
 
+  // City / State / Country for composing postal_address
+  const cityIdx = lower.findIndex((h) => h === "city");
+  if (cityIdx >= 0) mapping["_city"] = headers[cityIdx];
+  const stateIdx = lower.findIndex((h) => h === "state");
+  if (stateIdx >= 0) mapping["_state"] = headers[stateIdx];
+  const countryIdx = lower.findIndex((h) => h === "country");
+  if (countryIdx >= 0) mapping["_country"] = headers[countryIdx];
+
+  // Company Address for org address
+  const compAddrIdx = lower.findIndex((h) => h === "company address");
+  if (compAddrIdx >= 0) mapping["_company_address"] = headers[compAddrIdx];
+
+  // Keywords for extra tags
+  const kwIdx = lower.findIndex((h) => h === "keywords");
+  if (kwIdx >= 0) mapping["_keywords"] = headers[kwIdx];
+
   return mapping;
 }
 
@@ -177,6 +194,22 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
       if (sector) tags.push(sector);
       if (subSector && subSector !== sector) tags.push(subSector);
 
+      // Add keywords as extra tags (max 5)
+      const kwRaw = val(row, mapping["_keywords"]);
+      if (kwRaw) {
+        const kws = kwRaw.split(",").map((k) => k.trim()).filter(Boolean).slice(0, 5);
+        for (const kw of kws) {
+          if (!tags.includes(kw)) tags.push(kw);
+        }
+      }
+
+      // Compose postal_address from City + State + Country if not mapped directly
+      let postal_address = val(row, mapping["postal_address"]);
+      if (!postal_address) {
+        const parts = [val(row, mapping["_city"]), val(row, mapping["_state"]), val(row, mapping["_country"])].filter(Boolean);
+        if (parts.length > 0) postal_address = parts.join(", ");
+      }
+
       return {
         full_name,
         email: work_email || val(row, mapping["email"]),
@@ -184,7 +217,7 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
         position: val(row, mapping["position"]),
         company: val(row, mapping["company"]),
         sector: tags.length > 0 ? tags.join(", ") : undefined,
-        postal_address: val(row, mapping["postal_address"]),
+        postal_address,
         linkedin_url: val(row, mapping["linkedin_url"]),
         work_email,
         personal_email,
@@ -194,6 +227,7 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
         company_website: val(row, mapping["company_website"]),
         company_description: val(row, mapping["company_description"]),
         sub_sector: subSector,
+        _company_address: val(row, mapping["_company_address"]),
       } as ParsedRow;
     })
     .filter(Boolean) as ParsedRow[];
@@ -285,6 +319,7 @@ export default function ContactImporter({ open, onOpenChange, onComplete }: Cont
               else if (row.company_domain) orgInsert.website = `https://${row.company_domain}`;
               if (row.sector) orgInsert.sector = row.sector.split(", ")[0];
               if (row.company_description) orgInsert.notes = row.company_description;
+              if (row._company_address) orgInsert.notes = (orgInsert.notes ? orgInsert.notes + "\n" : "") + "Dirección: " + row._company_address;
               const { data: newOrg } = await supabase
                 .from("organizations")
                 .insert(orgInsert)
