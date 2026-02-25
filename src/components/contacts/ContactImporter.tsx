@@ -33,6 +33,8 @@ interface ParsedRow {
   company_description?: string;
   sub_sector?: string;
   _company_address?: string;
+  _company_size?: string;
+  _company_type?: string;
 }
 
 function mapColumns(headers: string[]): Record<string, string> {
@@ -40,9 +42,9 @@ function mapColumns(headers: string[]): Record<string, string> {
   const lower = headers.map((h) => h.toLowerCase().trim());
 
   const patterns: Record<string, string[]> = {
-    full_name: ["nombre completo", "full_name", "fullname", "contact name"],
-    email: ["email", "correo", "e-mail", "mail"],
-    phone: ["teléfono", "telefono", "phone", "tel", "corporate phone"],
+    full_name: ["nombre completo", "full_name", "fullname", "full name", "contact name"],
+    email: ["email", "email address", "correo", "e-mail", "mail"],
+    phone: ["teléfono", "telefono", "phone number", "phone", "tel", "corporate phone"],
     position: ["cargo", "position", "puesto", "título", "titulo", "job title", "role", "title"],
     company: ["empresa", "company name", "company", "organización", "organizacion", "org", "compañía", "compania"],
     sector: ["sector", "industria", "industry", "company main industry", "industry_tags", "etiqueta", "tag"],
@@ -147,6 +149,16 @@ function mapColumns(headers: string[]): Record<string, string> {
   const kwIdx = lower.findIndex((h) => h === "keywords");
   if (kwIdx >= 0) mapping["_keywords"] = headers[kwIdx];
 
+  // Department for Hunter
+  const deptIdx = lower.findIndex((h) => h === "department");
+  if (deptIdx >= 0) mapping["_department"] = headers[deptIdx];
+
+  // Company size / Company type for Hunter org notes
+  const compSizeIdx = lower.findIndex((h) => h === "company size");
+  if (compSizeIdx >= 0) mapping["_company_size"] = headers[compSizeIdx];
+  const compTypeIdx = lower.findIndex((h) => h === "company type");
+  if (compTypeIdx >= 0) mapping["_company_type"] = headers[compTypeIdx];
+
   return mapping;
 }
 
@@ -169,7 +181,19 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
       } else if (mapping["full_name"]) {
         full_name = (row[mapping["full_name"]] || "").toString().trim();
       }
-      if (!full_name) return null;
+      // Fallback for contacts without a personal name
+      if (!full_name) {
+        const company = val(row, mapping["company"]);
+        const email = val(row, mapping["email"]) || val(row, mapping["work_email"]);
+        if (company) {
+          full_name = company;
+        } else if (email) {
+          const prefix = email.split("@")[0].replace(/[._-]/g, " ");
+          full_name = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+        } else {
+          return null; // truly no identifying info
+        }
+      }
 
       // Determine mobile/work phone from Apollo's Phone 1 + type
       let mobile_phone = val(row, mapping["mobile_phone"]);
@@ -193,6 +217,10 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
       const subSector = val(row, mapping["sub_sector"]);
       if (sector) tags.push(sector);
       if (subSector && subSector !== sector) tags.push(subSector);
+
+      // Add department as tag
+      const dept = val(row, mapping["_department"]);
+      if (dept && !tags.includes(dept)) tags.push(dept);
 
       // Add keywords as extra tags (max 5)
       const kwRaw = val(row, mapping["_keywords"]);
@@ -228,6 +256,8 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
         company_description: val(row, mapping["company_description"]),
         sub_sector: subSector,
         _company_address: val(row, mapping["_company_address"]),
+        _company_size: val(row, mapping["_company_size"]),
+        _company_type: val(row, mapping["_company_type"]),
       } as ParsedRow;
     })
     .filter(Boolean) as ParsedRow[];
@@ -320,6 +350,10 @@ export default function ContactImporter({ open, onOpenChange, onComplete }: Cont
               if (row.sector) orgInsert.sector = row.sector.split(", ")[0];
               if (row.company_description) orgInsert.notes = row.company_description;
               if (row._company_address) orgInsert.notes = (orgInsert.notes ? orgInsert.notes + "\n" : "") + "Dirección: " + row._company_address;
+              const compSize = row._company_size;
+              const compType = row._company_type;
+              if (compSize) orgInsert.notes = (orgInsert.notes ? orgInsert.notes + "\n" : "") + "Tamaño: " + compSize;
+              if (compType) orgInsert.notes = (orgInsert.notes ? orgInsert.notes + "\n" : "") + "Tipo: " + compType;
               const { data: newOrg } = await supabase
                 .from("organizations")
                 .insert(orgInsert)
