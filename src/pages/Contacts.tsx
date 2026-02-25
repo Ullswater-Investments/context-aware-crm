@@ -187,7 +187,7 @@ export default function Contacts() {
       (c.tags || []).some((t) => t.toLowerCase().includes(searchLower));
     const matchesLusha = !lushaFilter || lushaFilter === "all" || c.lusha_status === lushaFilter;
     const matchesHunter = !hunterFilter || hunterFilter === "all" || c.hunter_status === hunterFilter;
-    const matchesApollo = !apolloFilter || apolloFilter === "all" || (c as any).apollo_status === apolloFilter;
+    const matchesApollo = !apolloFilter || apolloFilter === "all" || c.apollo_status === apolloFilter;
     return matchesSearch && matchesLusha && matchesHunter && matchesApollo;
   });
 
@@ -347,8 +347,8 @@ export default function Contacts() {
                               {c.lusha_status === "enriched" && <Sparkles className="w-3 h-3 text-green-500 shrink-0" />}
                               {c.hunter_status === "enriched" && <Globe className="w-3 h-3 text-green-500 shrink-0" />}
                               {c.hunter_status === "not_found" && <Globe className="w-3 h-3 text-orange-500 shrink-0" />}
-                              {(c as any).apollo_status === "enriched" && <Sparkles className="w-3 h-3 text-blue-500 shrink-0" />}
-                              {(c as any).apollo_status === "not_found" && <Sparkles className="w-3 h-3 text-orange-500 shrink-0" />}
+                              {c.apollo_status === "enriched" && <Sparkles className="w-3 h-3 text-blue-500 shrink-0" />}
+                              {c.apollo_status === "not_found" && <Sparkles className="w-3 h-3 text-orange-500 shrink-0" />}
                               {missing && <MissingDataAlert />}
                             </div>
                             {c.organizations?.name && (
@@ -404,14 +404,14 @@ export default function Contacts() {
                                     {c.hunter_status === "not_found" ? "Reintentar" : "Hunter"}
                                   </button>
                                 )}
-                                {((c as any).apollo_status === "pending" || (c as any).apollo_status === "not_found") && (
+                                {(c.apollo_status === "pending" || c.apollo_status === "not_found") && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }}
                                     disabled={enrichingApolloId === c.id}
                                     className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0"
                                   >
                                     {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                                    {(c as any).apollo_status === "not_found" ? "Reintentar" : "Apollo"}
+                                    {c.apollo_status === "not_found" ? "Reintentar" : "Apollo"}
                                   </button>
                                 )}
                               </div>
@@ -508,14 +508,14 @@ export default function Contacts() {
                           {c.hunter_status === "not_found" ? "Reintentar" : "Hunter"}
                         </button>
                       )}
-                      {((c as any).apollo_status === "pending" || (c as any).apollo_status === "not_found") && (
+                      {(c.apollo_status === "pending" || c.apollo_status === "not_found") && (
                         <button
                           onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }}
                           disabled={enrichingApolloId === c.id}
                           className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
                         >
                           {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                          {(c as any).apollo_status === "not_found" ? "Reintentar" : "Apollo"}
+                          {c.apollo_status === "not_found" ? "Reintentar" : "Apollo"}
                         </button>
                       )}
                     </div>

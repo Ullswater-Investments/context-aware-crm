@@ -282,7 +282,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const lushaConfig = LUSHA_STATUS_CONFIG[lushaStatus] || LUSHA_STATUS_CONFIG.pending;
   const hunterStatus = contact.hunter_status || "pending";
   const hunterConfig = LUSHA_STATUS_CONFIG[hunterStatus] || LUSHA_STATUS_CONFIG.pending;
-  const apolloStatus = (contact as any).apollo_status || "pending";
+  const apolloStatus = contact.apollo_status || "pending";
   const apolloConfig = LUSHA_STATUS_CONFIG[apolloStatus] || LUSHA_STATUS_CONFIG.pending;
   const hasLushaData = contact.work_email || contact.personal_email || contact.mobile_phone || contact.work_phone;
 
