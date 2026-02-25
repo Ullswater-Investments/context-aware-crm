@@ -10,9 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
+import HunterSearch from "@/components/contacts/HunterSearch";
 
 const PIPELINE_COLUMNS = [
   { key: "new_lead", label: "Nuevo Lead", color: "bg-blue-500/10 border-blue-500/30" },
@@ -78,6 +79,7 @@ export default function Contacts() {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [hunterOpen, setHunterOpen] = useState(false);
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -192,6 +194,10 @@ export default function Contacts() {
               <List className="w-4 h-4" />
             </button>
           </div>
+          <Button variant="outline" onClick={() => setHunterOpen(true)}>
+            <Globe className="w-4 h-4 mr-2" />
+            Hunter.io
+          </Button>
           <Button variant="outline" onClick={() => setImporterOpen(true)}>
             <FileSpreadsheet className="w-4 h-4 mr-2" />
             Importar
@@ -386,6 +392,9 @@ export default function Contacts() {
           <p>No hay contactos todavía</p>
         </div>
       )}
+
+      {/* Hunter Search */}
+      <HunterSearch open={hunterOpen} onOpenChange={setHunterOpen} onImported={load} />
 
       {/* Contact Importer */}
       <ContactImporter
