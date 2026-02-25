@@ -1,83 +1,50 @@
 
 
-## Revision de errores y soluciones
+## Plan: Importar 162 contactos de Apollo con mapeo corregido
 
-### Problemas encontrados
+### Problemas de mapeo detectados
 
-#### 1. Los contactos de los CSVs nunca se importaron (CRITICO)
+El CSV tiene columnas que el importador actual NO reconoce correctamente:
 
-La base de datos tiene 333 contactos, pero solo 19 tienen email y 0 tienen telefono movil. Los 186 contactos de Apollo y 25 de Lusha que subiste como archivos **nunca se procesaron** con el importador. Para importarlos debes usar el boton "Importar" en la pagina de Contactos y subir cada archivo manualmente.
+| Columna CSV | Problema | Solucion |
+|---|---|---|
+| `Title` | No coincide con "titulo" (con acento) ni "job title" | Agregar "title" al patron de `position` |
+| `Secondary Email` | No esta en los patrones de `personal_email` | Agregar "secondary email" al patron |
+| `Website` | Solo busca "company website", no "website" solo | Agregar "website" al patron de `company_website` |
+| `Corporate Phone` | Se captura como `phone` generico pero se puede perder | Agregar "corporate phone" al patron de `phone` |
+| `City` + `State` + `Country` | No se combinan en `postal_address` | Agregar logica para componer direccion desde estas columnas |
+| `Company Address` | No se mapea a nada | Agregar "company address" como direccion de la organizacion |
+| `Industry` | Funciona pero `Keywords` se pierde | Agregar "keywords" al patron de `sector` para tags mas ricos |
 
-**Solucion**: No requiere cambios de codigo. Solo necesitas:
-1. Ir a Contactos -> Importar
-2. Subir `Export_Contacts_2026-02-25.csv` (Apollo, 186 contactos)
-3. Esperar a que termine
-4. Subir `Export_User_Data_2026-02-25.csv` (Lusha, 25 contactos para enriquecer)
+### Cambios en `src/components/contacts/ContactImporter.tsx`
 
----
+1. **Ampliar patrones de columnas:**
+   - `position`: agregar "title"
+   - `personal_email`: agregar "secondary email"
+   - `company_website`: agregar "website" (con exclusion para no confundir con "company website")
+   - `phone`: agregar "corporate phone"
 
-#### 2. El trigger `updated_at` no existe en ninguna tabla
+2. **Agregar composicion de direccion postal:**
+   - Detectar columnas `City`, `State`, `Country`
+   - Si `postal_address` no se mapeo directamente, componer desde City + State + Country
+   - Mapear `Company Address` a la direccion de la organizacion
 
-La funcion `update_updated_at_column()` esta creada en la base de datos, pero no hay ningun trigger asociado. Esto significa que el campo `updated_at` de `contacts`, `organizations`, `projects`, etc. nunca se actualiza automaticamente.
+3. **Mapear `Keywords` a tags adicionales:**
+   - Si hay columna `Keywords`, extraer los primeros 5 keywords relevantes y agregarlos como tags
 
-**Solucion**: Crear triggers en las tablas que tienen columna `updated_at`:
-- `contacts`
-- `organizations`
-- `projects`
-- `conversations`
+### Resultado esperado
 
----
-
-#### 3. Mapeo de columna `email` demasiado amplio en el importador
-
-El patron `["email", "correo", "e-mail", "mail"]` usa `h.includes("email")` que tambien coincide con "Work email", "Personal email", etc. Esto puede causar que el campo generico `email` apunte a la misma columna que `work_email`, generando datos duplicados.
-
-**Solucion**: Cambiar la logica de `find()` en `mapColumns` para dar prioridad a coincidencias exactas y excluir columnas ya asignadas a campos mas especificos.
-
----
-
-#### 4. Bucket `email-signatures` es publico (riesgo de privacidad)
-
-Las firmas de email son imagenes personales/corporativas que estan en un bucket publico. Cualquier persona con la URL puede acceder a ellas.
-
-**Solucion**: Cambiar a bucket privado y usar URLs firmadas (signed URLs) con tiempo de expiracion. Actualizar `ComposeEmail.tsx` y `SignatureManager.tsx` para usar `createSignedUrl` en lugar de `getPublicUrl`.
-
----
-
-#### 5. Falta el secret `RESEND_API_KEY` (verificar configuracion)
-
-El secret existe en la configuracion, pero si nunca se ha probado enviar un email, no se puede confirmar que funciona. No es un error de codigo sino una verificacion pendiente.
-
----
-
-### Cambios propuestos
-
-#### Migracion SQL - Triggers `updated_at`
-
-Crear triggers para todas las tablas con columna `updated_at`:
-
-```text
-CREATE TRIGGER update_contacts_updated_at
-  BEFORE UPDATE ON contacts
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Igual para organizations, projects, conversations
-```
-
-#### `src/components/contacts/ContactImporter.tsx`
-
-Corregir la funcion `find()` para:
-- Priorizar coincidencias exactas sobre `includes`
-- En el patron `email`, excluir coincidencias con "work email", "personal email", "private email"
-
-#### `src/components/email/ComposeEmail.tsx` y `SignatureManager.tsx`
-
-Cambiar `getPublicUrl` por `createSignedUrl` con expiracion de 1 hora para las firmas de email.
+162 nuevos contactos con:
+- Nombre completo (First Name + Last Name)
+- Email verificado de Apollo
+- Email secundario cuando disponible
+- Telefono corporativo, movil y directo
+- LinkedIn URL
+- Cargo/posicion
+- Empresa con website, sector y descripcion
+- Ubicacion (Ciudad, Pais)
+- Tags con industria y keywords
 
 ### Archivos a modificar
 
-1. **Migracion SQL** - Crear 4 triggers de `updated_at`
-2. **`src/components/contacts/ContactImporter.tsx`** - Corregir mapeo de columna email
-3. **`src/components/email/ComposeEmail.tsx`** - Usar signed URLs para firmas
-4. **`src/components/email/SignatureManager.tsx`** - Usar signed URLs para previews
-
+1. **`src/components/contacts/ContactImporter.tsx`** - Corregir patrones de mapeo, agregar composicion de direccion y keywords
