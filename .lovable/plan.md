@@ -1,44 +1,70 @@
 
 
-## Revision: Errores detectados y mejoras sugeridas
+## Plan: Editor de email enriquecido con soporte para imagenes inline
 
-### ERRORES a corregir
+### Objetivo
 
-#### 1. Edge function `enrich-lusha-contact` - Metodo de autenticacion inexistente (CRITICO)
+Reemplazar el `<Textarea>` actual por un editor de texto enriquecido (rich text) que permita:
+- Pegar imagenes directamente desde el portapapeles (Ctrl+V)
+- Arrastrar y soltar imagenes
+- Insertar imagenes con un boton
+- Formateo basico de texto (negrita, cursiva, listas, enlaces)
 
-La funcion usa `supabase.auth.getClaims(token)` (linea 37) que **no existe** en supabase-js v2. Esto hace que la funcion falle siempre con un error.
+### Solucion: Tiptap Editor
 
-**Solucion**: Reemplazar por `supabase.auth.getUser()` siguiendo el patron ya usado en `send-email`.
+Tiptap es el editor rich text mas popular para React. Es modular, extensible y tiene soporte nativo para imagenes.
 
-#### 2. `Emails.tsx` - Query de conteo descarga TODAS las filas (BUG de rendimiento)
+### Paso 1: Instalar dependencias
 
-La query de conteo (linea 54-65) usa `{ head: false }` y descarga todas las filas para contarlas con `.length` en JavaScript. Esto:
-- Descarga datos innecesarios
-- Se rompe al superar 1000 emails (limite por defecto de la base de datos)
+- `@tiptap/react` - Core del editor para React
+- `@tiptap/starter-kit` - Extensiones basicas (negrita, cursiva, listas, headings, etc.)
+- `@tiptap/extension-image` - Soporte para imagenes inline
+- `@tiptap/extension-link` - Soporte para enlaces
+- `@tiptap/extension-placeholder` - Placeholder text
 
-**Solucion**: Usar 3 queries ligeras con `{ count: "exact", head: true }` y filtro por status, en lugar de descargar filas.
+### Paso 2: Crear bucket de storage `email-images`
 
-#### 3. Firma de email con URL temporal de 1 hora (BUG funcional)
+Migracion SQL para crear un bucket publico donde se almacenaran las imagenes pegadas/arrastradas en el editor. Con politicas RLS para que solo usuarios autenticados puedan subir, y cualquiera pueda leer (necesario para que los destinatarios vean las imagenes).
 
-Las firmas se insertan en el HTML del email como URLs firmadas que expiran en 1 hora. Los destinatarios que abran el email despues no veran la firma.
+### Paso 3: Crear componente `RichTextEditor`
 
-**Solucion**: El bucket `email-signatures` ya es publico. Usar `getPublicUrl()` en lugar de `createSignedUrl()` para generar URLs permanentes.
+Nuevo archivo `src/components/email/RichTextEditor.tsx`:
 
-### MEJORAS sugeridas
+- Editor Tiptap con extensiones: StarterKit, Image, Link, Placeholder
+- Barra de herramientas con botones: Negrita, Cursiva, Lista, Enlace, Insertar imagen
+- Handler de paste que detecta imagenes del portapapeles, las sube al bucket `email-images` y las inserta como `<img>` con URL publica permanente
+- Handler de drop para arrastrar imagenes
+- Boton para seleccionar imagen desde el explorador de archivos
+- Estilos con Tailwind para que encaje con el diseno actual del CRM
 
-#### 4. Renombrar columna `resend_id` a `message_id`
+### Paso 4: Actualizar `ComposeEmail.tsx`
 
-Ahora que se usa SMTP en lugar de Resend, el nombre `resend_id` es confuso. Renombrar a `message_id` para claridad.
+- Reemplazar el `<Textarea>` por el nuevo `<RichTextEditor>`
+- El estado `body` pasa a almacenar HTML en vez de texto plano
+- Al enviar, el HTML del editor se usa directamente como `html` del email
+- Se genera una version `text` limpia (sin tags HTML) como fallback
+- La firma se sigue anadiendo al final del HTML generado
 
-#### 5. Eliminar `as any` en actualizacion de contacto
+### Paso 5: Actualizar la edge function `send-email`
 
-En `ComposeEmail.tsx` linea 172, hay un cast `.update({ status: "contacted" } as any)`. Esto sugiere un problema de tipos que se debe resolver correctamente.
+No requiere cambios significativos. Ya acepta `html` como parametro y lo envia tal cual. Las imagenes inline seran URLs publicas del bucket, que los clientes de email renderizaran directamente.
 
-### Archivos a modificar
+### Archivos a crear/modificar
 
-1. **`supabase/functions/enrich-lusha-contact/index.ts`** - Reemplazar `getClaims` por `getUser()`
-2. **`src/pages/Emails.tsx`** - Optimizar query de conteo con `head: true`
-3. **`src/components/email/ComposeEmail.tsx`** - Usar `getPublicUrl()` para firmas, eliminar `as any`
-4. **Nueva migracion SQL** - Renombrar `resend_id` a `message_id` en `email_logs`
-5. **`supabase/functions/send-email/index.ts`** - Actualizar referencia de `resend_id` a `message_id`
+1. **`src/components/email/RichTextEditor.tsx`** (NUEVO) - Componente del editor rico
+2. **`src/components/email/ComposeEmail.tsx`** - Reemplazar Textarea por RichTextEditor
+3. **Nueva migracion SQL** - Bucket `email-images` con politicas RLS
+
+### Detalles tecnicos
+
+**Flujo de una imagen pegada:**
+1. Usuario pega imagen (Ctrl+V) en el editor
+2. Se detecta el evento paste con contenido de imagen
+3. Se sube la imagen al bucket `email-images/{userId}/{timestamp}.png`
+4. Se obtiene la URL publica permanente
+5. Se inserta un nodo `<img src="url_publica">` en el editor
+6. Al enviar, el HTML incluye las imagenes como URLs absolutas
+
+**Barra de herramientas del editor:**
+- Negrita (B) | Cursiva (I) | Lista | Lista numerada | Enlace | Imagen | Separador
 
