@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.hunter-domain-search]
 verify_jwt = false
+
+[functions.enrich-apollo-contact]
+verify_jwt = false
+
+[functions.bulk-enrich]
+verify_jwt = false
