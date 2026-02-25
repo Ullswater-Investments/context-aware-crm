@@ -35,6 +35,7 @@ export default function ComposeEmail({
 }: ComposeEmailProps) {
   const { user } = useAuth();
   const [to, setTo] = useState(defaultTo);
+  const [cc, setCc] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -60,6 +61,7 @@ export default function ComposeEmail({
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen) {
       setTo(defaultTo);
+      setCc("");
       setSubject("");
       setBody("");
       setAttachments([]);
@@ -140,6 +142,7 @@ export default function ComposeEmail({
       const { data, error } = await supabase.functions.invoke("send-email", {
         body: {
           to,
+          cc: cc.trim() || undefined,
           subject,
           html: htmlBody,
           text: body,
@@ -211,6 +214,15 @@ export default function ComposeEmail({
                 placeholder="email@ejemplo.com"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>CC</Label>
+              <Input
+                type="text"
+                placeholder="email1@ejemplo.com, email2@ejemplo.com"
+                value={cc}
+                onChange={(e) => setCc(e.target.value)}
               />
             </div>
             <div>

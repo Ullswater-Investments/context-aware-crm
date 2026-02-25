@@ -300,6 +300,7 @@ export type Database = {
         Row: {
           body_html: string | null
           body_text: string | null
+          cc_emails: string | null
           contact_id: string | null
           created_at: string
           created_by: string | null
@@ -317,6 +318,7 @@ export type Database = {
         Insert: {
           body_html?: string | null
           body_text?: string | null
+          cc_emails?: string | null
           contact_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -334,6 +336,7 @@ export type Database = {
         Update: {
           body_html?: string | null
           body_text?: string | null
+          cc_emails?: string | null
           contact_id?: string | null
           created_at?: string
           created_by?: string | null
