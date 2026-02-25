@@ -1,27 +1,45 @@
 
 
-## Plan: Agregar 4 filas adicionales a las tarjetas de contacto
+## Plan: Agregar boton "Enriquecer con Hunter.io" en el perfil de contacto
 
 ### Objetivo
-Mostrar en las tarjetas de contacto (Kanban y Lista) cuatro filas nuevas con datos de enriquecimiento: **work_email**, **mobile_phone**, **linkedin_url** y **company_domain**.
+Anadir un boton similar al de Lusha que use la API Combined Find de Hunter.io para enriquecer el contacto con datos profesionales (email, telefono, cargo, LinkedIn) y guardarlos en la base de datos.
 
-### Cambios en `src/pages/Contacts.tsx`
+### Cambios
 
-**1. Importar icono `Linkedin` de lucide-react** (linea 14, junto a los demas iconos)
+#### 1. Nueva edge function: `supabase/functions/enrich-hunter-contact/index.ts`
+Crear una funcion dedicada que:
+- Reciba `contact_id` y `email` del contacto
+- Llame a `https://api.hunter.io/v2/combined/find?email=...` usando la HUNTER_API_KEY ya configurada
+- Extraiga: position, linkedin_url, phone_number, company (domain), y datos de verificacion
+- Actualice el contacto en la base de datos con los campos enriquecidos:
+  - `work_email` (si el email verificado es valido)
+  - `work_phone` (si hay phone_number)
+  - `linkedin_url` (si existe y no tenia ya)
+  - `position` (si existe y no tenia ya)
+  - `company_domain` (si existe)
+  - `hunter_status` = "enriched" o "not_found"
+  - `last_enriched_at` = timestamp actual
 
-**2. Vista Kanban** (despues de la fila de telefono, linea 315):
-- **Work Email**: si `work_email` existe y es diferente de `email`, mostrar con icono Mail y prefijo "Corp:"
-- **Mobile Phone**: si `mobile_phone` existe y no coincide con el telefono ya mostrado, mostrar con icono Phone y prefijo "Movil:"
-- **LinkedIn**: si `linkedin_url` existe, enlace clicable con icono Linkedin y texto "LinkedIn" (con `stopPropagation`)
-- **Company URL**: si `company_domain` existe, enlace clicable con icono Globe y texto del dominio (con `stopPropagation`)
+#### 2. Migracion de base de datos
+Agregar columna `hunter_status` (text, default 'pending') a la tabla `contacts` para rastrear el estado de enriquecimiento con Hunter independientemente de Lusha.
 
-**3. Vista Lista** (despues de la fila de telefono, linea 372):
-- Mismas 4 filas con el mismo estilo de la vista lista (`text-sm`, `gap-2`)
+#### 3. Cambios en `src/components/contacts/ContactProfile.tsx`
+- Agregar estado `enrichingHunter` (boolean)
+- Agregar funcion `enrichWithHunter` que:
+  - Requiere que el contacto tenga email (obligatorio para Combined Find)
+  - Invoca la nueva edge function `enrich-hunter-contact`
+  - Muestra toast de exito/error segun resultado
+- Agregar un boton "Enriquecer con Hunter.io" debajo del boton de Lusha, con icono de Search/Globe
+  - Solo visible si `hunter_status === "pending"` y el contacto tiene email
+  - Estilo similar al de Lusha pero con diferente icono
+- Agregar badge de estado Hunter junto al de Lusha en el header
+- Actualizar la interfaz Contact para incluir `hunter_status`
 
 ### Detalles tecnicos
 
-- Importar `Linkedin` de `lucide-react` (Globe ya esta importado)
-- Los enlaces (LinkedIn y company_domain) usan `e.stopPropagation()` y `target="_blank"` con `rel="noopener noreferrer"`
-- Para company_domain, se construye la URL como `https://{company_domain}` si no tiene protocolo
-- Condiciones de deduplicacion: work_email solo si diferente de email; mobile_phone solo si diferente del telefono principal visible
+- La edge function reutiliza la misma HUNTER_API_KEY que ya esta configurada como secret
+- Se usa `combined-find` que devuelve persona + verificacion en una sola llamada
+- Si el contacto no tiene email, el boton de Hunter no aparece (la API lo requiere)
+- Los datos de Hunter se guardan en los mismos campos que Lusha (work_email, work_phone, etc.) solo si estan vacios, para no sobreescribir datos existentes
 
