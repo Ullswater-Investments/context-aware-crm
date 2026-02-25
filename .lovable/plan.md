@@ -1,39 +1,51 @@
 
 
-## Plan: Crear nuevos contactos con direcciones postales
+## Plan: Crear ~39 nuevos contactos desde el PDF
 
 ### Contexto
-De la lista proporcionada con ~95 contactos, solo 2 (Alicia Cervera del Rio y Angela Paredes) ya existen en la base de datos. Los demas ~93 contactos necesitan ser creados junto con sus organizaciones.
+El PDF contiene 40 contactos profesionales. De estos, solo 1 ya existe en la base de datos (Joan M. Molina). Los demas 39 necesitan ser creados junto con sus organizaciones.
+
+### Datos extraidos del PDF
+
+**Pagina 1** (11 contactos):
+Sara Martinez (MILOBIONIC), Javier Blanco-de-Torres (Smysecret), Carlos D. (Straumann Group/Neodent), Ramon Vila Ferreres (Ringlab), Miguel Basso (Villa Sistemi Medicali), Tibisay Vielma Toro (Instituto Medico Velazquez), Fermin F. D. (Dentalea.net), Blanca Espinar Segura (Club Clinico), Joaquin Fernandez de Prada (MVP DENTAL), Carine Derangere Lebecque (Turo Park Clinics), Christos Socratous (KlinikMatch)
+
+**Pagina 2** (13 contactos):
+Cyril Lefay (Impress), Patricia de Pablo Martinez (Quikprokuo), Aida Bononato Perez (Sanitas), Sonia Cenalmor Saez (Nemotec), Mario Del Pozo (Oracle), Elena Rivera (Dr. Riverita Dental Corp.), Sergi Olive Muntasell (Codent Healthcare Group), Carlos Adan (Schwarz IT), Sajad Ahmadi (Opal Dental Clinic), Fernando Sicilia (BQDC), Ernesto L. (Stella Mattina), Joan M. Molina (Fenin - YA EXISTE), Maria Belen Echazu Higa (SecretAligner)
+
+**Pagina 3** (13 contactos):
+Oliver Giraud (Angel Aligner), Borja del Corro Cervera (Optident Espana), Andres Zapata (Unexpected Productions), Laura H. (DONTE GROUP), Eduardo Crooke (Crooke Dental Clinics), Jose Antonio Portugal (Dolby), Jose Mauricio Mejia (Addentra Internet), Danny Pelayo Brito (EOMA), Alina Sazonova (Auditdata), Cesar Becerra Rodriguez (Vitaldent Group), Myriam Diaz (Dentsply Implants), Aitziber Iriarte del Casal (Proclinic Group), Nicolas Andres Anastasiadis (Clinica Dental Crooke & Laguna)
+
+**Pagina 4** (7 contactos):
+Teodora M. (TLM Consulting), Anna Tomas (PHC Europe), Alberto Cancelado Gonzalez (SAP/Oracle), Jorg Elbel (SIC invent Group), Wouter Slettenhaar (Chatpatient), Giorgio Mattos (Dental APSS), Olivier Grandjean (IPD Dental Gruppe Germany)
 
 ### Cambios a realizar
 
-#### 1. Migracion SQL para crear organizaciones y contactos
+#### 1. Crear organizaciones nuevas (~30)
 
-Una unica migracion que:
+Las siguientes organizaciones se crearan con su website:
+MILOBIONIC, Smysecret, Ringlab, Villa Sistemi Medicali, Instituto Medico Velazquez, Dentalea.net, Club Clinico, MVP DENTAL, Turo Park Clinics, KlinikMatch, Impress, Quikprokuo, Sanitas, Nemotec, Oracle, Dr. Riverita Dental Corp., Codent Healthcare Group, Schwarz IT, Opal Dental Clinic, BQDC, Stella Mattina, SecretAligner, Angel Aligner, Optident Espana, Unexpected Productions, Crooke Dental Clinics, Dolby, Addentra Internet, EOMA, Auditdata, Proclinic Group, TLM Consulting, PHC Europe, SIC invent Group, Chatpatient, Dental APSS, IPD Dental Gruppe Germany, SAP
 
-1. **Crea las organizaciones nuevas** que no existen (Vitaldent, Straumann Group, 3Shape, Henry Schein, etc.) con su `website` y el `created_by` del usuario existente
-2. **Inserta los ~93 contactos nuevos** con:
-   - `full_name`
-   - `organization_id` (vinculado a la organizacion correspondiente)
-   - `postal_address` (la direccion postal de la sede)
-   - `created_by` del usuario existente
-   - `status` = 'new_lead' (por defecto)
+Las organizaciones que ya existen se reutilizaran: Straumann Group, Fenin, DONTE GROUP, Vitaldent, Dentsply Sirona
 
-Los contactos cuya direccion es "No disponible publicamente" o "Requiere busqueda local" se insertaran con `postal_address = NULL`.
+#### 2. Insertar 39 contactos nuevos
 
-Los contactos que ya existen (Alicia Cervera del Rio, Angela Paredes) ya tienen su direccion postal actualizada, asi que no se tocan.
+Cada contacto se insertara con:
+- `full_name`
+- `organization_id` (vinculado a su empresa)
+- `postal_address` (la direccion del PDF, o NULL si dice "Requiere busqueda local" o similar)
+- `created_by` = '7e8a3437-8eb1-4065-8820-a2d4c1c78d2c'
+- `status` = 'new_lead'
 
-Se excluiran las entradas que son cuentas de organizacion o invalidas (como "bin zaman foundation", "Equiliqua Centro especializado", "flora luo raised floor").
+#### 3. Actualizar Joan M. Molina (ya existe)
 
-#### 2. Organizaciones a crear (nuevas)
+Se actualizara su `postal_address` con la direccion del PDF si no la tiene aun, y se vinculara a la organizacion Fenin existente.
 
-Se crearan unas ~60 organizaciones nuevas que no existen aun, como: Vitaldent, Straumann Group, Hospital San Carlos Grupo HLA, Dassault Systemes, TURBOdeco, WTC, Moonz Ortodoncia, DONTE GROUP, Laboratorios Indas, Fundacion IDIS, BeCool Publicidad, Henry Schein, etc.
+### Archivos a modificar
 
-Las organizaciones que ya existen (DONTE GROUP, Grupo Ceosa, W&H Med Iberica, Fenin, Dentsply Sirona) se reutilizaran por su ID existente.
-
-### Archivos a crear
-
-1. **Nueva migracion SQL** -- insertar organizaciones nuevas + insertar contactos nuevos con direcciones postales
+1. **Nueva migracion SQL** -- insertar organizaciones nuevas + insertar contactos nuevos con direcciones postales + actualizar Joan M. Molina
 
 ### Resultado esperado
-Despues de la migracion, la base de datos tendra ~155 contactos (62 existentes + ~93 nuevos) y las tarjetas mostraran la direccion postal con el icono MapPin que ya esta implementado en la UI.
+
+La base de datos pasara de ~62 contactos a ~101 contactos, todos con sus direcciones postales visibles en las tarjetas con el icono MapPin ya implementado.
+
