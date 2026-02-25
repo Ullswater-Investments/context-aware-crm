@@ -60,8 +60,16 @@ export default function SignatureManager({ open, onOpenChange, onSignaturesChang
       return;
     }
     setFile(f);
+    if (preview) URL.revokeObjectURL(preview);
     setPreview(URL.createObjectURL(f));
   };
+
+  // Cleanup object URL on unmount
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
 
   const upload = async () => {
     if (!user || !file || !name.trim()) {

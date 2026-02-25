@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,13 +80,17 @@ export default function EmailSettings() {
 
   useEffect(() => { fetchAccounts(); }, [user]);
 
-  // Auto-check all accounts on load
+  // Auto-check all accounts on load (once)
+  const hasAutoChecked = useRef(false);
   useEffect(() => {
-    if (accounts.length > 0) {
-      accounts.filter(a => a.is_active).forEach(a => {
-        supabase.functions.invoke("test-email-connection", { body: { account_id: a.id } })
-          .then(() => fetchAccounts());
-      });
+    if (accounts.length > 0 && !hasAutoChecked.current) {
+      hasAutoChecked.current = true;
+      const activeAccounts = accounts.filter(a => a.is_active);
+      Promise.all(
+        activeAccounts.map(a =>
+          supabase.functions.invoke("test-email-connection", { body: { account_id: a.id } })
+        )
+      ).then(() => fetchAccounts());
     }
   }, [accounts.length]);
 
@@ -142,6 +146,12 @@ export default function EmailSettings() {
       toast.error("La contraseña SMTP es obligatoria");
       return;
     }
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(form.email_address)) {
+      toast.error("Formato de email inválido");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -166,21 +176,29 @@ export default function EmailSettings() {
       if (isNew) {
         payload.created_by = user.id;
         if (!form.smtp_pass) { toast.error("Contraseña SMTP obligatoria"); setSaving(false); return; }
-        const { error } = await supabase.from("email_accounts").insert(payload as any);
+        const { data: insertedData, error } = await supabase.from("email_accounts").insert(payload as any).select("id").single();
         if (error) throw error;
         toast.success("Cuenta añadida correctamente");
+
+        // If set as default, unset others using the new account's ID
+        if (form.is_default && insertedData?.id) {
+          await supabase.from("email_accounts")
+            .update({ is_default: false } as any)
+            .neq("id", insertedData.id)
+            .eq("created_by", user.id);
+        }
       } else if (selectedId) {
         const { error } = await supabase.from("email_accounts").update(payload as any).eq("id", selectedId);
         if (error) throw error;
         toast.success("Cuenta actualizada");
-      }
 
-      // If set as default, unset others
-      if (form.is_default) {
-        await supabase.from("email_accounts")
-          .update({ is_default: false } as any)
-          .neq("id", selectedId || "")
-          .eq("created_by", user.id);
+        // If set as default, unset others
+        if (form.is_default) {
+          await supabase.from("email_accounts")
+            .update({ is_default: false } as any)
+            .neq("id", selectedId)
+            .eq("created_by", user.id);
+        }
       }
 
       await fetchAccounts();

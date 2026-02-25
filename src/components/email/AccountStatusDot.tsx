@@ -1,4 +1,4 @@
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type AccountStatus = "connected" | "error" | "expired" | "checking";
@@ -21,16 +21,18 @@ export default function AccountStatusDot({ status, errorMessage, size = "sm" }: 
   const dotSize = size === "sm" ? "w-2.5 h-2.5" : "w-3 h-3";
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className={cn("inline-block rounded-full shrink-0", dotSize, config.color, config.animation)} />
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-[240px]">
-        <p className="font-medium text-xs">{config.label}</p>
-        {errorMessage && status !== "connected" && (
-          <p className="text-xs text-muted-foreground mt-0.5 break-words">{errorMessage}</p>
-        )}
-      </TooltipContent>
-    </Tooltip>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={cn("inline-block rounded-full shrink-0", dotSize, config.color, config.animation)} />
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[240px]">
+          <p className="font-medium text-xs">{config.label}</p>
+          {errorMessage && status !== "connected" && (
+            <p className="text-xs text-muted-foreground mt-0.5 break-words">{errorMessage}</p>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

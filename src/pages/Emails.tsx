@@ -173,7 +173,7 @@ export default function Emails() {
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          <Button variant="outline" onClick={() => handleSync()} disabled={syncing} className="w-full">
+          <Button variant="outline" onClick={() => toast.info("Configura una cuenta de email en Ajustes Email para sincronizar.")} disabled={syncing} className="w-full">
             {syncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
             Sincronizar
           </Button>
