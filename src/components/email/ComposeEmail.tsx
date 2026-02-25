@@ -64,6 +64,23 @@ export default function ComposeEmail({
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
+      // Update contact status to "contacted" if applicable
+      if (contactId) {
+        const { data: currentContact } = await supabase
+          .from("contacts")
+          .select("status")
+          .eq("id", contactId)
+          .single();
+        
+        // Only update if status is "new_lead" (don't downgrade more advanced statuses)
+        if (currentContact && currentContact.status === "new_lead") {
+          await supabase
+            .from("contacts")
+            .update({ status: "contacted" } as any)
+            .eq("id", contactId);
+        }
+      }
+
       toast.success("Email enviado correctamente");
       handleOpenChange(false);
       onSent?.();
