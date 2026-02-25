@@ -131,14 +131,40 @@ export default function HunterSearch({ open, onOpenChange, defaultDomain = "", o
   };
 
   const generatedEmail = result?.pattern ? applyPattern(result.pattern, manualFirst, manualLast, result.domain) : null;
+  const [finderResult, setFinderResult] = useState<{ email: string; confidence: number } | null>(null);
+  const [finding, setFinding] = useState(false);
+
+  const findEmail = async () => {
+    if (!result || !manualFirst || !manualLast) return;
+    setFinding(true);
+    setFinderResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("hunter-domain-search", {
+        body: { domain: result.domain, action: "email-finder", first_name: manualFirst, last_name: manualLast },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      if (data?.email) {
+        setFinderResult({ email: data.email, confidence: data.confidence });
+      } else {
+        toast.info("No se encontró un email verificado. Puedes usar el patrón estimado.");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Error al buscar");
+    } finally {
+      setFinding(false);
+    }
+  };
+
+  const finalEmail = finderResult?.email || generatedEmail;
 
   const importManual = async () => {
-    if (!generatedEmail || !result) return;
+    if (!finalEmail || !result) return;
     setImporting(true);
     try {
       const { error } = await supabase.from("contacts").insert({
         full_name: `${manualFirst} ${manualLast}`.trim(),
-        email: generatedEmail,
+        email: finalEmail,
         company_domain: result.domain,
         organization_id: organizationId || null,
         created_by: user!.id,
@@ -148,6 +174,7 @@ export default function HunterSearch({ open, onOpenChange, defaultDomain = "", o
       toast.success("Contacto importado");
       setManualFirst("");
       setManualLast("");
+      setFinderResult(null);
       onImported?.();
     } catch (e: any) {
       toast.error(e.message || "Error al importar");
@@ -241,37 +268,57 @@ export default function HunterSearch({ open, onOpenChange, defaultDomain = "", o
               </div>
             )}
 
-            {/* Manual email generator */}
-            {result.pattern && (
-              <div className="border-t pt-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Wand2 className="w-4 h-4 text-primary" />
-                  <p className="text-sm font-medium">Generar email manualmente</p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  ¿No encuentras a tu contacto? Escribe su nombre y generaremos el email usando el patrón detectado.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs">Nombre</Label>
-                    <Input value={manualFirst} onChange={(e) => setManualFirst(e.target.value)} placeholder="Ana" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Apellido</Label>
-                    <Input value={manualLast} onChange={(e) => setManualLast(e.target.value)} placeholder="López" />
-                  </div>
-                </div>
-                {generatedEmail && (
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm">{generatedEmail}</div>
-                    <Button size="sm" onClick={importManual} disabled={importing}>
-                      {importing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                      Importar
-                    </Button>
-                  </div>
-                )}
+            {/* Manual email finder */}
+            <div className="border-t pt-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Wand2 className="w-4 h-4 text-primary" />
+                <p className="text-sm font-medium">Buscar email de una persona</p>
               </div>
-            )}
+              <p className="text-xs text-muted-foreground">
+                Escribe nombre y apellido. Verificaremos el email con Hunter.io{result.pattern ? " y usaremos el patrón como respaldo" : ""}.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Nombre</Label>
+                  <Input value={manualFirst} onChange={(e) => { setManualFirst(e.target.value); setFinderResult(null); }} placeholder="Ana" />
+                </div>
+                <div>
+                  <Label className="text-xs">Apellido</Label>
+                  <Input value={manualLast} onChange={(e) => { setManualLast(e.target.value); setFinderResult(null); }} placeholder="López" />
+                </div>
+              </div>
+              {manualFirst && manualLast && (
+                <div className="space-y-2">
+                  <Button variant="outline" size="sm" onClick={findEmail} disabled={finding} className="w-full">
+                    {finding ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Search className="w-3 h-3 mr-1" />}
+                    Verificar email con Hunter.io
+                  </Button>
+                  {finderResult && (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm flex items-center gap-2">
+                        {finderResult.email}
+                        {confidenceBadge(finderResult.confidence)}
+                      </div>
+                      <Button size="sm" onClick={importManual} disabled={importing}>
+                        {importing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                        Importar
+                      </Button>
+                    </div>
+                  )}
+                  {!finderResult && generatedEmail && (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 rounded-md bg-muted/50 px-3 py-2 font-mono text-sm text-muted-foreground">
+                        {generatedEmail} <span className="text-xs">(estimado por patrón)</span>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={importManual} disabled={importing}>
+                        {importing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                        Importar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </DialogContent>

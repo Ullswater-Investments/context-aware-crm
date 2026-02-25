@@ -36,7 +36,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { domain } = await req.json();
+    const body = await req.json();
+    const { domain, action, first_name, last_name } = body;
+
     if (!domain) {
       return new Response(JSON.stringify({ error: "Domain is required" }), {
         status: 400,
@@ -59,6 +61,36 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Email Finder mode
+    if (action === "email-finder") {
+      if (!first_name || !last_name) {
+        return new Response(JSON.stringify({ error: "first_name and last_name are required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const url = `https://api.hunter.io/v2/email-finder?domain=${encodeURIComponent(cleanDomain)}&first_name=${encodeURIComponent(first_name)}&last_name=${encodeURIComponent(last_name)}&api_key=${apiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.errors) {
+        return new Response(JSON.stringify({ error: data.errors[0]?.details || "Hunter API error" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({
+        email: data.data?.email || null,
+        confidence: data.data?.score || 0,
+        position: data.data?.position || null,
+        first_name: data.data?.first_name || first_name,
+        last_name: data.data?.last_name || last_name,
+        domain: cleanDomain,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Default: Domain Search mode
     const url = `https://api.hunter.io/v2/domain-search?domain=${encodeURIComponent(cleanDomain)}&api_key=${apiKey}`;
     const hunterRes = await fetch(url);
     const hunterData = await hunterRes.json();
