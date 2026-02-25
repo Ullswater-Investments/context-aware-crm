@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Building2, Search, Globe, Tag, Pencil, Trash2, Users } from "lucide-react";
+import { Plus, Building2, Search, Globe, Tag, Pencil, Trash2, Users, Mail } from "lucide-react";
+import HunterSearch from "@/components/contacts/HunterSearch";
 
 interface Org {
   id: string;
@@ -34,6 +35,8 @@ export default function Organizations() {
   const [deleteOrg, setDeleteOrg] = useState<Org | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [editForm, setEditForm] = useState(emptyForm);
+  const [hunterOpen, setHunterOpen] = useState(false);
+  const [hunterDomain, setHunterDomain] = useState("");
 
   const load = async () => {
     const { data } = await supabase.from("organizations").select("*").order("created_at", { ascending: false });
@@ -172,9 +175,19 @@ export default function Organizations() {
               )}
               <div className="flex items-center justify-between">
                 <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground capitalize">{o.org_type}</span>
-                {(contactCounts[o.id] || 0) > 0 && (
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground"><Users className="w-3 h-3" />{contactCounts[o.id]}</span>
-                )}
+                <div className="flex items-center gap-2">
+                  {o.website && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setHunterDomain(o.website!); setHunterOpen(true); }}
+                      className="flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <Mail className="w-3 h-3" />Buscar emails
+                    </button>
+                  )}
+                  {(contactCounts[o.id] || 0) > 0 && (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground"><Users className="w-3 h-3" />{contactCounts[o.id]}</span>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -209,6 +222,9 @@ export default function Organizations() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Hunter Search */}
+      <HunterSearch open={hunterOpen} onOpenChange={setHunterOpen} defaultDomain={hunterDomain} onImported={load} />
     </div>
   );
 }
