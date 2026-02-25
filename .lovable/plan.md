@@ -1,42 +1,44 @@
 
 
-## Plan: Configurar envio de emails via SMTP (Hostinger)
+## Revision: Errores detectados y mejoras sugeridas
 
-### Objetivo
+### ERRORES a corregir
 
-Reemplazar Resend por tu servidor SMTP de Hostinger (`smtp.hostinger.com`) para que los emails salgan desde tu direccion real `emilio.mulet@kitespaciodedatos.eu`.
+#### 1. Edge function `enrich-lusha-contact` - Metodo de autenticacion inexistente (CRITICO)
 
-### Paso 1: Almacenar credenciales SMTP como secretos
+La funcion usa `supabase.auth.getClaims(token)` (linea 37) que **no existe** en supabase-js v2. Esto hace que la funcion falle siempre con un error.
 
-Se guardaran de forma segura las siguientes credenciales:
+**Solucion**: Reemplazar por `supabase.auth.getUser()` siguiendo el patron ya usado en `send-email`.
 
-| Secreto | Valor |
-|---|---|
-| `SMTP_HOST` | smtp.hostinger.com |
-| `SMTP_PORT` | 465 |
-| `SMTP_USER` | emilio.mulet@kitespaciodedatos.eu |
-| `SMTP_PASS` | (la contrasena proporcionada) |
+#### 2. `Emails.tsx` - Query de conteo descarga TODAS las filas (BUG de rendimiento)
 
-### Paso 2: Modificar `supabase/functions/send-email/index.ts`
+La query de conteo (linea 54-65) usa `{ head: false }` y descarga todas las filas para contarlas con `.length` en JavaScript. Esto:
+- Descarga datos innecesarios
+- Se rompe al superar 1000 emails (limite por defecto de la base de datos)
 
-Reemplazar la integracion con Resend por nodemailer con SMTP:
+**Solucion**: Usar 3 queries ligeras con `{ count: "exact", head: true }` y filtro por status, en lugar de descargar filas.
 
-- Importar `npm:nodemailer` (compatible con Deno)
-- Crear transporter SMTP con SSL en puerto 465
-- Enviar email con soporte para: to, cc, subject, html, text, adjuntos
-- El remitente por defecto sera `emilio.mulet@kitespaciodedatos.eu`
-- Mantener toda la logica existente de: autenticacion, descarga de adjuntos, logging en `email_logs`, guardado de `email_attachments`
+#### 3. Firma de email con URL temporal de 1 hora (BUG funcional)
 
-### Paso 3: Actualizar el remitente por defecto en `ComposeEmail.tsx`
+Las firmas se insertan en el HTML del email como URLs firmadas que expiran en 1 hora. Los destinatarios que abran el email despues no veran la firma.
 
-Cambiar el `from` por defecto de `"EuroCRM <onboarding@resend.dev>"` a `"EuroCRM <emilio.mulet@kitespaciodedatos.eu>"`.
+**Solucion**: El bucket `email-signatures` ya es publico. Usar `getPublicUrl()` en lugar de `createSignedUrl()` para generar URLs permanentes.
+
+### MEJORAS sugeridas
+
+#### 4. Renombrar columna `resend_id` a `message_id`
+
+Ahora que se usa SMTP en lugar de Resend, el nombre `resend_id` es confuso. Renombrar a `message_id` para claridad.
+
+#### 5. Eliminar `as any` en actualizacion de contacto
+
+En `ComposeEmail.tsx` linea 172, hay un cast `.update({ status: "contacted" } as any)`. Esto sugiere un problema de tipos que se debe resolver correctamente.
 
 ### Archivos a modificar
 
-1. **`supabase/functions/send-email/index.ts`** - Reemplazar Resend por SMTP/nodemailer
-2. **`src/components/email/ComposeEmail.tsx`** - Actualizar remitente por defecto
-
-### Nota de seguridad
-
-Las credenciales se almacenaran como secretos cifrados en el backend, nunca en el codigo fuente.
+1. **`supabase/functions/enrich-lusha-contact/index.ts`** - Reemplazar `getClaims` por `getUser()`
+2. **`src/pages/Emails.tsx`** - Optimizar query de conteo con `head: true`
+3. **`src/components/email/ComposeEmail.tsx`** - Usar `getPublicUrl()` para firmas, eliminar `as any`
+4. **Nueva migracion SQL** - Renombrar `resend_id` a `message_id` en `email_logs`
+5. **`supabase/functions/send-email/index.ts`** - Actualizar referencia de `resend_id` a `message_id`
 
