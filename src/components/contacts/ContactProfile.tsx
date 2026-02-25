@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe, MapPin } from "lucide-react";
+import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe, MapPin, FileText, Download, Upload } from "lucide-react";
 import ComposeEmail from "@/components/email/ComposeEmail";
 import { Contact } from "@/types/contact";
 
@@ -64,7 +64,10 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const [composeOpen, setComposeOpen] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editData, setEditData] = useState({ full_name: "", email: "", phone: "", position: "", linkedin_url: "", company_domain: "", postal_address: "" });
+  const [editData, setEditData] = useState({ full_name: "", email: "", phone: "", position: "", linkedin_url: "", company_domain: "", postal_address: "", work_email: "", personal_email: "", mobile_phone: "", work_phone: "" });
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [enrichingHunter, setEnrichingHunter] = useState(false);
@@ -81,11 +84,64 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
     setLoadingNotes(false);
   };
 
+  const loadDocuments = async (contactId: string) => {
+    setLoadingDocs(true);
+    const { data } = await supabase
+      .from("documents")
+      .select("*")
+      .eq("contact_id", contactId)
+      .order("created_at", { ascending: false });
+    setDocuments(data || []);
+    setLoadingDocs(false);
+  };
+
+  const uploadDocument = async (file: File) => {
+    if (!contact || !user) return;
+    setUploadingDoc(true);
+    try {
+      const filePath = `${user.id}/${contact.id}/${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage.from("documents").upload(filePath, file);
+      if (uploadError) throw uploadError;
+      const { error: insertError } = await supabase.from("documents").insert({
+        name: file.name,
+        file_path: filePath,
+        file_type: file.type || null,
+        file_size: file.size,
+        contact_id: contact.id,
+        created_by: user.id,
+      } as any);
+      if (insertError) throw insertError;
+      toast.success("Documento subido");
+      loadDocuments(contact.id);
+    } catch (err: any) {
+      toast.error(err.message || "Error al subir documento");
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  const downloadDocument = async (doc: any) => {
+    const { data, error } = await supabase.storage.from("documents").download(doc.file_path);
+    if (error) { toast.error("Error al descargar"); return; }
+    const url = URL.createObjectURL(data);
+    const a = document.createElement("a");
+    a.href = url; a.download = doc.name; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const deleteDocument = async (doc: any) => {
+    await supabase.storage.from("documents").remove([doc.file_path]);
+    const { error } = await supabase.from("documents").delete().eq("id", doc.id);
+    if (error) toast.error(error.message);
+    else { toast.success("Documento eliminado"); if (contact) loadDocuments(contact.id); }
+  };
+
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen && contact) {
       setStatus(contact.status);
       setEditing(false);
       loadNotes(contact.id);
+      loadDocuments(contact.id);
     }
     onOpenChange(isOpen);
   };
@@ -100,6 +156,10 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       linkedin_url: contact.linkedin_url || "",
       company_domain: contact.company_domain || "",
       postal_address: contact.postal_address || "",
+      work_email: contact.work_email || "",
+      personal_email: contact.personal_email || "",
+      mobile_phone: contact.mobile_phone || "",
+      work_phone: contact.work_phone || "",
     });
     setEditing(true);
   };
@@ -114,6 +174,10 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       linkedin_url: editData.linkedin_url || null,
       company_domain: editData.company_domain || null,
       postal_address: editData.postal_address || null,
+      work_email: editData.work_email || null,
+      personal_email: editData.personal_email || null,
+      mobile_phone: editData.mobile_phone || null,
+      work_phone: editData.work_phone || null,
     } as any).eq("id", contact.id);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto actualizado");
@@ -311,12 +375,26 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
               {/* Contact Info - Editable */}
               {editing ? (
                 <div className="space-y-3">
-                  <div><Label>Nombre *</Label><Input value={editData.full_name} onChange={(e) => setEditData({ ...editData, full_name: e.target.value })} /></div>
-                  <div><Label>Email</Label><Input type="email" value={editData.email} onChange={(e) => setEditData({ ...editData, email: e.target.value })} /></div>
-                  <div><Label>Teléfono</Label><Input value={editData.phone} onChange={(e) => setEditData({ ...editData, phone: e.target.value })} /></div>
-                  <div><Label>Cargo</Label><Input value={editData.position} onChange={(e) => setEditData({ ...editData, position: e.target.value })} /></div>
-                  <div><Label>LinkedIn URL</Label><Input value={editData.linkedin_url} onChange={(e) => setEditData({ ...editData, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
-                  <div><Label>Dominio empresa</Label><Input value={editData.company_domain} onChange={(e) => setEditData({ ...editData, company_domain: e.target.value })} placeholder="empresa.com" /></div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Nombre *</Label><Input value={editData.full_name} onChange={(e) => setEditData({ ...editData, full_name: e.target.value })} /></div>
+                    <div><Label>Cargo</Label><Input value={editData.position} onChange={(e) => setEditData({ ...editData, position: e.target.value })} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Email principal</Label><Input type="email" value={editData.email} onChange={(e) => setEditData({ ...editData, email: e.target.value })} /></div>
+                    <div><Label>Email corporativo</Label><Input type="email" value={editData.work_email} onChange={(e) => setEditData({ ...editData, work_email: e.target.value })} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Email personal</Label><Input type="email" value={editData.personal_email} onChange={(e) => setEditData({ ...editData, personal_email: e.target.value })} /></div>
+                    <div><Label>Teléfono</Label><Input value={editData.phone} onChange={(e) => setEditData({ ...editData, phone: e.target.value })} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Móvil</Label><Input value={editData.mobile_phone} onChange={(e) => setEditData({ ...editData, mobile_phone: e.target.value })} /></div>
+                    <div><Label>Teléfono trabajo</Label><Input value={editData.work_phone} onChange={(e) => setEditData({ ...editData, work_phone: e.target.value })} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>LinkedIn URL</Label><Input value={editData.linkedin_url} onChange={(e) => setEditData({ ...editData, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
+                    <div><Label>Dominio empresa</Label><Input value={editData.company_domain} onChange={(e) => setEditData({ ...editData, company_domain: e.target.value })} placeholder="empresa.com" /></div>
+                  </div>
                   <div><Label>Dirección postal</Label><Input value={editData.postal_address} onChange={(e) => setEditData({ ...editData, postal_address: e.target.value })} placeholder="C/ Ejemplo, 1, 28001 Madrid" /></div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={saveEdit} disabled={!editData.full_name}><Save className="w-3.5 h-3.5 mr-1" />Guardar</Button>
@@ -486,6 +564,34 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                     </div>
                   ))}
                   {notes.length === 0 && !loadingNotes && <p className="text-xs text-muted-foreground">Sin notas todavía</p>}
+                </div>
+              </div>
+
+              {/* Documents */}
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold flex items-center gap-1"><FileText className="w-3.5 h-3.5" />Documentos adjuntos</Label>
+                <div>
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-input bg-background hover:bg-accent cursor-pointer transition-colors">
+                    {uploadingDoc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                    Subir documento
+                    <input type="file" className="hidden" onChange={(e) => { if (e.target.files?.[0]) uploadDocument(e.target.files[0]); e.target.value = ""; }} disabled={uploadingDoc} />
+                  </label>
+                </div>
+                <div className="space-y-1.5">
+                  {documents.map((doc) => (
+                    <div key={doc.id} className="flex items-center justify-between border rounded-lg px-3 py-2 text-sm group">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="truncate">{doc.name}</span>
+                        {doc.file_type && <span className="text-xs text-muted-foreground shrink-0">{doc.file_type.split("/")[1]?.toUpperCase()}</span>}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => downloadDocument(doc)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"><Download className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => deleteDocument(doc)} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
+                      </div>
+                    </div>
+                  ))}
+                  {documents.length === 0 && !loadingDocs && <p className="text-xs text-muted-foreground">Sin documentos adjuntos</p>}
                 </div>
               </div>
             </div>
