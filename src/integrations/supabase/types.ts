@@ -255,6 +255,75 @@ export type Database = {
           },
         ]
       }
+      email_accounts: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          display_name: string | null
+          email_address: string
+          error_message: string | null
+          id: string
+          imap_host: string | null
+          imap_pass: string | null
+          imap_port: number | null
+          imap_user: string | null
+          is_active: boolean | null
+          is_default: boolean | null
+          last_check: string | null
+          provider: string | null
+          smtp_host: string
+          smtp_pass: string
+          smtp_port: number
+          smtp_secure: boolean | null
+          smtp_user: string
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          display_name?: string | null
+          email_address: string
+          error_message?: string | null
+          id?: string
+          imap_host?: string | null
+          imap_pass?: string | null
+          imap_port?: number | null
+          imap_user?: string | null
+          is_active?: boolean | null
+          is_default?: boolean | null
+          last_check?: string | null
+          provider?: string | null
+          smtp_host: string
+          smtp_pass: string
+          smtp_port?: number
+          smtp_secure?: boolean | null
+          smtp_user: string
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          display_name?: string | null
+          email_address?: string
+          error_message?: string | null
+          id?: string
+          imap_host?: string | null
+          imap_pass?: string | null
+          imap_port?: number | null
+          imap_user?: string | null
+          is_active?: boolean | null
+          is_default?: boolean | null
+          last_check?: string | null
+          provider?: string | null
+          smtp_host?: string
+          smtp_pass?: string
+          smtp_port?: number
+          smtp_secure?: boolean | null
+          smtp_user?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
       email_attachments: {
         Row: {
           created_at: string
