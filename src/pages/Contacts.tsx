@@ -10,11 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2, MapPin } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2, MapPin, Zap } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
 import HunterSearch from "@/components/contacts/HunterSearch";
 import ComposeEmail from "@/components/email/ComposeEmail";
+import { Progress } from "@/components/ui/progress";
 import { Contact } from "@/types/contact";
 
 const PIPELINE_COLUMNS = [
@@ -68,6 +69,8 @@ export default function Contacts() {
   const [enrichingApolloId, setEnrichingApolloId] = useState<string | null>(null);
   const [enrichingLushaId, setEnrichingLushaId] = useState<string | null>(null);
   const [emailContact, setEmailContact] = useState<{ id: string; email: string } | null>(null);
+  const [bulkEnriching, setBulkEnriching] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ processed: 0, total: 0 });
 
   const enrichWithLusha = async (c: Contact) => {
     setEnrichingLushaId(c.id);
@@ -237,12 +240,47 @@ export default function Contacts() {
         return score(a) - score(b);
       });
 
+  const pendingCount = contacts.filter(c => hasMissingData(c)).length;
+
+  const bulkEnrichAll = async () => {
+    setBulkEnriching(true);
+    setBulkProgress({ processed: 0, total: pendingCount });
+    let lastId = "";
+    let totalProcessed = 0;
+    try {
+      while (true) {
+        const { data, error } = await supabase.functions.invoke("bulk-enrich", {
+          body: { last_id: lastId, services: ["hunter", "apollo", "lusha"] },
+        });
+        if (error) throw error;
+        totalProcessed += data.processed || 0;
+        setBulkProgress({ processed: totalProcessed, total: pendingCount });
+        if (data.done || !data.last_id) break;
+        lastId = data.last_id;
+        load();
+      }
+      toast.success(`Enriquecimiento completado: ${totalProcessed} contactos procesados`);
+    } catch (err: any) {
+      toast.error(err.message || "Error en enriquecimiento masivo");
+    } finally {
+      setBulkEnriching(false);
+      load();
+    }
+  };
+
   return (
     <div className="p-6 max-w-full mx-auto space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-display font-bold">Contactos</h1>
-          <p className="text-muted-foreground">Gestiona personas y embudo de ventas</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h1 className="text-2xl font-display font-bold">Contactos</h1>
+            <p className="text-muted-foreground">Gestiona personas y embudo de ventas</p>
+          </div>
+          {pendingCount > 0 && (
+            <Badge variant="destructive" className="text-xs">
+              {pendingCount} sin datos
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <div className="border rounded-lg flex">
@@ -263,6 +301,12 @@ export default function Contacts() {
             <Globe className="w-4 h-4 mr-2" />
             Hunter.io
           </Button>
+          {pendingCount > 0 && (
+            <Button variant="outline" onClick={bulkEnrichAll} disabled={bulkEnriching}>
+              {bulkEnriching ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2" />}
+              Enriquecer todos
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setImporterOpen(true)}>
             <FileSpreadsheet className="w-4 h-4 mr-2" />
             Importar
@@ -339,6 +383,16 @@ export default function Contacts() {
           </Button>
         )}
       </div>
+
+      {bulkEnriching && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>Enriqueciendo contactos...</span>
+            <span>{bulkProgress.processed} / {bulkProgress.total}</span>
+          </div>
+          <Progress value={bulkProgress.total > 0 ? (bulkProgress.processed / bulkProgress.total) * 100 : 0} />
+        </div>
+      )}
 
       {view === "kanban" ? (
         /* Kanban View */
@@ -454,7 +508,7 @@ export default function Contacts() {
                                   Hunter
                                 </button>
                               )}
-                              {c.company_domain && (c.apollo_status === "pending" || c.apollo_status === "not_found") && (
+                              {(c.company_domain || c.linkedin_url) && (c.apollo_status === "pending" || c.apollo_status === "not_found") && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }}
                                   disabled={enrichingApolloId === c.id}
@@ -586,7 +640,7 @@ export default function Contacts() {
                         Hunter
                       </button>
                     )}
-                    {c.company_domain && (c.apollo_status === "pending" || c.apollo_status === "not_found") && (
+                    {(c.company_domain || c.linkedin_url) && (c.apollo_status === "pending" || c.apollo_status === "not_found") && (
                       <button
                         onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }}
                         disabled={enrichingApolloId === c.id}
