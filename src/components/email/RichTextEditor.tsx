@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
@@ -137,6 +137,13 @@ export default function RichTextEditor({
       },
     },
   });
+
+  // Sync external content changes (e.g. form reset)
+  useEffect(() => {
+    if (editor && content !== editor.getHTML() && content === "") {
+      editor.commands.setContent(content);
+    }
+  }, [content, editor]);
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {

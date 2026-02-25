@@ -15,6 +15,9 @@ interface ComposeEmailProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultTo?: string;
+  defaultCc?: string;
+  defaultSubject?: string;
+  defaultBody?: string;
   contactId?: string;
   organizationId?: string;
   projectId?: string;
@@ -28,6 +31,9 @@ export default function ComposeEmail({
   open,
   onOpenChange,
   defaultTo = "",
+  defaultCc = "",
+  defaultSubject = "",
+  defaultBody = "",
   contactId,
   organizationId,
   projectId,
@@ -36,6 +42,7 @@ export default function ComposeEmail({
   const { user } = useAuth();
   const [to, setTo] = useState(defaultTo);
   const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -61,9 +68,10 @@ export default function ComposeEmail({
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen) {
       setTo(defaultTo);
-      setCc("");
-      setSubject("");
-      setBody("");
+      setCc(defaultCc);
+      setBcc("");
+      setSubject(defaultSubject);
+      setBody(defaultBody);
       setAttachments([]);
       fetchSignatures();
     }
@@ -146,6 +154,7 @@ export default function ComposeEmail({
         body: {
           to,
           cc: cc.trim() || undefined,
+          bcc: bcc.trim() || undefined,
           subject,
           html: htmlBody,
           text: plainText,
@@ -226,6 +235,15 @@ export default function ComposeEmail({
                 placeholder="email1@ejemplo.com, email2@ejemplo.com"
                 value={cc}
                 onChange={(e) => setCc(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>BCC (copia oculta)</Label>
+              <Input
+                type="text"
+                placeholder="email1@ejemplo.com, email2@ejemplo.com"
+                value={bcc}
+                onChange={(e) => setBcc(e.target.value)}
               />
             </div>
             <div>
