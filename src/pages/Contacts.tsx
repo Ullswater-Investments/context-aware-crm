@@ -66,7 +66,37 @@ export default function Contacts() {
   const [hunterOpen, setHunterOpen] = useState(false);
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
   const [enrichingApolloId, setEnrichingApolloId] = useState<string | null>(null);
+  const [enrichingLushaId, setEnrichingLushaId] = useState<string | null>(null);
   const [emailContact, setEmailContact] = useState<{ id: string; email: string } | null>(null);
+
+  const enrichWithLusha = async (c: Contact) => {
+    setEnrichingLushaId(c.id);
+    try {
+      const nameParts = c.full_name.trim().split(/\s+/);
+      const firstName = nameParts[0] || "";
+      const lastName = nameParts.slice(1).join(" ") || "";
+      const { data, error } = await supabase.functions.invoke("enrich-lusha-contact", {
+        body: {
+          contact_id: c.id,
+          first_name: firstName,
+          last_name: lastName,
+          company_name: c.organizations?.name || "",
+          linkedin_url: c.linkedin_url || "",
+        },
+      });
+      if (error) throw error;
+      if (data?.status === "enriched") {
+        toast.success("Contacto enriquecido con Lusha");
+      } else {
+        toast.info("Lusha no encontró datos adicionales");
+      }
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Error al enriquecer con Lusha");
+    } finally {
+      setEnrichingLushaId(null);
+    }
+  };
 
   const enrichWithApollo = async (contactId: string, fullName: string, companyDomain?: string | null, email?: string | null, linkedinUrl?: string | null) => {
     setEnrichingApolloId(contactId);
@@ -394,7 +424,7 @@ export default function Contacts() {
                                 <Mail className="w-3 h-3" />Corp: {c.work_email}
                               </p>
                             )}
-                            {c.mobile_phone && c.mobile_phone !== (c.phone || c.mobile_phone || c.work_phone) && (
+                            {c.mobile_phone && c.phone && c.mobile_phone !== c.phone && (
                               <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
                                 <Phone className="w-3 h-3" />Móvil: {c.mobile_phone}
                               </p>
@@ -436,10 +466,12 @@ export default function Contacts() {
                               )}
                               {(c.lusha_status === "pending" || c.lusha_status === "not_found") && (
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); /* Lusha from kanban - open profile */ openProfile(c); }}
-                                  className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors flex items-center gap-0.5 shrink-0"
+                                  onClick={(e) => { e.stopPropagation(); enrichWithLusha(c); }}
+                                  disabled={enrichingLushaId === c.id}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0"
                                 >
-                                  <Sparkles className="w-3 h-3" />Lusha
+                                  {enrichingLushaId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                  Lusha
                                 </button>
                               )}
                             </div>
@@ -527,7 +559,7 @@ export default function Contacts() {
                       <Mail className="w-3.5 h-3.5" />Corp: {c.work_email}
                     </div>
                   )}
-                  {c.mobile_phone && c.mobile_phone !== (c.phone || c.mobile_phone || c.work_phone) && (
+                  {c.mobile_phone && c.phone && c.mobile_phone !== c.phone && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Phone className="w-3.5 h-3.5" />Móvil: {c.mobile_phone}
                     </div>
@@ -566,10 +598,12 @@ export default function Contacts() {
                     )}
                     {(c.lusha_status === "pending" || c.lusha_status === "not_found") && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); openProfile(c); }}
-                        className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors flex items-center gap-1 shrink-0"
+                        onClick={(e) => { e.stopPropagation(); enrichWithLusha(c); }}
+                        disabled={enrichingLushaId === c.id}
+                        className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
                       >
-                        <Sparkles className="w-3 h-3" />Lusha
+                        {enrichingLushaId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                        Lusha
                       </button>
                     )}
                   </div>
