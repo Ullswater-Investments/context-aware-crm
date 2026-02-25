@@ -4,11 +4,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Send, Loader2, Paperclip, X, Settings2 } from "lucide-react";
+import RichTextEditor from "./RichTextEditor";
 import SignatureManager, { type Signature } from "./SignatureManager";
 
 interface ComposeEmailProps {
@@ -134,10 +134,13 @@ export default function ComposeEmail({
       }
 
       // Build HTML with signature
-      let htmlBody = `<div style="font-family: sans-serif; line-height: 1.6;">${body.replace(/\n/g, "<br/>")}</div>`;
+      let htmlBody = `<div style="font-family: sans-serif; line-height: 1.6;">${body}</div>`;
       if (signatureImageUrl) {
         htmlBody += `<br/><div style="margin-top: 16px;"><img src="${signatureImageUrl}" alt="Firma" style="max-width: 400px; height: auto;" /></div>`;
       }
+
+      // Generate plain text fallback
+      const plainText = body.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim();
 
       const { data, error } = await supabase.functions.invoke("send-email", {
         body: {
@@ -145,7 +148,7 @@ export default function ComposeEmail({
           cc: cc.trim() || undefined,
           subject,
           html: htmlBody,
-          text: body,
+          text: plainText,
           contact_id: contactId,
           organization_id: organizationId,
           project_id: projectId,
@@ -235,12 +238,14 @@ export default function ComposeEmail({
             </div>
             <div>
               <Label>Mensaje</Label>
-              <Textarea
-                placeholder="Escribe tu mensaje aquí..."
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                className="min-h-[140px]"
-              />
+              {user && (
+                <RichTextEditor
+                  content={body}
+                  onChange={setBody}
+                  userId={user.id}
+                  placeholder="Escribe tu mensaje aquí... (puedes pegar imágenes con Ctrl+V)"
+                />
+              )}
             </div>
 
             {/* Attachments */}
