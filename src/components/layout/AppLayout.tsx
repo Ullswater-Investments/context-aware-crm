@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
   Bot, LayoutDashboard, Building2, Users, FolderKanban,
-  FileText, CheckSquare, LogOut, Menu, X, Moon, Sun } from
+  FileText, CheckSquare, Mail, LogOut, Menu, X, Moon, Sun } from
 "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -15,7 +15,8 @@ const navItems = [
 { to: "/contacts", icon: Users, label: "Contactos" },
 { to: "/projects", icon: FolderKanban, label: "Proyectos" },
 { to: "/documents", icon: FileText, label: "Documentos" },
-{ to: "/tasks", icon: CheckSquare, label: "Tareas" }];
+{ to: "/tasks", icon: CheckSquare, label: "Tareas" },
+{ to: "/emails", icon: Mail, label: "Emails" }];
 
 
 export default function AppLayout({ children }: {children: ReactNode;}) {

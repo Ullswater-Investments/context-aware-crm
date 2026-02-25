@@ -14,6 +14,7 @@ import Contacts from "./pages/Contacts";
 import Projects from "./pages/Projects";
 import Documents from "./pages/Documents";
 import Tasks from "./pages/Tasks";
+import Emails from "./pages/Emails";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -35,6 +36,7 @@ function AppRoutes() {
                 <Route path="/projects" element={<Projects />} />
                 <Route path="/documents" element={<Documents />} />
                 <Route path="/tasks" element={<Tasks />} />
+                <Route path="/emails" element={<Emails />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </AppLayout>
