@@ -61,7 +61,36 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Email Finder mode
+    // Company Finder mode
+    if (action === "company-find") {
+      const url = `https://api.hunter.io/v2/companies/find?domain=${encodeURIComponent(cleanDomain)}&api_key=${apiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.errors) {
+        return new Response(JSON.stringify({ error: data.errors[0]?.details || "Hunter API error" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const c = data.data || {};
+      return new Response(JSON.stringify({
+        name: c.name || null,
+        domain: c.domain || cleanDomain,
+        industry: c.industry || null,
+        country: c.country || null,
+        state: c.state || null,
+        city: c.city || null,
+        size: c.size || null,
+        linkedin_url: c.linkedin_url || null,
+        twitter_handle: c.twitter_handle || null,
+        description: c.description || null,
+        founded: c.founded || null,
+        logo_url: c.logo_url || null,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Email Verifier mode
     if (action === "email-verifier") {
       if (!email) {
