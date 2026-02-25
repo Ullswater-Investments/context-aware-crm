@@ -21,11 +21,16 @@ type FolderCounts = {
   [accountId: string]: { inbox: number; sent: number };
 };
 
+type UnreadCounts = {
+  [accountId: string]: number;
+};
+
 interface EmailSidebarProps {
   accounts: EmailAccount[];
   selectedAccountId: string;
   selectedFolder: string;
   folderCounts: FolderCounts;
+  unreadCounts: UnreadCounts;
   syncing: boolean;
   onFolderSelect: (accountId: string, folder: string) => void;
   onCompose: () => void;
@@ -61,6 +66,7 @@ export default function EmailSidebar({
   selectedAccountId,
   selectedFolder,
   folderCounts,
+  unreadCounts,
   syncing,
   onFolderSelect,
   onCompose,
@@ -110,6 +116,7 @@ export default function EmailSidebar({
         >
           {accounts.map((acc, idx) => {
             const counts = folderCounts[acc.id] || { inbox: 0, sent: 0 };
+            const unread = unreadCounts[acc.id] || 0;
             const colorDot = ACCOUNT_COLORS[idx % ACCOUNT_COLORS.length];
 
             return (
@@ -133,7 +140,14 @@ export default function EmailSidebar({
                     >
                       <Inbox className="w-3.5 h-3.5" />
                       Inbox
-                      <span className="ml-auto text-xs opacity-70">{counts.inbox}</span>
+                      <span className="ml-auto flex items-center gap-1.5">
+                        {unread > 0 && (
+                          <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                            {unread > 99 ? '99+' : unread}
+                          </span>
+                        )}
+                        <span className="text-xs opacity-70">{counts.inbox}</span>
+                      </span>
                     </button>
                     <button
                       onClick={() => onFolderSelect(acc.id, "sent")}

@@ -378,6 +378,7 @@ export type Database = {
           from_email: string
           id: string
           imap_uid: string | null
+          is_read: boolean
           message_id: string | null
           organization_id: string | null
           project_id: string | null
@@ -398,6 +399,7 @@ export type Database = {
           from_email: string
           id?: string
           imap_uid?: string | null
+          is_read?: boolean
           message_id?: string | null
           organization_id?: string | null
           project_id?: string | null
@@ -418,6 +420,7 @@ export type Database = {
           from_email?: string
           id?: string
           imap_uid?: string | null
+          is_read?: boolean
           message_id?: string | null
           organization_id?: string | null
           project_id?: string | null
