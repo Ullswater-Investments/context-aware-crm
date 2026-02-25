@@ -332,7 +332,12 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                     <div className="flex items-center gap-2 text-sm"><Briefcase className="w-4 h-4 text-muted-foreground" />{contact.position}</div>
                   )}
                   {contact.email && (
-                    <div className="flex items-center gap-2 text-sm"><Mail className="w-4 h-4 text-muted-foreground" />{contact.email}</div>
+                    <button
+                      onClick={() => setComposeOpen(true)}
+                      className="flex items-center gap-2 text-sm hover:text-primary transition-colors"
+                    >
+                      <Mail className="w-4 h-4 text-muted-foreground" />{contact.email}
+                    </button>
                   )}
                   {contact.phone && (
                     <div className="flex items-center gap-2 text-sm"><Phone className="w-4 h-4 text-muted-foreground" />{contact.phone}</div>

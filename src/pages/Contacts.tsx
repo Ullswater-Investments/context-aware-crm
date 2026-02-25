@@ -14,6 +14,7 @@ import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVert
 import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
 import HunterSearch from "@/components/contacts/HunterSearch";
+import ComposeEmail from "@/components/email/ComposeEmail";
 import { Contact } from "@/types/contact";
 
 const PIPELINE_COLUMNS = [
@@ -65,6 +66,7 @@ export default function Contacts() {
   const [hunterOpen, setHunterOpen] = useState(false);
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
   const [enrichingApolloId, setEnrichingApolloId] = useState<string | null>(null);
+  const [emailContact, setEmailContact] = useState<{ id: string; email: string } | null>(null);
 
   const enrichWithApollo = async (contactId: string, fullName: string, companyDomain?: string | null, email?: string | null, linkedinUrl?: string | null) => {
     setEnrichingApolloId(contactId);
@@ -360,9 +362,12 @@ export default function Contacts() {
                               </p>
                             )}
                             {c.email && (
-                              <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
+                                className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5 hover:text-primary transition-colors"
+                              >
                                 <Mail className="w-3 h-3" />{c.email}
-                              </p>
+                              </button>
                             )}
                             {(c.phone || c.mobile_phone || c.work_phone) && (
                               <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
@@ -467,7 +472,14 @@ export default function Contacts() {
                 </CardHeader>
                 <CardContent className="space-y-1.5">
                   {c.position && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Briefcase className="w-3.5 h-3.5" />{c.position}</div>}
-                  {c.email && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Mail className="w-3.5 h-3.5" />{c.email}</div>}
+                  {c.email && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
+                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      <Mail className="w-3.5 h-3.5" />{c.email}
+                    </button>
+                  )}
                   {(c.phone || c.mobile_phone || c.work_phone) && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Phone className="w-3.5 h-3.5" />{c.phone || c.mobile_phone || c.work_phone}
@@ -552,6 +564,17 @@ export default function Contacts() {
         onOpenChange={setImporterOpen}
         onComplete={load}
       />
+
+      {/* Quick Compose Email from cards */}
+      {emailContact && (
+        <ComposeEmail
+          open={!!emailContact}
+          onOpenChange={(open) => { if (!open) setEmailContact(null); }}
+          defaultTo={emailContact.email}
+          contactId={emailContact.id}
+          onSent={load}
+        />
+      )}
 
       {/* Contact Profile Dialog */}
       <ContactProfile
