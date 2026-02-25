@@ -1,53 +1,35 @@
 
 
-## Plan: Importar 48 contactos de Hunter con soporte para contactos sin nombre
+## Plan: Añadir campo CC al compositor de emails
 
-### Problemas detectados en el CSV
+### Cambios necesarios
 
-El archivo `48-leads-2026-02-25.csv` es una exportacion de Hunter.io con 48 filas. Hay dos problemas:
+#### 1. `src/components/email/ComposeEmail.tsx` - Añadir campo CC en el formulario
 
-#### 1. ~15 contactos sin nombre personal (CRITICO)
+- Añadir estado `cc` (string)
+- Añadir un campo Input entre "Para" y "Asunto" con label "CC" y placeholder "email1@ejemplo.com, email2@ejemplo.com"
+- Pasar `cc` al invoke de la edge function
+- El campo CC es opcional, acepta multiples emails separados por comas
 
-Filas como la 15, 17-21, 23-25, 27-28, 31-32, 34-35 tienen las columnas "First name", "Last name" y "Full name" vacias. Solo tienen empresa + email. El importador actual los descarta en la linea 172:
+#### 2. `supabase/functions/send-email/index.ts` - Enviar con CC via Resend
 
-```text
-if (!full_name) return null;  // <-- estos 15 contactos se pierden
-```
+- Extraer `cc` del body del request
+- Añadir `cc` al objeto `resendBody` si tiene valor (como array de emails)
+- Guardar los CC en el campo existente del log o añadir al registro
 
-**Solucion**: Agregar fallback para contactos sin nombre:
-1. Si hay empresa, usar el nombre de la empresa como nombre del contacto (ej: "ASPACE Zaragoza")
-2. Si no hay empresa, extraer nombre del prefijo del email (ej: "carolinalopez@..." -> "Carolinalopez")
+#### 3. Migración de base de datos - Añadir columna `cc_emails` a `email_logs`
 
-#### 2. Patrones de columna que faltan para Hunter
+- `ALTER TABLE email_logs ADD COLUMN cc_emails text;`
+- Guardar los emails en CC para que queden registrados en el historial
 
-| Columna CSV | Estado actual | Solucion |
-|---|---|---|
-| `Full name` (con espacio) | No reconocido como exact match | Agregar "full name" al patron `full_name` |
-| `Email address` | Funciona via includes pero no es exact | Agregar "email address" al patron `email` |
-| `Phone number` | Funciona via includes pero no es exact | Agregar "phone number" al patron `phone` |
-| `Company Country` | Se confunde con "Country" via includes | Ya hay columna "Country" que se mapea correctamente |
-| `Department` | No mapeado | Agregar como tag adicional |
-| `Company size` / `Company Type` | No mapeados | Agregar a notas de la organizacion |
+#### 4. `src/pages/Emails.tsx` - Mostrar CC en el panel de preview
 
-### Cambios en `src/components/contacts/ContactImporter.tsx`
-
-1. **Agregar patrones exactos**: "full name", "email address", "phone number" a sus respectivos arrays
-2. **Fallback para contactos sin nombre**: Si `full_name` queda vacio despues de intentar first+last y full_name, usar nombre de empresa; si tampoco hay empresa, usar prefijo del email
-3. **Mapear Department**: Detectar columna "department" y agregarlo como tag
-4. **Mapear Company Size y Company Type**: Detectar estas columnas y agregarlas a las notas de la organizacion creada
-
-### Resultado esperado
-
-Los 48 contactos del CSV se importaran con:
-- Nombre (persona o empresa como fallback)
-- Email verificado de Hunter
-- Empresa con website, sector, tamano y tipo
-- LinkedIn URL cuando disponible
-- Cargo (Job title) cuando disponible
-- Ubicacion (City, Country)
-- Tags con industria y departamento
+- Mostrar los emails CC en la vista de detalle del email seleccionado, debajo de "Para" y "De"
 
 ### Archivos a modificar
 
-1. **`src/components/contacts/ContactImporter.tsx`** - Agregar patrones, fallback de nombre, y mapeo de department/company size/type
+1. `src/components/email/ComposeEmail.tsx` - Campo CC en formulario
+2. `supabase/functions/send-email/index.ts` - Soporte CC en Resend API
+3. `src/pages/Emails.tsx` - Mostrar CC en preview
+4. Nueva migración SQL - Columna `cc_emails`
 
