@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Search, Download, Wand2, Loader2, Mail, Globe, ShieldCheck, ShieldX, ShieldQuestion } from "lucide-react";
+import { Search, Download, Wand2, Loader2, Mail, Globe, ShieldCheck, ShieldX, ShieldQuestion, Building2, MapPin, Users, Linkedin } from "lucide-react";
 
 interface HunterEmail {
   email: string;
@@ -24,6 +24,19 @@ interface HunterResult {
   pattern: string | null;
   organization: string | null;
   emails: HunterEmail[];
+}
+
+interface CompanyInfo {
+  name: string | null;
+  domain: string;
+  industry: string | null;
+  country: string | null;
+  city: string | null;
+  size: string | null;
+  linkedin_url: string | null;
+  description: string | null;
+  founded: string | null;
+  logo_url: string | null;
 }
 
 interface Props {
@@ -59,6 +72,7 @@ export default function HunterSearch({ open, onOpenChange, defaultDomain = "", o
   const [result, setResult] = useState<HunterResult | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
+  const [company, setCompany] = useState<CompanyInfo | null>(null);
 
   // Manual email generator
   const [manualFirst, setManualFirst] = useState("");
@@ -70,16 +84,19 @@ export default function HunterSearch({ open, onOpenChange, defaultDomain = "", o
     const clean = cleanDomain(domain);
     if (!clean) { toast.error("Introduce un dominio"); return; }
     setLoading(true);
-    setResult(null);
-    setSelected(new Set());
+      setResult(null);
+      setCompany(null);
+      setSelected(new Set());
     try {
-      const { data, error } = await supabase.functions.invoke("hunter-domain-search", {
-        body: { domain: clean },
-      });
-      if (error) throw error;
-      if (data?.error) { toast.error(data.error); return; }
-      setResult(data);
-      if (data.emails?.length === 0) toast.info("No se encontraron emails para este dominio");
+      const [domainRes, companyRes] = await Promise.all([
+        supabase.functions.invoke("hunter-domain-search", { body: { domain: clean } }),
+        supabase.functions.invoke("hunter-domain-search", { body: { domain: clean, action: "company-find" } }),
+      ]);
+      if (domainRes.error) throw domainRes.error;
+      if (domainRes.data?.error) { toast.error(domainRes.data.error); return; }
+      setResult(domainRes.data);
+      if (companyRes.data && !companyRes.data.error) setCompany(companyRes.data);
+      if (domainRes.data.emails?.length === 0) toast.info("No se encontraron emails para este dominio");
     } catch (e: any) {
       toast.error(e.message || "Error al buscar");
     } finally {
@@ -228,6 +245,28 @@ export default function HunterSearch({ open, onOpenChange, defaultDomain = "", o
             Buscar
           </Button>
         </div>
+
+        {/* Company Info */}
+        {company && (
+          <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+            <div className="flex items-start gap-3">
+              {company.logo_url && (
+                <img src={company.logo_url} alt={company.name || ""} className="w-10 h-10 rounded-lg object-contain bg-background border" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm">{company.name || company.domain}</p>
+                {company.description && <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{company.description}</p>}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {company.industry && <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{company.industry}</span>}
+              {(company.city || company.country) && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{[company.city, company.country].filter(Boolean).join(", ")}</span>}
+              {company.size && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{company.size} empleados</span>}
+              {company.founded && <span>Fundada: {company.founded}</span>}
+              {company.linkedin_url && <a href={company.linkedin_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-primary hover:underline"><Linkedin className="w-3 h-3" />LinkedIn</a>}
+            </div>
+          </div>
+        )}
 
         {result && (
           <div className="space-y-4 mt-2">
