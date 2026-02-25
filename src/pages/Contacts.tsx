@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2 } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2, MapPin } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
 import HunterSearch from "@/components/contacts/HunterSearch";
@@ -57,7 +57,7 @@ export default function Contacts() {
   const [open, setOpen] = useState(false);
   const [importerOpen, setImporterOpen] = useState(false);
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
-  const [form, setForm] = useState({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "" });
+  const [form, setForm] = useState({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "", postal_address: "" });
   const [view, setView] = useState<"kanban" | "list">("kanban");
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -133,13 +133,14 @@ export default function Contacts() {
       position: form.position || null,
       linkedin_url: form.linkedin_url || null,
       company_domain: form.company_domain || null,
+      postal_address: form.postal_address || null,
       created_by: user!.id,
     };
     if (form.organization_id) insert.organization_id = form.organization_id;
     const { error } = await supabase.from("contacts").insert(insert);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto creado");
-    setForm({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "" });
+    setForm({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "", postal_address: "" });
     setOpen(false);
     load();
   };
@@ -254,6 +255,7 @@ export default function Contacts() {
                 </div>
                 <div><Label>LinkedIn URL</Label><Input value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
                 <div><Label>Dominio empresa</Label><Input value={form.company_domain} onChange={(e) => setForm({ ...form, company_domain: e.target.value })} placeholder="empresa.com" /></div>
+                <div><Label>Dirección postal</Label><Input value={form.postal_address} onChange={(e) => setForm({ ...form, postal_address: e.target.value })} placeholder="C/ Ejemplo, 1, 28001 Madrid" /></div>
                 <Button onClick={create} disabled={!form.full_name} className="w-full">Crear contacto</Button>
               </div>
             </DialogContent>
@@ -367,6 +369,11 @@ export default function Contacts() {
                                 <Phone className="w-3 h-3" />{c.phone || c.mobile_phone || c.work_phone}
                               </p>
                             )}
+                            {c.postal_address && (
+                              <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3" />{c.postal_address}
+                              </p>
+                            )}
                             {c.work_email && c.work_email !== c.email && (
                               <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
                                 <Mail className="w-3 h-3" />Corp: {c.work_email}
@@ -464,6 +471,11 @@ export default function Contacts() {
                   {(c.phone || c.mobile_phone || c.work_phone) && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Phone className="w-3.5 h-3.5" />{c.phone || c.mobile_phone || c.work_phone}
+                    </div>
+                  )}
+                  {c.postal_address && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <MapPin className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{c.postal_address}</span>
                     </div>
                   )}
                   {c.work_email && c.work_email !== c.email && (

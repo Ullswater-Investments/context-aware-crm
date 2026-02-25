@@ -22,6 +22,7 @@ interface ParsedRow {
   position?: string;
   company?: string;
   sector?: string;
+  postal_address?: string;
 }
 
 // Try to map common column names to our fields
@@ -35,6 +36,7 @@ function mapColumns(headers: string[]): Record<string, string> {
   const positionPatterns = ["cargo", "position", "puesto", "título", "titulo", "job title", "role"];
   const companyPatterns = ["empresa", "company", "organización", "organizacion", "org", "compañía", "compania"];
   const sectorPatterns = ["sector", "industria", "industry", "tipo", "industry_tags", "etiqueta", "tag"];
+  const addressPatterns = ["dirección", "direccion", "address", "postal", "sede", "dirección postal", "postal_address"];
 
   const find = (patterns: string[]) => {
     for (const p of patterns) {
@@ -66,6 +68,8 @@ function mapColumns(headers: string[]): Record<string, string> {
   if (comp) mapping["company"] = comp;
   const sec = find(sectorPatterns);
   if (sec) mapping["sector"] = sec;
+  const addr = find(addressPatterns);
+  if (addr) mapping["postal_address"] = addr;
 
   return mapping;
 }
@@ -91,6 +95,7 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
         position: mapping["position"] ? (row[mapping["position"]] || "").toString().trim() || undefined : undefined,
         company: mapping["company"] ? (row[mapping["company"]] || "").toString().trim() || undefined : undefined,
         sector: mapping["sector"] ? (row[mapping["sector"]] || "").toString().trim() || undefined : undefined,
+        postal_address: mapping["postal_address"] ? (row[mapping["postal_address"]] || "").toString().trim() || undefined : undefined,
       } as ParsedRow;
     })
     .filter(Boolean) as ParsedRow[];
@@ -179,6 +184,7 @@ export default function ContactImporter({ open, onOpenChange, onComplete }: Cont
             position: row.position || null,
             organization_id: orgId,
             tags,
+            postal_address: row.postal_address || null,
             created_by: user!.id,
           });
 
@@ -281,7 +287,7 @@ export default function ContactImporter({ open, onOpenChange, onComplete }: Cont
                 Columnas esperadas
               </p>
               <p className="text-xs text-muted-foreground">
-                Nombre, Apellido (o Nombre completo), Email, Teléfono, Cargo, Empresa, Sector
+                Nombre, Apellido (o Nombre completo), Email, Teléfono, Cargo, Empresa, Sector, Dirección postal
               </p>
             </div>
           </div>
