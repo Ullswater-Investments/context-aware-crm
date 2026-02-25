@@ -1,70 +1,50 @@
 
 
-## Plan: Editor de email enriquecido con soporte para imagenes inline
+## Revision: Fallos detectados y mejoras propuestas
 
-### Objetivo
+### FALLOS a corregir
 
-Reemplazar el `<Textarea>` actual por un editor de texto enriquecido (rich text) que permita:
-- Pegar imagenes directamente desde el portapapeles (Ctrl+V)
-- Arrastrar y soltar imagenes
-- Insertar imagenes con un boton
-- Formateo basico de texto (negrita, cursiva, listas, enlaces)
+#### 1. SignatureManager usa URLs temporales (1h) para previsualizar firmas (BUG)
 
-### Solucion: Tiptap Editor
+En `SignatureManager.tsx` (lineas 129-141), las miniaturas de firmas se cargan con `createSignedUrl(..., 3600)` - URLs que expiran en 1 hora. El bucket `email-signatures` ya es publico, por lo que deberia usarse `getPublicUrl()` como ya se hace en `ComposeEmail.tsx`.
 
-Tiptap es el editor rich text mas popular para React. Es modular, extensible y tiene soporte nativo para imagenes.
+**Impacto**: Si el usuario deja el dialogo abierto mucho tiempo, las imagenes dejan de mostrarse. Ademas es inconsistente con el patron usado en ComposeEmail.
 
-### Paso 1: Instalar dependencias
+**Solucion**: Reemplazar `createSignedUrl` por `getPublicUrl` y simplificar eliminando el estado `signedUrls` y el useEffect asociado.
 
-- `@tiptap/react` - Core del editor para React
-- `@tiptap/starter-kit` - Extensiones basicas (negrita, cursiva, listas, headings, etc.)
-- `@tiptap/extension-image` - Soporte para imagenes inline
-- `@tiptap/extension-link` - Soporte para enlaces
-- `@tiptap/extension-placeholder` - Placeholder text
+#### 2. SignatureManager usa `as any` en multiples inserts/updates (Problema de tipos)
 
-### Paso 2: Crear bucket de storage `email-images`
+En `SignatureManager.tsx` lineas 82-87, 108 y 113, hay casts `as any` en operaciones de base de datos. Esto oculta posibles errores de tipos.
 
-Migracion SQL para crear un bucket publico donde se almacenaran las imagenes pegadas/arrastradas en el editor. Con politicas RLS para que solo usuarios autenticados puedan subir, y cualquiera pueda leer (necesario para que los destinatarios vean las imagenes).
+**Solucion**: Eliminar los `as any` y usar los tipos correctos del schema.
 
-### Paso 3: Crear componente `RichTextEditor`
+#### 3. RichTextEditor no sincroniza contenido externo (BUG potencial)
 
-Nuevo archivo `src/components/email/RichTextEditor.tsx`:
+El editor Tiptap se inicializa con `content` pero no se actualiza si el prop `content` cambia externamente (por ejemplo al resetear el formulario con `setBody("")`). Cuando se cierra y reabre el compositor, el editor podria mantener el contenido anterior.
 
-- Editor Tiptap con extensiones: StarterKit, Image, Link, Placeholder
-- Barra de herramientas con botones: Negrita, Cursiva, Lista, Enlace, Insertar imagen
-- Handler de paste que detecta imagenes del portapapeles, las sube al bucket `email-images` y las inserta como `<img>` con URL publica permanente
-- Handler de drop para arrastrar imagenes
-- Boton para seleccionar imagen desde el explorador de archivos
-- Estilos con Tailwind para que encaje con el diseno actual del CRM
+**Solucion**: Agregar un efecto que llame a `editor.commands.setContent(content)` cuando el contenido externo cambie y sea diferente del contenido actual del editor (por ejemplo, cuando se resetea a cadena vacia).
 
-### Paso 4: Actualizar `ComposeEmail.tsx`
+#### 4. Emails.tsx - query de busqueda vulnerable a inyeccion de caracteres especiales
 
-- Reemplazar el `<Textarea>` por el nuevo `<RichTextEditor>`
-- El estado `body` pasa a almacenar HTML en vez de texto plano
-- Al enviar, el HTML del editor se usa directamente como `html` del email
-- Se genera una version `text` limpia (sin tags HTML) como fallback
-- La firma se sigue anadiendo al final del HTML generado
+En `Emails.tsx` linea 77, el valor de `search` se interpola directamente en la query `.or(...)`. Caracteres como `%`, `_` o comillas pueden romper o alterar la query.
 
-### Paso 5: Actualizar la edge function `send-email`
+**Solucion**: Escapar los caracteres especiales de PostgreSQL (`%`, `_`) antes de interpolarlos en la query ilike.
 
-No requiere cambios significativos. Ya acepta `html` como parametro y lo envia tal cual. Las imagenes inline seran URLs publicas del bucket, que los clientes de email renderizaran directamente.
+### MEJORAS propuestas
 
-### Archivos a crear/modificar
+#### 5. Anadir campo BCC (copia oculta) al compositor
 
-1. **`src/components/email/RichTextEditor.tsx`** (NUEVO) - Componente del editor rico
-2. **`src/components/email/ComposeEmail.tsx`** - Reemplazar Textarea por RichTextEditor
-3. **Nueva migracion SQL** - Bucket `email-images` con politicas RLS
+Actualmente solo hay To y CC. Anadir un campo BCC que se envie al backend y se pase a nodemailer como `bcc`.
 
-### Detalles tecnicos
+#### 6. Anadir boton "Reenviar" en la vista previa de emails
 
-**Flujo de una imagen pegada:**
-1. Usuario pega imagen (Ctrl+V) en el editor
-2. Se detecta el evento paste con contenido de imagen
-3. Se sube la imagen al bucket `email-images/{userId}/{timestamp}.png`
-4. Se obtiene la URL publica permanente
-5. Se inserta un nodo `<img src="url_publica">` en el editor
-6. Al enviar, el HTML incluye las imagenes como URLs absolutas
+En el panel derecho de `Emails.tsx`, cuando se ve un email enviado, anadir un boton para reenviar ese email (abre el compositor con los datos pre-rellenados).
 
-**Barra de herramientas del editor:**
-- Negrita (B) | Cursiva (I) | Lista | Lista numerada | Enlace | Imagen | Separador
+### Archivos a modificar
+
+1. **`src/components/email/SignatureManager.tsx`** - Reemplazar signedUrls por publicUrls, eliminar `as any`
+2. **`src/components/email/RichTextEditor.tsx`** - Sincronizar contenido al resetear
+3. **`src/pages/Emails.tsx`** - Escapar caracteres especiales en busqueda
+4. **`src/components/email/ComposeEmail.tsx`** - Anadir campo BCC
+5. **`supabase/functions/send-email/index.ts`** - Soportar parametro `bcc`
 
