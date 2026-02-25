@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe } from "lucide-react";
+import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe, MapPin } from "lucide-react";
 import ComposeEmail from "@/components/email/ComposeEmail";
 import { Contact } from "@/types/contact";
 
@@ -64,7 +64,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const [composeOpen, setComposeOpen] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editData, setEditData] = useState({ full_name: "", email: "", phone: "", position: "", linkedin_url: "", company_domain: "" });
+  const [editData, setEditData] = useState({ full_name: "", email: "", phone: "", position: "", linkedin_url: "", company_domain: "", postal_address: "" });
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [enrichingHunter, setEnrichingHunter] = useState(false);
@@ -99,6 +99,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       position: contact.position || "",
       linkedin_url: contact.linkedin_url || "",
       company_domain: contact.company_domain || "",
+      postal_address: contact.postal_address || "",
     });
     setEditing(true);
   };
@@ -112,6 +113,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       position: editData.position || null,
       linkedin_url: editData.linkedin_url || null,
       company_domain: editData.company_domain || null,
+      postal_address: editData.postal_address || null,
     } as any).eq("id", contact.id);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto actualizado");
@@ -315,6 +317,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   <div><Label>Cargo</Label><Input value={editData.position} onChange={(e) => setEditData({ ...editData, position: e.target.value })} /></div>
                   <div><Label>LinkedIn URL</Label><Input value={editData.linkedin_url} onChange={(e) => setEditData({ ...editData, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
                   <div><Label>Dominio empresa</Label><Input value={editData.company_domain} onChange={(e) => setEditData({ ...editData, company_domain: e.target.value })} placeholder="empresa.com" /></div>
+                  <div><Label>Dirección postal</Label><Input value={editData.postal_address} onChange={(e) => setEditData({ ...editData, postal_address: e.target.value })} placeholder="C/ Ejemplo, 1, 28001 Madrid" /></div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={saveEdit} disabled={!editData.full_name}><Save className="w-3.5 h-3.5 mr-1" />Guardar</Button>
                     <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
@@ -343,6 +346,9 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                     <a href={`https://${contact.company_domain}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
                       <Globe className="w-4 h-4" />{contact.company_domain}
                     </a>
+                  )}
+                  {contact.postal_address && (
+                    <div className="flex items-center gap-2 text-sm"><MapPin className="w-4 h-4 text-muted-foreground shrink-0" />{contact.postal_address}</div>
                   )}
                   {contact.email && (
                     <Button size="sm" variant="outline" className="mt-2" onClick={() => setComposeOpen(true)}>

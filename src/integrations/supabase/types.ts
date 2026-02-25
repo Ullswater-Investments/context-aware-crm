@@ -97,6 +97,7 @@ export type Database = {
           personal_email: string | null
           phone: string | null
           position: string | null
+          postal_address: string | null
           status: Database["public"]["Enums"]["contact_status"]
           tags: string[] | null
           updated_at: string
@@ -121,6 +122,7 @@ export type Database = {
           personal_email?: string | null
           phone?: string | null
           position?: string | null
+          postal_address?: string | null
           status?: Database["public"]["Enums"]["contact_status"]
           tags?: string[] | null
           updated_at?: string
@@ -145,6 +147,7 @@ export type Database = {
           personal_email?: string | null
           phone?: string | null
           position?: string | null
+          postal_address?: string | null
           status?: Database["public"]["Enums"]["contact_status"]
           tags?: string[] | null
           updated_at?: string
