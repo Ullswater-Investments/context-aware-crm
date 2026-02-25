@@ -1,60 +1,74 @@
 
 
-## Plan: Añadir botón Hunter.io junto a cada URL de empresa en las tarjetas de contacto
+## Auditoria: Errores y Mejoras en la Plataforma
 
-### Objetivo
-Colocar un botón "Hunter.io" al lado de cada enlace de `company_domain` en las vistas Kanban y Lista, para poder buscar emails del contacto a través de su dominio de empresa sin necesidad de abrir el perfil.
+### ERRORES ENCONTRADOS
 
-### Cambios en `src/pages/Contacts.tsx`
+#### 1. CRITICO - Edge Function `enrich-hunter-contact` sin autenticacion
+La funcion `enrich-hunter-contact` no verifica el JWT del usuario. Cualquier persona con la URL publica podria llamarla y gastar creditos de Hunter.io o modificar datos de contactos ajenos. Comparando con `enrich-lusha-contact` (que si valida JWT) y `hunter-domain-search` (que tambien valida), esta es la unica funcion de enriquecimiento sin proteccion.
 
-#### 1. Añadir imports necesarios
-- Importar `Loader2` de lucide-react (para el spinner de carga)
-- Importar `supabase` ya está importado
+**Solucion**: Añadir validacion JWT igual que en `enrich-lusha-contact`, usando `supabase.auth.getClaims(token)`.
 
-#### 2. Añadir estado para rastrear qué contacto se está enriqueciendo
-- Nuevo estado `enrichingId` (string | null) para saber qué contacto está siendo procesado
+#### 2. CRITICO - Edge Function usa SERVICE_ROLE_KEY sin necesidad de auth
+En `enrich-hunter-contact`, se usa `SUPABASE_SERVICE_ROLE_KEY` para hacer el update. Esto bypasea las politicas RLS, lo cual es peligroso sin validacion de usuario. Un atacante podria modificar contactos de cualquier usuario.
 
-#### 3. Crear función `enrichWithHunter(contactId, fullName, companyDomain)`
-- Llama a la edge function `enrich-hunter-contact` pasando `contact_id` y el `email` (que se buscará usando el nombre + dominio)
-- Nota: La edge function actual espera un `email`, pero Hunter.io también tiene un endpoint de Domain Search y Email Finder por nombre+dominio. Se necesita actualizar la edge function para aceptar también `domain` + `full_name` como alternativa al `email`.
-- Muestra toast de éxito/error
-- Recarga los contactos al terminar
+**Solucion**: Tras añadir auth, validar que el contacto pertenece al usuario autenticado antes de actualizarlo.
 
-#### 4. Actualizar la edge function `enrich-hunter-contact`
-- Añadir soporte para recibir `domain` y `full_name` además de `email`
-- Si se recibe `domain` + `full_name`, usar el endpoint **Email Finder** de Hunter.io: `https://api.hunter.io/v2/email-finder?domain={domain}&first_name={first}&last_name={last}&api_key={key}`
-- Este endpoint devuelve el email encontrado + datos del contacto
-- Si se recibe `email`, mantener el comportamiento actual (Email Verifier)
+#### 3. ERROR - Boton Hunter en ContactProfile solo funciona con email, no con dominio
+En `ContactProfile.tsx` linea 237, `enrichWithHunter` requiere `contact.email` para funcionar. Si un contacto tiene `company_domain` pero no `email`, el boton no aparece (linea 383: `hunterStatus === "pending" && contact.email`). Sin embargo, la edge function ya soporta el modo `domain + full_name`. El perfil no aprovecha esta capacidad.
 
-#### 5. Modificar la vista Kanban (líneas 331-335)
-Donde actualmente se muestra el `company_domain` como enlace, añadir un botón Hunter.io al lado:
+**Solucion**: Cambiar la condicion a `(contact.email || contact.company_domain)` y en la llamada, enviar `domain` + `full_name` cuando no hay email.
 
-```text
-[Globe icon] empresa.com  [botón Hunter.io]
-```
+#### 4. ERROR - Interfaz Contact duplicada
+La interfaz `Contact` esta definida de forma identica en `Contacts.tsx` (linea 26) y `ContactProfile.tsx` (linea 32). Esto causa problemas de mantenimiento: cualquier cambio en la tabla requiere actualizar ambas.
 
-- El botón solo aparece si `hunter_status` es "pending" (no re-enriquecer)
-- Click en el botón llama a `enrichWithHunter` y detiene la propagación del evento (para no abrir el perfil)
-- Muestra spinner mientras se está procesando
+**Solucion**: Extraer a un archivo compartido `src/types/contact.ts`.
 
-#### 6. Modificar la vista Lista (líneas 408-412)
-Misma lógica: añadir botón Hunter.io junto al enlace del dominio.
+#### 5. ERROR MENOR - `config.toml` no incluye `enrich-hunter-contact` ni `hunter-domain-search`
+Las funciones `enrich-hunter-contact` y `hunter-domain-search` no estan configuradas en `supabase/config.toml`. Esto significa que usan la configuracion por defecto (verify_jwt = true), pero `enrich-hunter-contact` no implementa verificacion JWT en su codigo. Dado que se llama via `supabase.functions.invoke` (que envia el token automaticamente), el JWT se verifica a nivel de gateway pero no en el codigo.
 
-#### 7. Actualizar la interfaz Contact
-- Añadir `hunter_status` al interface Contact (actualmente falta)
+**Nota**: Esto no es un error critico porque el gateway de Supabase ya verifica el JWT, pero es inconsistente con las demas funciones.
 
-### Detalle técnico de la edge function actualizada
+---
 
-La función recibirá uno de estos dos escenarios:
-- `{ contact_id, email }` -> Verificar email existente (comportamiento actual)
-- `{ contact_id, domain, full_name }` -> Buscar email por nombre y dominio usando Email Finder de Hunter.io
+### MEJORAS PROPUESTAS
 
-El endpoint Email Finder (`/v2/email-finder`) acepta:
-- `domain`: dominio de la empresa
-- `first_name` y `last_name`: nombre del contacto
-- Devuelve: email encontrado, score de confianza, posición, LinkedIn, etc.
+#### 1. Boton Hunter.io: mostrar tambien cuando `hunter_status` no es "pending"
+Actualmente el boton Hunter solo aparece si `hunter_status === "pending"`. Si un contacto fue marcado como "not_found" previamente, no hay forma de re-intentar desde la lista. Podria mostrarse tambien para "not_found" con texto diferente ("Reintentar").
 
-### Archivos a modificar
-1. `src/pages/Contacts.tsx` - Añadir botón, estado, función de enriquecimiento, y `hunter_status` al interface
-2. `supabase/functions/enrich-hunter-contact/index.ts` - Soportar búsqueda por dominio + nombre
+#### 2. Filtro por estado Hunter en la pagina de contactos
+Existe un filtro para estado Lusha pero no para Hunter. Seria util para encontrar rapidamente contactos pendientes de enriquecer con Hunter.io.
+
+#### 3. Enriquecimiento masivo con Hunter.io
+Actualmente hay que hacer clic en cada contacto uno por uno. Un boton "Enriquecer todos" (con limite de rate) para contactos con `company_domain` y `hunter_status === "pending"` ahorraria mucho tiempo.
+
+#### 4. Feedback visual del resultado de Hunter en la tarjeta
+Tras enriquecer, el boton desaparece pero no se muestra que datos se obtuvieron. Podria mostrarse un badge "Hunter: Enriquecido" o "Hunter: No encontrado" en las tarjetas, similar a como se muestra Lusha con el icono Sparkles.
+
+#### 5. Validacion del dominio antes de enviar a Hunter
+No se valida el formato del dominio. Valores como "sin web", "N/A" o URLs completas podrian enviarse a la API gastando creditos innecesariamente.
+
+**Solucion**: Validar con regex basico (`/^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$/`) antes de llamar a la API.
+
+---
+
+### PLAN DE IMPLEMENTACION
+
+**Archivos a modificar:**
+
+1. `supabase/functions/enrich-hunter-contact/index.ts`
+   - Añadir validacion JWT (copiar patron de `enrich-lusha-contact`)
+   - Validar que el contacto pertenece al usuario autenticado
+
+2. `src/components/contacts/ContactProfile.tsx`
+   - Cambiar condicion del boton Hunter para soportar dominio sin email
+   - Actualizar `enrichWithHunter` para enviar `domain` + `full_name` como alternativa
+
+3. `src/pages/Contacts.tsx`
+   - Añadir validacion de dominio antes de enriquecer
+   - Añadir filtro por estado Hunter
+   - Mostrar badge de estado Hunter en tarjetas
+
+4. `src/types/contact.ts` (nuevo)
+   - Extraer interfaz Contact compartida
 
