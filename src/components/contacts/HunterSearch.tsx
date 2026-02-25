@@ -133,11 +133,18 @@ export default function HunterSearch({ open, onOpenChange, defaultDomain = "", o
     setPeopleData((prev) => ({ ...prev, [emailAddr]: { loading: true } }));
     try {
       const { data, error } = await supabase.functions.invoke("hunter-domain-search", {
-        body: { domain: "x", action: "people-find", email: emailAddr },
+        body: { domain: "x", action: "combined-find", email: emailAddr },
       });
       if (error) throw error;
       if (data?.error) { toast.error(data.error); setPeopleData((prev) => ({ ...prev, [emailAddr]: { loading: false, error: true } })); return; }
       setPeopleData((prev) => ({ ...prev, [emailAddr]: { ...data, loading: false } }));
+      // Also set verification from combined response
+      if (data.verification) {
+        setVerifications((prev) => ({
+          ...prev,
+          [emailAddr]: { status: data.verification.result || data.verification.status || "unknown", score: data.verification.score, loading: false },
+        }));
+      }
     } catch (e: any) {
       toast.error(e.message || "Error");
       setPeopleData((prev) => ({ ...prev, [emailAddr]: { loading: false, error: true } }));
