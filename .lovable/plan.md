@@ -1,71 +1,123 @@
 
 
-## Plan: Rediseno del Compositor de Email - Panel Lateral Profesional
+## Plan: Integrar cuenta globaldatacare.es + Sincronizacion IMAP manual
 
-### Objetivo
+### Resumen
 
-Transformar el compositor de email de un Dialog (modal centrado) a un Sheet (panel lateral derecho) con layout flex de 3 zonas: header fijo, cuerpo con scroll, y footer fijo. Incluye campos CC/BCC colapsables, firma colapsable, barra de herramientas en el footer y boton de IA con selector de tono integrado.
+Conectar la nueva cuenta de email (emilio.mulet@globaldatacare.es) al CRM manteniendo la cuenta existente (kitespaciodedatos.eu). Permitir elegir desde cual enviar. Crear una funcion de sincronizacion IMAP manual para recibir emails entrantes en el CRM.
 
 ---
 
-### Cambios en `src/components/email/ComposeEmail.tsx`
+### 1. Nuevos secretos para la segunda cuenta SMTP
 
-**1. Cambio de contenedor: Dialog a Sheet**
-- Reemplazar `Dialog`/`DialogContent` por `Sheet`/`SheetContent` de shadcn (side="right")
-- Ancho: `w-full sm:max-w-[600px]` con `p-0` para controlar padding manualmente
-- Layout interno: `flex flex-col h-full`
+Se necesitan 4 nuevos secretos:
+- `SMTP_HOST_2` = smtp.hostinger.com
+- `SMTP_USER_2` = emilio.mulet@globaldatacare.es
+- `SMTP_PASS_2` = (la contraseña del email)
+- `SMTP_PORT_2` = 465
 
-**2. Header fijo (sticky top)**
-- Titulo "Redactar email" con boton de cerrar
-- Campo "Para" con boton "+ CC/BCC" a la derecha
-- Estado `showCcBcc` (boolean, default false): al pulsar, se despliegan los campos CC y BCC con animacion
-- Campo "Asunto"
-- Separado del cuerpo con `border-b`
+Se pediran al usuario mediante la herramienta de secretos.
 
-**3. Cuerpo con scroll (`flex-1 overflow-y-auto`)**
-- Editor Tiptap (RichTextEditor) ocupando el espacio disponible
-- Firma colapsable debajo del editor:
-  - Usa el componente `Collapsible` de shadcn
-  - Colapsada: muestra una linea gris con nombre de la firma seleccionada y boton "Ver firma"
-  - Expandida: muestra la imagen de la firma con escala reducida (opacity-80, scale-95)
-  - Boton "Gestionar firmas" para abrir SignatureManager
-- Lista de adjuntos (si hay) debajo de la firma
+### 2. Migracion de base de datos
 
-**4. Footer fijo (sticky bottom)**
-- Borde superior + fondo solido (`bg-background border-t`)
-- Lado izquierdo: boton adjuntar (icono Paperclip) + contador de adjuntos + selector de firma (Select compacto)
-- Lado derecho: 
-  - DropdownMenu de IA con selector de tono (Formal, Amigable, Persuasivo, Conciso) - icono Sparkles
-  - Boton "Enviar" (primary) con icono Send
-- Todo en una sola linea horizontal
+**Añadir columna `direction` a `email_logs`:**
+- `direction TEXT NOT NULL DEFAULT 'outbound'` -- valores: 'outbound' o 'inbound'
+- `imap_uid TEXT` -- para evitar duplicados al sincronizar IMAP
 
-**5. Selector de tono IA en el footer**
-- Al seleccionar un tono, llama a `supabase.functions.invoke("suggest-reply")` con el subject, body_text y tono
-- Muestra Loader2 mientras genera
-- Al recibir respuesta, inserta el HTML en el editor (actualiza `body` state)
-- Toast de exito/error
+Indice unico parcial en `imap_uid` para evitar importar el mismo email dos veces.
 
-**6. Props adicionales**
-- No se cambia la interfaz `ComposeEmailProps` (mismos props que antes)
-- Se necesita un nuevo estado `showCcBcc` (boolean)
-- Se necesita un nuevo estado `suggestingReply` (boolean)
+### 3. Modificar Edge Function: `send-email`
 
-### Cambios en `src/pages/Emails.tsx`
+- Aceptar nuevo parametro `from_account`: `"primary"` (kitespaciodedatos.eu) o `"secondary"` (globaldatacare.es)
+- Seleccionar las credenciales SMTP segun el valor:
+  - primary: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_PORT`
+  - secondary: `SMTP_HOST_2`, `SMTP_USER_2`, `SMTP_PASS_2`, `SMTP_PORT_2`
+- Ajustar el `from` del email segun la cuenta seleccionada
+- Añadir `direction: 'outbound'` al insertar en email_logs
 
-- Eliminar el DropdownMenu de "Sugerir Respuesta" del panel de detalle (ya estara en el compositor)
-- Eliminar estado `suggestingReply` y funcion `handleSuggestReply` (se mueve al compositor)
-- Mantener el boton "Reenviar" en el panel de detalle
+### 4. Nueva Edge Function: `sync-emails`
 
-### Archivos a modificar
+**Archivo: `supabase/functions/sync-emails/index.ts`**
 
-1. **`src/components/email/ComposeEmail.tsx`** - Rediseno completo: Dialog a Sheet, layout flex 3 zonas, CC/BCC colapsable, firma colapsable, footer fijo con IA + Enviar
-2. **`src/pages/Emails.tsx`** - Limpiar logica de suggest-reply (ahora vive en ComposeEmail), quitar imports no usados
+- Usa la libreria `npm:imapflow` para conectar por IMAP a Hostinger
+- Recibe parametro `account`: `"primary"` o `"secondary"` para elegir credenciales IMAP
+- Necesita secretos adicionales: `IMAP_HOST_2` = imap.hostinger.com (se reutiliza para la cuenta 2; la cuenta 1 ya tiene SMTP pero no IMAP, asi que tambien se necesita `IMAP_HOST`, `IMAP_USER`, `IMAP_PASS`, `IMAP_PORT`)
+- Flujo:
+  1. Conecta por IMAP al buzon INBOX
+  2. Busca los ultimos N emails no sincronizados (por fecha o UID)
+  3. Por cada email nuevo:
+     - Extrae from, to, subject, body (HTML y texto plano), cc, fecha
+     - Busca si el remitente existe como contacto en la tabla `contacts` (por email)
+     - Inserta en `email_logs` con `direction = 'inbound'`, vinculando `contact_id` si existe
+     - Guarda el `imap_uid` para no duplicar
+  4. Retorna cuantos emails se importaron
+- Valida JWT del usuario
+- Maneja errores de conexion con mensajes claros
 
-### Detalles tecnicos
+**Secretos adicionales necesarios:**
+- `IMAP_HOST_2` = imap.hostinger.com
+- `IMAP_USER_2` = emilio.mulet@globaldatacare.es
+- `IMAP_PASS_2` = (misma contraseña que SMTP)
+- `IMAP_PORT_2` = 993
 
-- El Sheet de shadcn usa `@radix-ui/react-dialog` internamente (ya instalado)
-- Se usa `Collapsible` de shadcn para la firma (ya instalado: `@radix-ui/react-collapsible`)
-- El DropdownMenu para tonos IA usa `bg-popover` para evitar transparencia (siguiendo guia de dropdowns)
-- El `SheetContent` lleva `className="p-0 w-full sm:max-w-[600px]"` para controlar el layout
-- La funcion `suggest-reply` ya existe y esta desplegada; solo se mueve la logica de llamada de Emails.tsx a ComposeEmail.tsx
+Para la cuenta primaria (si tambien se quiere sincronizar en el futuro):
+- `IMAP_HOST` = imap.hostinger.com
+- `IMAP_USER` = emilio.mulet@kitespaciodedatos.eu
+- `IMAP_PASS` = (contraseña actual)
+- `IMAP_PORT` = 993
+
+### 5. Modificar `src/pages/Emails.tsx`
+
+- Nuevos filtros en el sidebar: "Recibidos" (inbound) ademas de "Todos", "Enviados", "Fallidos"
+- Boton "Sincronizar" en la barra superior que llama a `supabase.functions.invoke("sync-emails")`
+- Mostrar icono diferente para emails recibidos vs enviados en la lista
+- En la lista, mostrar `from_email` para recibidos y `to_email` para enviados
+- Counts actualizados para incluir recibidos
+
+### 6. Modificar `src/components/email/ComposeEmail.tsx`
+
+- Nuevo selector "Enviar desde" en el header (debajo del campo "Para"):
+  - Opcion 1: "emilio.mulet@kitespaciodedatos.eu"
+  - Opcion 2: "emilio.mulet@globaldatacare.es"
+- El valor seleccionado se pasa como `from_account` al invocar `send-email`
+- Por defecto selecciona la cuenta 2 (globaldatacare.es)
+
+### 7. Registrar nueva funcion en config
+
+```text
+[functions.sync-emails]
+verify_jwt = false
+```
+
+---
+
+### Archivos a crear/modificar
+
+1. **Migracion SQL** - Añadir columnas `direction` e `imap_uid` a `email_logs`
+2. **`supabase/functions/send-email/index.ts`** - Soporte multi-cuenta SMTP
+3. **`supabase/functions/sync-emails/index.ts`** (NUEVO) - Sincronizacion IMAP manual
+4. **`src/pages/Emails.tsx`** - Filtro "Recibidos" + boton "Sincronizar"
+5. **`src/components/email/ComposeEmail.tsx`** - Selector "Enviar desde"
+
+### Secretos a solicitar
+
+Se pediran al usuario en orden:
+1. `SMTP_HOST_2`, `SMTP_PORT_2`, `SMTP_USER_2`, `SMTP_PASS_2` (envio)
+2. `IMAP_HOST_2`, `IMAP_PORT_2`, `IMAP_USER_2`, `IMAP_PASS_2` (recepcion)
+
+### Flujo del usuario
+
+```text
+ENVIO:
+Redactar -> Elegir cuenta (globaldatacare/kitespaciodedatos) -> Enviar
+-> Email sale por SMTP de la cuenta elegida
+-> Se guarda en email_logs con direction='outbound'
+
+RECEPCION:
+Click "Sincronizar" -> Edge function conecta IMAP a Hostinger
+-> Descarga emails nuevos del INBOX
+-> Los guarda en email_logs con direction='inbound'
+-> Vincula automaticamente al contacto si existe
+-> La lista se refresca mostrando los nuevos emails recibidos
+```
 
