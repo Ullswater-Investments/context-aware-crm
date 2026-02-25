@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -39,9 +39,11 @@ export default function AppLayout({ children }: {children: ReactNode;}) {
     localStorage.setItem("theme", dark ? "dark" : "light");
   }, [dark]);
 
-  // Proactive health check: alert on broken email accounts
+  // Proactive health check: alert on broken email accounts (once)
+  const hasCheckedAccounts = useRef(false);
   useEffect(() => {
-    if (!user) return;
+    if (!user || hasCheckedAccounts.current) return;
+    hasCheckedAccounts.current = true;
     const checkAccounts = async () => {
       const { data } = await supabase
         .from("email_accounts")
