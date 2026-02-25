@@ -1,70 +1,83 @@
 
 
-## Plan: Formulario completo de nuevo contacto + Documentos adjuntos en perfil
+## Revision de errores y soluciones
 
-### Problema detectado
+### Problemas encontrados
 
-1. **Contactos de los CSVs no importados**: Los 186 contactos de Apollo y 25 de Lusha que subiste **nunca se importaron** a la base de datos. Solo existen los 333 contactos anteriores, la mayoria sin email ni telefono. Para importarlos, necesitas usar el boton "Importar" en la pagina de Contactos y subir primero el archivo Apollo (`Export_Contacts_2026-02-25.csv`) y luego el de Lusha (`Export_User_Data_2026-02-25.csv`).
+#### 1. Los contactos de los CSVs nunca se importaron (CRITICO)
 
-2. **Formulario "Nuevo contacto" incompleto**: El formulario actual solo captura 8 campos (nombre, email, telefono, cargo, empresa, LinkedIn, dominio, direccion). Faltan campos importantes: work_email, personal_email, mobile_phone, work_phone, tags y notas.
+La base de datos tiene 333 contactos, pero solo 19 tienen email y 0 tienen telefono movil. Los 186 contactos de Apollo y 25 de Lusha que subiste como archivos **nunca se procesaron** con el importador. Para importarlos debes usar el boton "Importar" en la pagina de Contactos y subir cada archivo manualmente.
 
-3. **No se ven documentos adjuntos en el perfil del contacto**: La tabla `documents` tiene un campo `contact_id` pero el perfil del contacto no muestra ni permite gestionar documentos vinculados.
+**Solucion**: No requiere cambios de codigo. Solo necesitas:
+1. Ir a Contactos -> Importar
+2. Subir `Export_Contacts_2026-02-25.csv` (Apollo, 186 contactos)
+3. Esperar a que termine
+4. Subir `Export_User_Data_2026-02-25.csv` (Lusha, 25 contactos para enriquecer)
+
+---
+
+#### 2. El trigger `updated_at` no existe en ninguna tabla
+
+La funcion `update_updated_at_column()` esta creada en la base de datos, pero no hay ningun trigger asociado. Esto significa que el campo `updated_at` de `contacts`, `organizations`, `projects`, etc. nunca se actualiza automaticamente.
+
+**Solucion**: Crear triggers en las tablas que tienen columna `updated_at`:
+- `contacts`
+- `organizations`
+- `projects`
+- `conversations`
+
+---
+
+#### 3. Mapeo de columna `email` demasiado amplio en el importador
+
+El patron `["email", "correo", "e-mail", "mail"]` usa `h.includes("email")` que tambien coincide con "Work email", "Personal email", etc. Esto puede causar que el campo generico `email` apunte a la misma columna que `work_email`, generando datos duplicados.
+
+**Solucion**: Cambiar la logica de `find()` en `mapColumns` para dar prioridad a coincidencias exactas y excluir columnas ya asignadas a campos mas especificos.
+
+---
+
+#### 4. Bucket `email-signatures` es publico (riesgo de privacidad)
+
+Las firmas de email son imagenes personales/corporativas que estan en un bucket publico. Cualquier persona con la URL puede acceder a ellas.
+
+**Solucion**: Cambiar a bucket privado y usar URLs firmadas (signed URLs) con tiempo de expiracion. Actualizar `ComposeEmail.tsx` y `SignatureManager.tsx` para usar `createSignedUrl` en lugar de `getPublicUrl`.
+
+---
+
+#### 5. Falta el secret `RESEND_API_KEY` (verificar configuracion)
+
+El secret existe en la configuracion, pero si nunca se ha probado enviar un email, no se puede confirmar que funciona. No es un error de codigo sino una verificacion pendiente.
+
+---
 
 ### Cambios propuestos
 
-#### 1. Ampliar formulario "Nuevo contacto" (`src/pages/Contacts.tsx`)
+#### Migracion SQL - Triggers `updated_at`
 
-Agregar los campos que faltan al formulario de creacion:
-- Work email (email corporativo)
-- Personal email (email personal)
-- Mobile phone (movil)
-- Work phone (telefono de trabajo)
-- Tags (etiquetas, con input tipo chip)
-- Notas
+Crear triggers para todas las tablas con columna `updated_at`:
 
-Reorganizar el formulario en 2 columnas para que no sea demasiado largo.
+```text
+CREATE TRIGGER update_contacts_updated_at
+  BEFORE UPDATE ON contacts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-#### 2. Ampliar edicion en perfil (`src/components/contacts/ContactProfile.tsx`)
+-- Igual para organizations, projects, conversations
+```
 
-Actualizar `editData` y `saveEdit` para incluir los nuevos campos (work_email, personal_email, mobile_phone, work_phone) que actualmente no se pueden editar desde el perfil.
+#### `src/components/contacts/ContactImporter.tsx`
 
-#### 3. Seccion de documentos en el perfil del contacto (`src/components/contacts/ContactProfile.tsx`)
+Corregir la funcion `find()` para:
+- Priorizar coincidencias exactas sobre `includes`
+- En el patron `email`, excluir coincidencias con "work email", "personal email", "private email"
 
-Agregar una seccion "Documentos" al perfil que:
-- Liste los documentos vinculados al contacto (query por `contact_id`)
-- Permita subir nuevos documentos vinculados al contacto
-- Permita descargar y eliminar documentos
-- Muestre nombre, tipo y fecha del documento
+#### `src/components/email/ComposeEmail.tsx` y `SignatureManager.tsx`
+
+Cambiar `getPublicUrl` por `createSignedUrl` con expiracion de 1 hora para las firmas de email.
 
 ### Archivos a modificar
 
-1. **`src/pages/Contacts.tsx`** - Ampliar formulario de creacion con todos los campos del contacto
-2. **`src/components/contacts/ContactProfile.tsx`** - Ampliar campos editables + agregar seccion de documentos adjuntos
-
-### Detalles tecnicos
-
-**Formulario ampliado - campos del state:**
-```text
-form: {
-  full_name, email, phone, position, organization_id,
-  linkedin_url, company_domain, postal_address,
-  work_email, personal_email, mobile_phone, work_phone  // nuevos
-}
-```
-
-**Documentos en perfil - query:**
-```text
-supabase.from("documents")
-  .select("*")
-  .eq("contact_id", contact.id)
-  .order("created_at", { ascending: false })
-```
-
-**Upload de documento vinculado:**
-```text
-1. Subir archivo al bucket "documents" con path: {userId}/{contactId}/{timestamp}_{filename}
-2. Insertar registro en tabla documents con contact_id = contact.id
-```
-
-No se necesitan cambios en la base de datos ya que la tabla `documents` ya tiene el campo `contact_id` y el bucket `documents` ya existe.
+1. **Migracion SQL** - Crear 4 triggers de `updated_at`
+2. **`src/components/contacts/ContactImporter.tsx`** - Corregir mapeo de columna email
+3. **`src/components/email/ComposeEmail.tsx`** - Usar signed URLs para firmas
+4. **`src/components/email/SignatureManager.tsx`** - Usar signed URLs para previews
 
