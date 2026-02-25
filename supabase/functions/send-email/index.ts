@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import nodemailer from "npm:nodemailer@6.9.12";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,9 +34,6 @@ Deno.serve(async (req) => {
     }
     const userId = userData.user.id;
 
-    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
-
     const {
       to, cc, subject, html, text, from,
       contact_id, organization_id, project_id,
@@ -49,15 +47,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    const fromEmail = from || "EuroCRM <onboarding@resend.dev>";
+    const fromEmail = from || "EuroCRM <emilio.mulet@kitespaciodedatos.eu>";
 
-    // Download attachments from storage and encode to base64
+    // Download attachments from storage
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const resendAttachments: { filename: string; content: string }[] = [];
+    const mailAttachments: { filename: string; content: Buffer }[] = [];
     const attachmentRecords: { file_name: string; file_path: string; file_size?: number; file_type?: string }[] = [];
 
     if (attachmentPaths && Array.isArray(attachmentPaths)) {
@@ -70,10 +68,10 @@ Deno.serve(async (req) => {
           continue;
         }
         const arrayBuffer = await fileData.arrayBuffer();
-        const base64 = btoa(
-          new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), "")
-        );
-        resendAttachments.push({ filename: att.filename, content: base64 });
+        mailAttachments.push({
+          filename: att.filename,
+          content: Buffer.from(arrayBuffer),
+        });
         attachmentRecords.push({
           file_name: att.filename,
           file_path: att.path,
@@ -82,36 +80,46 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Send via Resend
     // Parse CC emails
     const ccEmails: string[] = cc
       ? (typeof cc === "string" ? cc.split(",").map((e: string) => e.trim()).filter(Boolean) : Array.isArray(cc) ? cc : [])
       : [];
 
-    const resendBody: Record<string, unknown> = {
+    // Create SMTP transporter
+    const transporter = nodemailer.createTransport({
+      host: Deno.env.get("SMTP_HOST"),
+      port: Number(Deno.env.get("SMTP_PORT") || 465),
+      secure: true,
+      auth: {
+        user: Deno.env.get("SMTP_USER"),
+        pass: Deno.env.get("SMTP_PASS"),
+      },
+    });
+
+    const mailOptions: Record<string, unknown> = {
       from: fromEmail,
-      to: Array.isArray(to) ? to : [to],
+      to: Array.isArray(to) ? to.join(", ") : to,
       subject,
       html: html || undefined,
       text: text || undefined,
     };
-    if (ccEmails.length > 0) resendBody.cc = ccEmails;
-    if (resendAttachments.length > 0) {
-      resendBody.attachments = resendAttachments;
+    if (ccEmails.length > 0) mailOptions.cc = ccEmails.join(", ");
+    if (mailAttachments.length > 0) mailOptions.attachments = mailAttachments;
+
+    // Send via SMTP
+    let status = "sent";
+    let errorMessage: string | null = null;
+    let messageId: string | null = null;
+
+    try {
+      const info = await transporter.sendMail(mailOptions);
+      messageId = info.messageId || null;
+      console.log("Email sent via SMTP:", messageId);
+    } catch (smtpErr: any) {
+      status = "failed";
+      errorMessage = smtpErr.message || String(smtpErr);
+      console.error("SMTP error:", errorMessage);
     }
-
-    const resendRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(resendBody),
-    });
-
-    const resendData = await resendRes.json();
-    const status = resendRes.ok ? "sent" : "failed";
-    const errorMessage = resendRes.ok ? null : JSON.stringify(resendData);
 
     // Log to database
     const { data: logData } = await supabaseAdmin.from("email_logs").insert({
@@ -126,7 +134,7 @@ Deno.serve(async (req) => {
       body_html: html || null,
       body_text: text || null,
       status,
-      resend_id: resendData.id || null,
+      resend_id: messageId,
       error_message: errorMessage,
       sent_at: status === "sent" ? new Date().toISOString() : null,
     }).select("id").single();
@@ -144,16 +152,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!resendRes.ok) {
-      console.error("Resend error:", resendData);
+    if (status === "failed") {
       return new Response(
-        JSON.stringify({ error: "Error al enviar email", details: resendData }),
+        JSON.stringify({ error: "Error al enviar email", details: errorMessage }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     return new Response(
-      JSON.stringify({ success: true, id: resendData.id }),
+      JSON.stringify({ success: true, id: messageId }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
