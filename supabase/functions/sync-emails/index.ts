@@ -35,14 +35,48 @@ Deno.serve(async (req) => {
     }
     const userId = userData.user.id;
 
-    const { account = "secondary", max_emails = 50 } = await req.json().catch(() => ({}));
+    const { account = "secondary", account_id, max_emails = 50 } = await req.json().catch(() => ({}));
 
-    // Select IMAP credentials
-    const isSecondary = account === "secondary";
-    const imapHost = isSecondary ? Deno.env.get("IMAP_HOST_2") : Deno.env.get("IMAP_HOST");
-    const imapPort = Number(isSecondary ? Deno.env.get("IMAP_PORT_2") : Deno.env.get("IMAP_PORT")) || 993;
-    const imapUser = isSecondary ? Deno.env.get("IMAP_USER_2") : Deno.env.get("IMAP_USER");
-    const imapPass = isSecondary ? Deno.env.get("IMAP_PASS_2") : Deno.env.get("IMAP_PASS");
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    let imapHost: string | undefined;
+    let imapPort: number;
+    let imapUser: string | undefined;
+    let imapPass: string | undefined;
+    let accountLabel: string;
+
+    // Dynamic account from DB
+    if (account_id) {
+      const encKey = Deno.env.get("EMAIL_ENCRYPTION_KEY") || "";
+      const { data: accData, error: accErr } = await supabaseAdmin.rpc("get_decrypted_email_account", {
+        _account_id: account_id,
+        _user_id: userId,
+        _enc_key: encKey,
+      });
+      if (accErr || !accData || accData.length === 0) {
+        return new Response(JSON.stringify({ error: "Cuenta de email no encontrada" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const acc = accData[0];
+      imapHost = acc.imap_host;
+      imapPort = acc.imap_port || 993;
+      imapUser = acc.imap_user || acc.smtp_user;
+      imapPass = acc.decrypted_imap_pass || acc.decrypted_smtp_pass;
+      accountLabel = acc.email_address;
+    } else {
+      // Legacy: env vars
+      const isSecondary = account === "secondary";
+      imapHost = isSecondary ? Deno.env.get("IMAP_HOST_2") : Deno.env.get("IMAP_HOST");
+      imapPort = Number(isSecondary ? Deno.env.get("IMAP_PORT_2") : Deno.env.get("IMAP_PORT")) || 993;
+      imapUser = isSecondary ? Deno.env.get("IMAP_USER_2") : Deno.env.get("IMAP_USER");
+      imapPass = isSecondary ? Deno.env.get("IMAP_PASS_2") : Deno.env.get("IMAP_PASS");
+      accountLabel = account;
+    }
 
     if (!imapHost || !imapUser || !imapPass) {
       return new Response(
@@ -50,11 +84,6 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     // Connect to IMAP
     const client = new ImapFlow({
@@ -72,7 +101,6 @@ Deno.serve(async (req) => {
     let imported = 0;
 
     try {
-      // Get the latest N message UIDs
       const totalMessages = client.mailbox.exists;
       if (totalMessages === 0) {
         return new Response(
@@ -81,14 +109,12 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Fetch from newest to oldest, limited to max_emails
       const startSeq = Math.max(1, totalMessages - max_emails + 1);
       const range = `${startSeq}:${totalMessages}`;
 
       for await (const msg of client.fetch(range, { uid: true, source: true })) {
-        const uid = `${account}:${msg.uid}`;
+        const uid = `${accountLabel}:${msg.uid}`;
 
-        // Check if already imported
         const { data: existing } = await supabaseAdmin
           .from("email_logs")
           .select("id")
@@ -97,7 +123,6 @@ Deno.serve(async (req) => {
 
         if (existing) continue;
 
-        // Parse the email
         const parsed = await simpleParser(msg.source);
 
         const fromAddr = parsed.from?.value?.[0]?.address || "";
@@ -109,7 +134,6 @@ Deno.serve(async (req) => {
         const bodyText = parsed.text || null;
         const emailDate = parsed.date?.toISOString() || new Date().toISOString();
 
-        // Try to find contact by sender email
         let contactId: string | null = null;
         if (fromAddr) {
           const { data: contact } = await supabaseAdmin
@@ -120,7 +144,6 @@ Deno.serve(async (req) => {
           if (contact) contactId = contact.id;
         }
 
-        // Insert into email_logs
         const { error: insertErr } = await supabaseAdmin.from("email_logs").insert({
           created_by: userId,
           from_email: fromText,
@@ -137,7 +160,6 @@ Deno.serve(async (req) => {
         });
 
         if (insertErr) {
-          // Skip duplicates silently (unique constraint on imap_uid)
           if (insertErr.code === "23505") continue;
           console.error("Insert error:", insertErr);
           continue;

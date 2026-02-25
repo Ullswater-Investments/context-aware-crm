@@ -14,6 +14,15 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import ComposeEmail from "@/components/email/ComposeEmail";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+type EmailAccount = {
+  id: string;
+  email_address: string;
+  display_name: string | null;
+};
 
 type EmailLog = {
   id: string;
@@ -50,6 +59,7 @@ export default function Emails() {
   const [totalCount, setTotalCount] = useState(0);
   const [counts, setCounts] = useState({ all: 0, sent: 0, failed: 0, inbound: 0 });
   const [syncing, setSyncing] = useState(false);
+  const [syncAccounts, setSyncAccounts] = useState<EmailAccount[]>([]);
 
   const fetchEmails = async () => {
     if (!user) return;
@@ -98,14 +108,25 @@ export default function Emails() {
 
   useEffect(() => {
     fetchEmails();
+    // Fetch email accounts for sync dropdown
+    if (user) {
+      supabase.from("email_accounts")
+        .select("id, email_address, display_name")
+        .eq("is_active", true)
+        .then(({ data }) => { if (data) setSyncAccounts(data as EmailAccount[]); });
+    }
   }, [user, statusFilter, search, page]);
 
-  const handleSync = async () => {
+  const handleSync = async (accountId?: string) => {
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("sync-emails", {
-        body: { account: "secondary", max_emails: 50 },
-      });
+      const body: Record<string, unknown> = { max_emails: 50 };
+      if (accountId) {
+        body.account_id = accountId;
+      } else {
+        body.account = "secondary";
+      }
+      const { data, error } = await supabase.functions.invoke("sync-emails", { body });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       toast.success(data?.message || "Sincronización completada");
@@ -135,15 +156,28 @@ export default function Emails() {
           <Plus className="w-4 h-4 mr-2" />
           Redactar
         </Button>
-        <Button
-          variant="outline"
-          onClick={handleSync}
-          disabled={syncing}
-          className="w-full"
-        >
-          {syncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-          Sincronizar
-        </Button>
+        {syncAccounts.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" disabled={syncing} className="w-full">
+                {syncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                Sincronizar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {syncAccounts.map(acc => (
+                <DropdownMenuItem key={acc.id} onClick={() => handleSync(acc.id)}>
+                  {acc.display_name || acc.email_address}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button variant="outline" onClick={() => handleSync()} disabled={syncing} className="w-full">
+            {syncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+            Sincronizar
+          </Button>
+        )}
 
         <div className="space-y-1 pt-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2 mb-2">
