@@ -304,9 +304,11 @@ export type Database = {
           contact_id: string | null
           created_at: string
           created_by: string | null
+          direction: string
           error_message: string | null
           from_email: string
           id: string
+          imap_uid: string | null
           message_id: string | null
           organization_id: string | null
           project_id: string | null
@@ -322,9 +324,11 @@ export type Database = {
           contact_id?: string | null
           created_at?: string
           created_by?: string | null
+          direction?: string
           error_message?: string | null
           from_email: string
           id?: string
+          imap_uid?: string | null
           message_id?: string | null
           organization_id?: string | null
           project_id?: string | null
@@ -340,9 +344,11 @@ export type Database = {
           contact_id?: string | null
           created_at?: string
           created_by?: string | null
+          direction?: string
           error_message?: string | null
           from_email?: string
           id?: string
+          imap_uid?: string | null
           message_id?: string | null
           organization_id?: string | null
           project_id?: string | null
