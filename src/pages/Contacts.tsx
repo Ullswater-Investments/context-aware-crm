@@ -361,17 +361,27 @@ export default function Contacts() {
                                 <Briefcase className="w-3 h-3" />{c.position}
                               </p>
                             )}
-                            {c.email && (
+                            {/* Email - always show */}
+                            {(c.email || c.work_email || c.personal_email) ? (
                               <button
-                                onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
+                                onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: (c.email || c.work_email || c.personal_email)! }); }}
                                 className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5 hover:text-primary transition-colors"
                               >
-                                <Mail className="w-3 h-3" />{c.email}
+                                <Mail className="w-3 h-3" />{c.email || c.work_email || c.personal_email}
                               </button>
+                            ) : (
+                              <p className="text-xs text-muted-foreground/50 truncate flex items-center gap-1 mt-0.5">
+                                <Mail className="w-3 h-3" />Sin email
+                              </p>
                             )}
-                            {(c.phone || c.mobile_phone || c.work_phone) && (
+                            {/* Phone - always show */}
+                            {(c.phone || c.mobile_phone || c.work_phone) ? (
                               <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
                                 <Phone className="w-3 h-3" />{c.phone || c.mobile_phone || c.work_phone}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-muted-foreground/50 truncate flex items-center gap-1 mt-0.5">
+                                <Phone className="w-3 h-3" />Sin teléfono
                               </p>
                             )}
                             {c.postal_address && (
@@ -394,33 +404,45 @@ export default function Contacts() {
                                 <Linkedin className="w-3 h-3" />LinkedIn
                               </a>
                             )}
+                            {/* Enrichment buttons - always show when domain available */}
                             {c.company_domain && (
                               <div className="flex items-center gap-1 mt-0.5">
                                 <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-muted-foreground truncate flex items-center gap-1 hover:text-primary">
                                   <Globe className="w-3 h-3" />{c.company_domain}
                                 </a>
-                                {(c.hunter_status === "pending" || c.hunter_status === "not_found") && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }}
-                                    disabled={enrichingId === c.id}
-                                    className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0"
-                                  >
-                                    {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                                    {c.hunter_status === "not_found" ? "Reintentar" : "Hunter"}
-                                  </button>
-                                )}
-                                {(c.apollo_status === "pending" || c.apollo_status === "not_found") && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }}
-                                    disabled={enrichingApolloId === c.id}
-                                    className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0"
-                                  >
-                                    {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                                    {c.apollo_status === "not_found" ? "Reintentar" : "Apollo"}
-                                  </button>
-                                )}
                               </div>
                             )}
+                            {/* Enrichment action buttons */}
+                            <div className="flex flex-wrap items-center gap-1 mt-1">
+                              {c.company_domain && (c.hunter_status === "pending" || c.hunter_status === "not_found") && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }}
+                                  disabled={enrichingId === c.id}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0"
+                                >
+                                  {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                                  Hunter
+                                </button>
+                              )}
+                              {c.company_domain && (c.apollo_status === "pending" || c.apollo_status === "not_found") && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }}
+                                  disabled={enrichingApolloId === c.id}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0"
+                                >
+                                  {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                  Apollo
+                                </button>
+                              )}
+                              {(c.lusha_status === "pending" || c.lusha_status === "not_found") && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); /* Lusha from kanban - open profile */ openProfile(c); }}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors flex items-center gap-0.5 shrink-0"
+                                >
+                                  <Sparkles className="w-3 h-3" />Lusha
+                                </button>
+                              )}
+                            </div>
                             {(c.tags || []).length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-2">
                                 {(c.tags || []).slice(0, 3).map((tag) => (
@@ -472,17 +494,27 @@ export default function Contacts() {
                 </CardHeader>
                 <CardContent className="space-y-1.5">
                   {c.position && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Briefcase className="w-3.5 h-3.5" />{c.position}</div>}
-                  {c.email && (
+                  {/* Email - always show */}
+                  {(c.email || c.work_email || c.personal_email) ? (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
+                      onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: (c.email || c.work_email || c.personal_email)! }); }}
                       className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
                     >
-                      <Mail className="w-3.5 h-3.5" />{c.email}
+                      <Mail className="w-3.5 h-3.5" />{c.email || c.work_email || c.personal_email}
                     </button>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground/50">
+                      <Mail className="w-3.5 h-3.5" />Sin email
+                    </div>
                   )}
-                  {(c.phone || c.mobile_phone || c.work_phone) && (
+                  {/* Phone - always show */}
+                  {(c.phone || c.mobile_phone || c.work_phone) ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Phone className="w-3.5 h-3.5" />{c.phone || c.mobile_phone || c.work_phone}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground/50">
+                      <Phone className="w-3.5 h-3.5" />Sin teléfono
                     </div>
                   )}
                   {c.postal_address && (
@@ -506,32 +538,41 @@ export default function Contacts() {
                     </a>
                   )}
                   {c.company_domain && (
-                    <div className="flex items-center gap-2">
-                      <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
-                        <Globe className="w-3.5 h-3.5" />{c.company_domain}
-                      </a>
-                      {(c.hunter_status === "pending" || c.hunter_status === "not_found") && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }}
-                          disabled={enrichingId === c.id}
-                          className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
-                        >
-                          {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                          {c.hunter_status === "not_found" ? "Reintentar" : "Hunter"}
-                        </button>
-                      )}
-                      {(c.apollo_status === "pending" || c.apollo_status === "not_found") && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }}
-                          disabled={enrichingApolloId === c.id}
-                          className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
-                        >
-                          {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                          {c.apollo_status === "not_found" ? "Reintentar" : "Apollo"}
-                        </button>
-                      )}
-                    </div>
+                    <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
+                      <Globe className="w-3.5 h-3.5" />{c.company_domain}
+                    </a>
                   )}
+                  {/* Enrichment buttons */}
+                  <div className="flex flex-wrap items-center gap-1 pt-1">
+                    {c.company_domain && (c.hunter_status === "pending" || c.hunter_status === "not_found") && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }}
+                        disabled={enrichingId === c.id}
+                        className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
+                      >
+                        {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                        Hunter
+                      </button>
+                    )}
+                    {c.company_domain && (c.apollo_status === "pending" || c.apollo_status === "not_found") && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }}
+                        disabled={enrichingApolloId === c.id}
+                        className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
+                      >
+                        {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                        Apollo
+                      </button>
+                    )}
+                    {(c.lusha_status === "pending" || c.lusha_status === "not_found") && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openProfile(c); }}
+                        className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors flex items-center gap-1 shrink-0"
+                      >
+                        <Sparkles className="w-3 h-3" />Lusha
+                      </button>
+                    )}
+                  </div>
                   {(c.tags || []).length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
                       {(c.tags || []).map((tag) => (

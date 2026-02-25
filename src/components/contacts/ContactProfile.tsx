@@ -331,16 +331,20 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   {contact.position && (
                     <div className="flex items-center gap-2 text-sm"><Briefcase className="w-4 h-4 text-muted-foreground" />{contact.position}</div>
                   )}
-                  {contact.email && (
+                  {(contact.email || contact.work_email || contact.personal_email) ? (
                     <button
                       onClick={() => setComposeOpen(true)}
                       className="flex items-center gap-2 text-sm hover:text-primary transition-colors"
                     >
-                      <Mail className="w-4 h-4 text-muted-foreground" />{contact.email}
+                      <Mail className="w-4 h-4 text-muted-foreground" />{contact.email || contact.work_email || contact.personal_email}
                     </button>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground/50"><Mail className="w-4 h-4" />No disponible</div>
                   )}
-                  {contact.phone && (
-                    <div className="flex items-center gap-2 text-sm"><Phone className="w-4 h-4 text-muted-foreground" />{contact.phone}</div>
+                  {(contact.phone || contact.mobile_phone || contact.work_phone) ? (
+                    <div className="flex items-center gap-2 text-sm"><Phone className="w-4 h-4 text-muted-foreground" />{contact.phone || contact.mobile_phone || contact.work_phone}</div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground/50"><Phone className="w-4 h-4" />No disponible</div>
                   )}
                   {contact.linkedin_url && (
                     <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
