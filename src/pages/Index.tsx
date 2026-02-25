@@ -238,17 +238,31 @@ export default function ChatPage() {
 
   const uploadFilesToStorage = async (files: File[], convId: string) => {
     for (const file of files) {
-      const path = `${user!.id}/chat/${convId}/${Date.now()}_${file.name}`;
-      await supabase.storage.from("knowledge").upload(path, file);
+      const ts = Date.now();
+      // 1. Upload to knowledge bucket (existing)
+      const knowledgePath = `${user!.id}/chat/${convId}/${ts}_${file.name}`;
+      await supabase.storage.from("knowledge").upload(knowledgePath, file);
       await supabase.from("knowledge_items").insert({
         file_name: file.name,
-        file_path: path,
+        file_path: knowledgePath,
         file_type: file.type,
         file_size: file.size,
         source_type: "chat_upload",
         conversation_id: convId,
         created_by: user!.id,
       });
+
+      // 2. Also upload to documents bucket so it appears in Documents section
+      const docPath = `${user!.id}/chat_${ts}_${file.name}`;
+      await supabase.storage.from("documents").upload(docPath, file);
+      await supabase.from("documents").insert({
+        name: file.name,
+        file_path: docPath,
+        file_type: file.type,
+        file_size: file.size,
+        created_by: user!.id,
+        conversation_id: convId,
+      } as any);
     }
   };
 

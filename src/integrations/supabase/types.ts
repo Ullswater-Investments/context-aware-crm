@@ -183,6 +183,7 @@ export type Database = {
         Row: {
           ai_summary: string | null
           contact_id: string | null
+          conversation_id: string | null
           created_at: string
           created_by: string | null
           file_path: string
@@ -196,6 +197,7 @@ export type Database = {
         Insert: {
           ai_summary?: string | null
           contact_id?: string | null
+          conversation_id?: string | null
           created_at?: string
           created_by?: string | null
           file_path: string
@@ -209,6 +211,7 @@ export type Database = {
         Update: {
           ai_summary?: string | null
           contact_id?: string | null
+          conversation_id?: string | null
           created_at?: string
           created_by?: string | null
           file_path?: string
