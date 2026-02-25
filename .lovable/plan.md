@@ -1,51 +1,54 @@
 
 
-## Plan: Diagnosticar y corregir el enriquecimiento Apollo
+## Plan: Importar contactos del directorio de profesionales y clinicas
 
-### Problema detectado
-Se probaron 4 contactos con dominios grandes (fenin.es, hmhospitales.com, vitaldent.com, sanitas.es) y **todos devuelven "not_found"**. Esto es anormal -- Apollo deberia tener datos de al menos algunos de estos contactos en empresas conocidas.
+### Datos extraidos del PDF
+Se han identificado **~55 contactos** en el documento "Directorio de Profesionales y Clinicas (Tercera Parte)". Cada contacto tiene: nombre, empresa/clinica, website (cuando disponible) y direccion postal (cuando disponible).
 
-La causa mas probable: la funcion NO loggea la respuesta real de Apollo cuando falla. Si la API key es invalida/expirada o el rate limit se alcanzo, la funcion lo enmascara silenciosamente como "not_found".
+### Enfoque
+1. **Crear organizaciones** que no existan ya en la base de datos
+2. **Crear contactos** vinculados a sus organizaciones, con `company_domain` extraido del website para habilitar Hunter/Apollo/Lusha desde las tarjetas
+3. Los campos email y telefono se dejaran vacios intencionalmente para que los botones de enriquecimiento (Hunter, Apollo, Lusha) los puedan buscar
 
-### Cambios propuestos
+### Implementacion
 
-#### 1. Agregar logging de diagnostico a la edge function
-Modificar `supabase/functions/enrich-apollo-contact/index.ts` para:
+#### 1. Migracion SQL unica
+Un solo script SQL que:
+- Inserta las organizaciones nuevas (evitando duplicados con organizaciones existentes como Vitaldent, Sanitas, etc.)
+- Inserta los contactos asociados a cada organizacion
+- Extrae el dominio limpio del website para `company_domain`
+- Asigna `postal_address` cuando esta disponible
+- Todos los contactos se crean con status `new_lead` y los estados de enriquecimiento en `pending`
 
-- Loggear el status HTTP y el body de la respuesta de Apollo cuando `apolloResponse.ok` es false
-- Loggear el body de la respuesta tambien cuando es exitosa pero `person` es null
-- Devolver el codigo de error real de Apollo al frontend en vez de siempre decir "not_found"
+#### Contactos a crear (resumen):
 
-```text
-Antes:
-  if (!apolloResponse.ok) {
-    // silenciosamente marca como not_found
-  }
+**Pagina 1:** Dmitri Naumov (Clinica Naumoff), Nayef Abufayyad (Clinica Cisme), Jose Antonio Martin (Clinica Menorca), Marta Maria Moratinos (DermaMoratinos), Rosalia Fernandez (Dental Catalano), Marta Alvarez Amaro (Smysecret), Fernando Luque (Imboclinics), Pedro Garcia (Clinica Molinon), Marta Sanchez (CUN)
 
-Despues:
-  if (!apolloResponse.ok) {
-    const errorBody = await apolloResponse.text();
-    console.error("Apollo API error:", apolloResponse.status, errorBody);
-    // devolver el error real al frontend
-  }
-```
+**Pagina 2:** Dr. Javier Cantero (BLife), Ana Carolina J. (Insparya), Alba Valenzuela (Sanitas), Virgilio Leal (Clinica Baviera), Jose Luis Fernandez (Dental Pedroche), Eusebio Villar (Vive-Rie), Jose Duran (Clinica Duran), Marta Fernandez-Coppel (Dental Tera), Santiago Saborido (Saborido & Rodriguez), Angelines Capuchino (Dental Capuchino), Paco Piqueras (Clinica Piqueras), Alfredo Fernandez (Clinica Fernandez Blanco)
 
-#### 2. Distinguir errores de API de "no encontrado"
-Cuando Apollo devuelve un error HTTP (401, 403, 429, 500), NO marcar el contacto como `not_found` (para poder reintentar). Solo marcar como `not_found` cuando Apollo devuelve 200 pero sin datos.
+**Pagina 3:** Andriy Masalitin (Dental Renessans), Mateo Panadero (Origen Dental), Alvaro Romero (Casanova Dental), Gabriel Costas (Face&Go), Julio Vilacoba (Caredent), Ruth Sanz (Naturadent), Oswaldo Jimenez (Dental Banquez), Alejandro Rodriguez (Vivantadental), Alejandro Nazco (Castro & Dental), Bruno Ruiz (Dental EOS), Adrian Garcia (Dental Caicoya)
 
-- Error HTTP -> devolver error al frontend, NO actualizar apollo_status
-- 200 sin person -> marcar como `not_found`
-- 200 con person -> marcar como `enriched`
+**Pagina 4:** Raul Guzman (Clinica VASS), Jose Ma Nieto (Nieto y Llorens), Jesus Recio (JAR Clinica Dental), Jesus Moya (Estudio Dental Melguizo), Davinia Garcia (CD Majadahonda), Vicente Fernandez (Veterinaria Casa de Campo), Francisco Bueno (PRONOS), Marling Monasterios (Sonrisalud), Joaquin Carmona (Clinica Carmona), Laureano Alvarez-Rementeria (Clinica Rementeria), Antonio Gonzalez (Vivanta)
 
-#### 3. Loggear tambien la respuesta exitosa sin datos
-Cuando Apollo devuelve 200 pero `person` es null, loggear la respuesta completa para verificar si la estructura de la API ha cambiado.
+**Pagina 5:** Nacho Varo (Clinica Ityos), Juan Carlos Vazquez (Cemei), Antonella Rapizza (Dental Breeze), David Villanueva (Dentality), Alvaro Cuesta (Clinica Pegadas), Antonio Diaz Huertas (Ergodinamica), Maire Serrano (Vitaldent), Lucas Martin (Vitaldent), Elena Neira (Dental Belvedere), Luis Puyuelo (Clinica Puyuelo), Luis Javier Gil (Gilva), Carlos Escudero (Avance Dental)
 
-### Archivos a modificar
+**Pagina 6-7:** Javier Planas (Clinica Planas), Jose Angel Madrid (Titanium Dental), Francisco Latorre (KnowPain Castilla), Miguel Angel Sanz (Vitaldent), Rodolfo Lopez (Elite Laser), Joan Lopez (OralStudio), Ignacio Sagardoy (Montpellier), Fernando Martin (Clinica Arquero), Victor Ubero (Sanitas), Belinda Marin (Adelgar), Cesar Contreras (Adelgar), Angel Galindo (CEMTRO), Gonzalo Dorao (Dental Don Ramon de la Cruz)
 
-1. **supabase/functions/enrich-apollo-contact/index.ts**
-   - Lineas 108-120: agregar logging del error HTTP y devolver error real
-   - Lineas 122-133: agregar logging cuando person es null
-   - No marcar `apollo_status = "not_found"` en caso de error HTTP (solo en caso de 200 sin datos)
+### Detalles tecnicos
+
+**Archivo a crear:** Nueva migracion SQL
+
+El script SQL utilizara un bloque DO con variables temporales para:
+1. Buscar organizaciones existentes por nombre (case-insensitive) antes de insertar
+2. Insertar organizaciones nuevas con website y sector
+3. Insertar contactos con `organization_id`, `company_domain` (dominio limpio), `postal_address`, y `created_by` del usuario actual
+
+La migracion necesita el `user_id` del usuario autenticado. Se obtendra de la tabla `contacts` existente (tomando el `created_by` mas comun).
 
 ### Resultado esperado
-Tras desplegar, podremos ver en los logs exactamente que responde Apollo y diagnosticar si es un problema de API key, rate limit, o simplemente datos no encontrados.
+- ~55 nuevos contactos creados con status `new_lead`
+- Organizaciones creadas automaticamente (sin duplicar las existentes)
+- `company_domain` poblado donde hay website, habilitando Hunter y Apollo desde las tarjetas
+- Campos email y telefono vacios, mostrando "Sin email" / "Sin telefono" en las tarjetas
+- Botones de Lusha, Hunter y Apollo visibles en cada tarjeta para enriquecer datos
+
