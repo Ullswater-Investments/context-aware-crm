@@ -1,35 +1,42 @@
 
 
-## Plan: Añadir campo CC al compositor de emails
+## Plan: Configurar envio de emails via SMTP (Hostinger)
 
-### Cambios necesarios
+### Objetivo
 
-#### 1. `src/components/email/ComposeEmail.tsx` - Añadir campo CC en el formulario
+Reemplazar Resend por tu servidor SMTP de Hostinger (`smtp.hostinger.com`) para que los emails salgan desde tu direccion real `emilio.mulet@kitespaciodedatos.eu`.
 
-- Añadir estado `cc` (string)
-- Añadir un campo Input entre "Para" y "Asunto" con label "CC" y placeholder "email1@ejemplo.com, email2@ejemplo.com"
-- Pasar `cc` al invoke de la edge function
-- El campo CC es opcional, acepta multiples emails separados por comas
+### Paso 1: Almacenar credenciales SMTP como secretos
 
-#### 2. `supabase/functions/send-email/index.ts` - Enviar con CC via Resend
+Se guardaran de forma segura las siguientes credenciales:
 
-- Extraer `cc` del body del request
-- Añadir `cc` al objeto `resendBody` si tiene valor (como array de emails)
-- Guardar los CC en el campo existente del log o añadir al registro
+| Secreto | Valor |
+|---|---|
+| `SMTP_HOST` | smtp.hostinger.com |
+| `SMTP_PORT` | 465 |
+| `SMTP_USER` | emilio.mulet@kitespaciodedatos.eu |
+| `SMTP_PASS` | (la contrasena proporcionada) |
 
-#### 3. Migración de base de datos - Añadir columna `cc_emails` a `email_logs`
+### Paso 2: Modificar `supabase/functions/send-email/index.ts`
 
-- `ALTER TABLE email_logs ADD COLUMN cc_emails text;`
-- Guardar los emails en CC para que queden registrados en el historial
+Reemplazar la integracion con Resend por nodemailer con SMTP:
 
-#### 4. `src/pages/Emails.tsx` - Mostrar CC en el panel de preview
+- Importar `npm:nodemailer` (compatible con Deno)
+- Crear transporter SMTP con SSL en puerto 465
+- Enviar email con soporte para: to, cc, subject, html, text, adjuntos
+- El remitente por defecto sera `emilio.mulet@kitespaciodedatos.eu`
+- Mantener toda la logica existente de: autenticacion, descarga de adjuntos, logging en `email_logs`, guardado de `email_attachments`
 
-- Mostrar los emails CC en la vista de detalle del email seleccionado, debajo de "Para" y "De"
+### Paso 3: Actualizar el remitente por defecto en `ComposeEmail.tsx`
+
+Cambiar el `from` por defecto de `"EuroCRM <onboarding@resend.dev>"` a `"EuroCRM <emilio.mulet@kitespaciodedatos.eu>"`.
 
 ### Archivos a modificar
 
-1. `src/components/email/ComposeEmail.tsx` - Campo CC en formulario
-2. `supabase/functions/send-email/index.ts` - Soporte CC en Resend API
-3. `src/pages/Emails.tsx` - Mostrar CC en preview
-4. Nueva migración SQL - Columna `cc_emails`
+1. **`supabase/functions/send-email/index.ts`** - Reemplazar Resend por SMTP/nodemailer
+2. **`src/components/email/ComposeEmail.tsx`** - Actualizar remitente por defecto
+
+### Nota de seguridad
+
+Las credenciales se almacenaran como secretos cifrados en el backend, nunca en el codigo fuente.
 
