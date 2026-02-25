@@ -84,7 +84,7 @@ export default function SignatureManager({ open, onOpenChange, onSignaturesChang
         name: name.trim(),
         image_path: path,
         is_default: isFirst,
-      } as any);
+      });
       if (dbErr) throw dbErr;
 
       toast.success("Firma guardada");
@@ -102,15 +102,13 @@ export default function SignatureManager({ open, onOpenChange, onSignaturesChang
 
   const setDefault = async (id: string) => {
     if (!user) return;
-    // Remove current default
     await supabase
       .from("email_signatures")
-      .update({ is_default: false } as any)
+      .update({ is_default: false })
       .eq("created_by", user.id);
-    // Set new default
     await supabase
       .from("email_signatures")
-      .update({ is_default: true } as any)
+      .update({ is_default: true })
       .eq("id", id);
     fetchSignatures();
     onSignaturesChange?.();
@@ -124,21 +122,12 @@ export default function SignatureManager({ open, onOpenChange, onSignaturesChang
     onSignaturesChange?.();
   };
 
-  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    const loadUrls = async () => {
-      const urls: Record<string, string> = {};
-      for (const sig of signatures) {
-        const { data } = await supabase.storage
-          .from("email-signatures")
-          .createSignedUrl(sig.image_path, 3600);
-        if (data?.signedUrl) urls[sig.id] = data.signedUrl;
-      }
-      setSignedUrls(urls);
-    };
-    if (signatures.length > 0) loadUrls();
-  }, [signatures]);
+  const getPublicUrl = (imagePath: string) => {
+    const { data } = supabase.storage
+      .from("email-signatures")
+      .getPublicUrl(imagePath);
+    return data?.publicUrl || "";
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -187,7 +176,7 @@ export default function SignatureManager({ open, onOpenChange, onSignaturesChang
             signatures.map((sig) => (
               <div key={sig.id} className="flex items-center gap-3 p-2 rounded-lg border border-border">
                 <img
-                  src={signedUrls[sig.id] || ""}
+                  src={getPublicUrl(sig.image_path)}
                   alt={sig.name}
                   className="h-10 w-auto max-w-[120px] object-contain"
                 />

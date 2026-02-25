@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
     const userId = userData.user.id;
 
     const {
-      to, cc, subject, html, text, from,
+      to, cc, bcc, subject, html, text, from,
       contact_id, organization_id, project_id,
       attachments: attachmentPaths,
     } = await req.json();
@@ -85,6 +85,11 @@ Deno.serve(async (req) => {
       ? (typeof cc === "string" ? cc.split(",").map((e: string) => e.trim()).filter(Boolean) : Array.isArray(cc) ? cc : [])
       : [];
 
+    // Parse BCC emails
+    const bccEmails: string[] = bcc
+      ? (typeof bcc === "string" ? bcc.split(",").map((e: string) => e.trim()).filter(Boolean) : Array.isArray(bcc) ? bcc : [])
+      : [];
+
     // Create SMTP transporter
     const transporter = nodemailer.createTransport({
       host: Deno.env.get("SMTP_HOST"),
@@ -104,6 +109,7 @@ Deno.serve(async (req) => {
       text: text || undefined,
     };
     if (ccEmails.length > 0) mailOptions.cc = ccEmails.join(", ");
+    if (bccEmails.length > 0) mailOptions.bcc = bccEmails.join(", ");
     if (mailAttachments.length > 0) mailOptions.attachments = mailAttachments;
 
     // Send via SMTP

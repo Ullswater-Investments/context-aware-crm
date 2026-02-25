@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   Plus, Search, Mail, MailCheck, MailX, Inbox,
-  Loader2, ChevronLeft, ChevronRight
+  Loader2, ChevronLeft, ChevronRight, Forward
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -42,6 +42,7 @@ export default function Emails() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selected, setSelected] = useState<EmailLog | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [resendData, setResendData] = useState<{ to: string; cc: string; subject: string; body: string } | null>(null);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [counts, setCounts] = useState({ all: 0, sent: 0, failed: 0 });
@@ -73,8 +74,9 @@ export default function Emails() {
       query = query.eq("status", statusFilter);
     }
     if (search.trim()) {
+      const escaped = search.trim().replace(/[%_\\]/g, '\\$&');
       query = query.or(
-        `to_email.ilike.%${search.trim()}%,subject.ilike.%${search.trim()}%`
+        `to_email.ilike.%${escaped}%,subject.ilike.%${escaped}%`
       );
     }
 
@@ -250,9 +252,27 @@ export default function Emails() {
                   {format(new Date(selected.created_at), "dd MMM yyyy, HH:mm", { locale: es })}
                 </p>
               </div>
-              <Badge variant={selected.status === "sent" ? "default" : "destructive"}>
-                {selected.status === "sent" ? "Enviado" : "Fallido"}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant={selected.status === "sent" ? "default" : "destructive"}>
+                  {selected.status === "sent" ? "Enviado" : "Fallido"}
+                </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setResendData({
+                      to: selected.to_email,
+                      cc: selected.cc_emails || "",
+                      subject: selected.subject,
+                      body: selected.body_html || selected.body_text || "",
+                    });
+                    setComposeOpen(true);
+                  }}
+                >
+                  <Forward className="w-3.5 h-3.5 mr-1" />
+                  Reenviar
+                </Button>
+              </div>
               {selected.error_message && (
                 <p className="text-xs text-destructive mt-1">{selected.error_message}</p>
               )}
@@ -281,7 +301,14 @@ export default function Emails() {
       {/* Compose dialog */}
       <ComposeEmail
         open={composeOpen}
-        onOpenChange={setComposeOpen}
+        onOpenChange={(open) => {
+          setComposeOpen(open);
+          if (!open) setResendData(null);
+        }}
+        defaultTo={resendData?.to}
+        defaultCc={resendData?.cc}
+        defaultSubject={resendData?.subject}
+        defaultBody={resendData?.body}
         onSent={() => { fetchEmails(); }}
       />
     </div>
