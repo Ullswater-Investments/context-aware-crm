@@ -85,6 +85,7 @@ export type Database = {
           created_by: string | null
           email: string | null
           full_name: string
+          hunter_status: string
           id: string
           last_enriched_at: string | null
           linkedin_url: string | null
@@ -107,6 +108,7 @@ export type Database = {
           created_by?: string | null
           email?: string | null
           full_name: string
+          hunter_status?: string
           id?: string
           last_enriched_at?: string | null
           linkedin_url?: string | null
@@ -129,6 +131,7 @@ export type Database = {
           created_by?: string | null
           email?: string | null
           full_name?: string
+          hunter_status?: string
           id?: string
           last_enriched_at?: string | null
           linkedin_url?: string | null
