@@ -1,74 +1,71 @@
 
 
-## Plan: Boton "Sugerir Respuesta" con selector de tono y generacion IA
+## Plan: Rediseno del Compositor de Email - Panel Lateral Profesional
 
 ### Objetivo
 
-Añadir al panel de detalle de emails un boton "Sugerir Respuesta" con un DropdownMenu que permite elegir entre 4 tonos (Formal, Amigable, Persuasivo, Conciso). Al seleccionar un tono, se llama a una Edge Function que genera un borrador HTML usando Lovable AI, y se abre el compositor pre-rellenado con la respuesta.
-
-No se necesitan API keys adicionales: `LOVABLE_API_KEY` ya esta configurada.
+Transformar el compositor de email de un Dialog (modal centrado) a un Sheet (panel lateral derecho) con layout flex de 3 zonas: header fijo, cuerpo con scroll, y footer fijo. Incluye campos CC/BCC colapsables, firma colapsable, barra de herramientas en el footer y boton de IA con selector de tono integrado.
 
 ---
 
-### 1. Nueva Edge Function: `suggest-reply`
+### Cambios en `src/components/email/ComposeEmail.tsx`
 
-**Archivo: `supabase/functions/suggest-reply/index.ts`**
+**1. Cambio de contenedor: Dialog a Sheet**
+- Reemplazar `Dialog`/`DialogContent` por `Sheet`/`SheetContent` de shadcn (side="right")
+- Ancho: `w-full sm:max-w-[600px]` con `p-0` para controlar padding manualmente
+- Layout interno: `flex flex-col h-full`
 
-- Recibe: `{ subject, body_text, to_email, tone }` donde tone es "formal" | "amigable" | "persuasivo" | "conciso"
-- Valida JWT del usuario con `supabase.auth.getUser(token)`
-- Mapa de instrucciones de tono:
-  - formal: "Usa lenguaje corporativo, respetuoso y estructurado"
-  - amigable: "Se calido, cercano y profesional. Puedes usar algun emoji"
-  - persuasivo: "Centrate en beneficios. Usa llamadas a la accion claras"
-  - conciso: "Responde en maximo 2-3 frases. Directo al grano"
-- Llama a Lovable AI Gateway (`https://ai.gateway.lovable.dev/v1/chat/completions`) con modelo `google/gemini-3-flash-preview`
-- System prompt incluye la instruccion de tono dinamica, pide respuesta en HTML (p, br, strong), en el mismo idioma del email original
-- Sin streaming (respuesta completa)
-- Retorna `{ suggestion: "<p>...</p>" }`
-- Maneja errores 429 (rate limit) y 402 (creditos) con mensajes claros
+**2. Header fijo (sticky top)**
+- Titulo "Redactar email" con boton de cerrar
+- Campo "Para" con boton "+ CC/BCC" a la derecha
+- Estado `showCcBcc` (boolean, default false): al pulsar, se despliegan los campos CC y BCC con animacion
+- Campo "Asunto"
+- Separado del cuerpo con `border-b`
 
-### 2. Modificar `src/pages/Emails.tsx`
+**3. Cuerpo con scroll (`flex-1 overflow-y-auto`)**
+- Editor Tiptap (RichTextEditor) ocupando el espacio disponible
+- Firma colapsable debajo del editor:
+  - Usa el componente `Collapsible` de shadcn
+  - Colapsada: muestra una linea gris con nombre de la firma seleccionada y boton "Ver firma"
+  - Expandida: muestra la imagen de la firma con escala reducida (opacity-80, scale-95)
+  - Boton "Gestionar firmas" para abrir SignatureManager
+- Lista de adjuntos (si hay) debajo de la firma
 
-Cambios en el panel derecho (detalle del email seleccionado):
+**4. Footer fijo (sticky bottom)**
+- Borde superior + fondo solido (`bg-background border-t`)
+- Lado izquierdo: boton adjuntar (icono Paperclip) + contador de adjuntos + selector de firma (Select compacto)
+- Lado derecho: 
+  - DropdownMenu de IA con selector de tono (Formal, Amigable, Persuasivo, Conciso) - icono Sparkles
+  - Boton "Enviar" (primary) con icono Send
+- Todo en una sola linea horizontal
 
-- Importar `DropdownMenu`, `DropdownMenuContent`, `DropdownMenuItem`, `DropdownMenuTrigger` de shadcn
-- Importar `Sparkles`, `ChevronDown` de lucide-react
-- Nuevo estado `suggestingReply` (boolean) para el loader
-- Añadir un DropdownMenu junto al boton "Reenviar" existente (linea 259-274):
-  - Trigger: boton con icono Sparkles + texto "Sugerir Respuesta" + chevron
-  - 4 opciones de tono: Formal, Amigable, Persuasivo, Conciso (cada una con emoji)
-  - Al seleccionar un tono:
-    1. Activa `suggestingReply = true`
-    2. Extrae body_text del email (strip HTML si solo hay body_html)
-    3. Llama a `supabase.functions.invoke("suggest-reply", { body: { subject, body_text, to_email, tone } })`
-    4. Al recibir respuesta: setea `resendData` con to, subject prefijado con "Re: ", y body con el HTML sugerido
-    5. Abre ComposeEmail
-    6. Toast de exito o error
-    7. `suggestingReply = false`
-- El boton muestra Loader2 animado mientras genera
+**5. Selector de tono IA en el footer**
+- Al seleccionar un tono, llama a `supabase.functions.invoke("suggest-reply")` con el subject, body_text y tono
+- Muestra Loader2 mientras genera
+- Al recibir respuesta, inserta el HTML en el editor (actualiza `body` state)
+- Toast de exito/error
 
-### 3. Registrar en config.toml
+**6. Props adicionales**
+- No se cambia la interfaz `ComposeEmailProps` (mismos props que antes)
+- Se necesita un nuevo estado `showCcBcc` (boolean)
+- Se necesita un nuevo estado `suggestingReply` (boolean)
 
-Se registra automaticamente. La funcion usara `verify_jwt = false` (validacion manual en codigo).
+### Cambios en `src/pages/Emails.tsx`
 
----
+- Eliminar el DropdownMenu de "Sugerir Respuesta" del panel de detalle (ya estara en el compositor)
+- Eliminar estado `suggestingReply` y funcion `handleSuggestReply` (se mueve al compositor)
+- Mantener el boton "Reenviar" en el panel de detalle
 
-### Archivos a crear/modificar
+### Archivos a modificar
 
-1. **`supabase/functions/suggest-reply/index.ts`** (NUEVO) - Edge function con Lovable AI y selector de tono
-2. **`src/pages/Emails.tsx`** - Añadir DropdownMenu de tono + logica de llamada
+1. **`src/components/email/ComposeEmail.tsx`** - Rediseno completo: Dialog a Sheet, layout flex 3 zonas, CC/BCC colapsable, firma colapsable, footer fijo con IA + Enviar
+2. **`src/pages/Emails.tsx`** - Limpiar logica de suggest-reply (ahora vive en ComposeEmail), quitar imports no usados
 
-### Flujo del usuario
+### Detalles tecnicos
 
-```text
-Usuario selecciona email -> Panel derecho muestra detalle
--> Click en "Sugerir Respuesta" -> Aparece menu con 4 tonos
--> Selecciona "Persuasivo" -> Boton muestra "Redactando..." con spinner
--> Edge function genera HTML con tono persuasivo via Gemini
--> Se abre ComposeEmail con:
-   - Para: to_email del email original
-   - Asunto: "Re: [asunto original]"
-   - Cuerpo: HTML generado por IA con tono seleccionado
--> Usuario revisa/edita -> Envia
-```
+- El Sheet de shadcn usa `@radix-ui/react-dialog` internamente (ya instalado)
+- Se usa `Collapsible` de shadcn para la firma (ya instalado: `@radix-ui/react-collapsible`)
+- El DropdownMenu para tonos IA usa `bg-popover` para evitar transparencia (siguiendo guia de dropdowns)
+- El `SheetContent` lleva `className="p-0 w-full sm:max-w-[600px]"` para controlar el layout
+- La funcion `suggest-reply` ya existe y esta desplegada; solo se mueve la logica de llamada de Emails.tsx a ComposeEmail.tsx
 
