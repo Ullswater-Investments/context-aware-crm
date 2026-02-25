@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, Linkedin, FilterX } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
+import ContactImporter from "@/components/contacts/ContactImporter";
 
 const PIPELINE_COLUMNS = [
   { key: "new_lead", label: "Nuevo Lead", color: "bg-blue-500/10 border-blue-500/30" },
@@ -42,6 +43,27 @@ interface Contact {
   last_enriched_at?: string | null;
 }
 
+function hasMissingData(c: Contact): boolean {
+  const hasEmail = !!(c.email || c.work_email || c.personal_email);
+  const hasPhone = !!(c.phone || c.mobile_phone || c.work_phone);
+  return !hasEmail || !hasPhone;
+}
+
+function MissingDataAlert() {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>Faltan datos de contacto</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export default function Contacts() {
   const { user } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -49,6 +71,7 @@ export default function Contacts() {
   const [lushaFilter, setLushaFilter] = useState("");
   const [positionFilter, setPositionFilter] = useState("");
   const [open, setOpen] = useState(false);
+  const [importerOpen, setImporterOpen] = useState(false);
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", position: "", organization_id: "", linkedin_url: "", company_domain: "" });
   const [view, setView] = useState<"kanban" | "list">("kanban");
@@ -158,6 +181,10 @@ export default function Contacts() {
               <List className="w-4 h-4" />
             </button>
           </div>
+          <Button variant="outline" onClick={() => setImporterOpen(true)}>
+            <FileSpreadsheet className="w-4 h-4 mr-2" />
+            Importar
+          </Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button><Plus className="w-4 h-4 mr-2" />Nuevo contacto</Button>
@@ -188,7 +215,7 @@ export default function Contacts() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Buscar por nombre, email, cargo..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          <Input placeholder="Buscar por nombre, email, cargo, etiqueta..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
         <Select value={lushaFilter} onValueChange={setLushaFilter}>
           <SelectTrigger>
@@ -231,44 +258,61 @@ export default function Contacts() {
                   </span>
                 </div>
                 <div className="space-y-2">
-                  {columnContacts.map((c) => (
-                    <div
-                      key={c.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, c.id)}
-                      onClick={() => openProfile(c)}
-                      className={`bg-background rounded-lg border p-3 cursor-pointer hover:shadow-md transition-shadow ${
-                        draggedId === c.id ? "opacity-50" : ""
-                      }`}
-                    >
-                      <div className="flex items-start gap-2">
-                        <GripVertical className="w-4 h-4 text-muted-foreground/40 shrink-0 mt-0.5 cursor-grab" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1">
-                            <p className="font-medium text-sm truncate">{c.full_name}</p>
-                            {(c as any).lusha_status === "enriched" && <Sparkles className="w-3 h-3 text-green-500 shrink-0" />}
-                          </div>
-                          {c.organizations?.name && (
-                            <p className="text-xs text-muted-foreground truncate">{c.organizations.name}</p>
-                          )}
-                          {c.email && (
-                            <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-1">
-                              <Mail className="w-3 h-3" />{c.email}
-                            </p>
-                          )}
-                          {(c.tags || []).length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {(c.tags || []).slice(0, 3).map((tag) => (
-                                <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0">
-                                  {tag}
-                                </Badge>
-                              ))}
+                  {columnContacts.map((c) => {
+                    const missing = hasMissingData(c);
+                    return (
+                      <div
+                        key={c.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, c.id)}
+                        onClick={() => openProfile(c)}
+                        className={`bg-background rounded-lg border p-3 cursor-pointer hover:shadow-md transition-shadow ${
+                          draggedId === c.id ? "opacity-50" : ""
+                        } ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""}`}
+                      >
+                        <div className="flex items-start gap-2">
+                          <GripVertical className="w-4 h-4 text-muted-foreground/40 shrink-0 mt-0.5 cursor-grab" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1">
+                              <p className="font-medium text-sm truncate">{c.full_name}</p>
+                              {(c as any).lusha_status === "enriched" && <Sparkles className="w-3 h-3 text-green-500 shrink-0" />}
+                              {missing && <MissingDataAlert />}
                             </div>
-                          )}
+                            {c.organizations?.name && (
+                              <p className="text-xs text-muted-foreground truncate">{c.organizations.name}</p>
+                            )}
+                            {c.position && (
+                              <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+                                <Briefcase className="w-3 h-3" />{c.position}
+                              </p>
+                            )}
+                            {c.email && (
+                              <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+                                <Mail className="w-3 h-3" />{c.email}
+                              </p>
+                            )}
+                            {(c.phone || c.mobile_phone || c.work_phone) && (
+                              <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+                                <Phone className="w-3 h-3" />{c.phone || c.mobile_phone || c.work_phone}
+                              </p>
+                            )}
+                            {(c.tags || []).length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {(c.tags || []).slice(0, 3).map((tag) => (
+                                  <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0 gap-0.5">
+                                    <Tag className="w-2.5 h-2.5" />{tag}
+                                  </Badge>
+                                ))}
+                                {(c.tags || []).length > 3 && (
+                                  <span className="text-[10px] text-muted-foreground">+{(c.tags || []).length - 3}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -277,33 +321,51 @@ export default function Contacts() {
       ) : (
         /* List View */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((c) => (
-            <Card key={c.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => openProfile(c)}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center shrink-0">
-                    <Users className="w-5 h-5 text-accent" />
+          {filtered.map((c) => {
+            const missing = hasMissingData(c);
+            return (
+              <Card
+                key={c.id}
+                className={`hover:shadow-md transition-shadow cursor-pointer ${
+                  missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""
+                }`}
+                onClick={() => openProfile(c)}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center shrink-0">
+                      <Users className="w-5 h-5 text-accent" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <CardTitle className="text-base truncate">{c.full_name}</CardTitle>
+                        {missing && <MissingDataAlert />}
+                      </div>
+                      {c.organizations?.name && <p className="text-sm text-muted-foreground">{c.organizations.name}</p>}
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <CardTitle className="text-base truncate">{c.full_name}</CardTitle>
-                    {c.organizations?.name && <p className="text-sm text-muted-foreground">{c.organizations.name}</p>}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-1.5">
-                {c.position && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Briefcase className="w-3.5 h-3.5" />{c.position}</div>}
-                {c.email && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Mail className="w-3.5 h-3.5" />{c.email}</div>}
-                {c.phone && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Phone className="w-3.5 h-3.5" />{c.phone}</div>}
-                {(c.tags || []).length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {(c.tags || []).map((tag) => (
-                      <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                </CardHeader>
+                <CardContent className="space-y-1.5">
+                  {c.position && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Briefcase className="w-3.5 h-3.5" />{c.position}</div>}
+                  {c.email && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Mail className="w-3.5 h-3.5" />{c.email}</div>}
+                  {(c.phone || c.mobile_phone || c.work_phone) && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Phone className="w-3.5 h-3.5" />{c.phone || c.mobile_phone || c.work_phone}
+                    </div>
+                  )}
+                  {(c.tags || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {(c.tags || []).map((tag) => (
+                        <Badge key={tag} variant="secondary" className="text-xs gap-1">
+                          <Tag className="w-3 h-3" />{tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -313,6 +375,13 @@ export default function Contacts() {
           <p>No hay contactos todavía</p>
         </div>
       )}
+
+      {/* Contact Importer */}
+      <ContactImporter
+        open={importerOpen}
+        onOpenChange={setImporterOpen}
+        onComplete={load}
+      />
 
       {/* Contact Profile Dialog */}
       <ContactProfile
