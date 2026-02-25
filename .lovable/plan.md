@@ -1,45 +1,26 @@
 
 
-## Plan: Agregar boton "Enriquecer con Hunter.io" en el perfil de contacto
+## Plan: Añadir campo "Company URL" al perfil de contacto
 
-### Objetivo
-Anadir un boton similar al de Lusha que use la API Combined Find de Hunter.io para enriquecer el contacto con datos profesionales (email, telefono, cargo, LinkedIn) y guardarlos en la base de datos.
+### Problema
+El formulario de edicion del perfil de contacto (`ContactProfile.tsx`) no incluye el campo `company_domain`, por lo que no se puede añadir ni editar la URL de la empresa desde el perfil. Esto es necesario para que Hunter.io pueda funcionar correctamente (necesita un dominio).
 
-### Cambios
+### Cambios en `src/components/contacts/ContactProfile.tsx`
 
-#### 1. Nueva edge function: `supabase/functions/enrich-hunter-contact/index.ts`
-Crear una funcion dedicada que:
-- Reciba `contact_id` y `email` del contacto
-- Llame a `https://api.hunter.io/v2/combined/find?email=...` usando la HUNTER_API_KEY ya configurada
-- Extraiga: position, linkedin_url, phone_number, company (domain), y datos de verificacion
-- Actualice el contacto en la base de datos con los campos enriquecidos:
-  - `work_email` (si el email verificado es valido)
-  - `work_phone` (si hay phone_number)
-  - `linkedin_url` (si existe y no tenia ya)
-  - `position` (si existe y no tenia ya)
-  - `company_domain` (si existe)
-  - `hunter_status` = "enriched" o "not_found"
-  - `last_enriched_at` = timestamp actual
+1. **Añadir `company_domain` al estado `editData`** (linea 88): incluir el campo en el objeto inicial y en `startEdit()` (linea 113-123)
 
-#### 2. Migracion de base de datos
-Agregar columna `hunter_status` (text, default 'pending') a la tabla `contacts` para rastrear el estado de enriquecimiento con Hunter independientemente de Lusha.
+2. **Añadir campo de edicion** (despues del campo LinkedIn, linea 294): nuevo input con Label "Dominio empresa" y placeholder "empresa.com"
 
-#### 3. Cambios en `src/components/contacts/ContactProfile.tsx`
-- Agregar estado `enrichingHunter` (boolean)
-- Agregar funcion `enrichWithHunter` que:
-  - Requiere que el contacto tenga email (obligatorio para Combined Find)
-  - Invoca la nueva edge function `enrich-hunter-contact`
-  - Muestra toast de exito/error segun resultado
-- Agregar un boton "Enriquecer con Hunter.io" debajo del boton de Lusha, con icono de Search/Globe
-  - Solo visible si `hunter_status === "pending"` y el contacto tiene email
-  - Estilo similar al de Lusha pero con diferente icono
-- Agregar badge de estado Hunter junto al de Lusha en el header
-- Actualizar la interfaz Contact para incluir `hunter_status`
+3. **Incluir `company_domain` en `saveEdit()`** (linea 125-138): enviar el campo en el update a la base de datos
 
-### Detalles tecnicos
+4. **Mostrar `company_domain` en la vista de lectura** (despues del enlace LinkedIn, linea 318): enlace clicable con icono Globe que muestra el dominio y abre la URL
 
-- La edge function reutiliza la misma HUNTER_API_KEY que ya esta configurada como secret
-- Se usa `combined-find` que devuelve persona + verificacion en una sola llamada
-- Si el contacto no tiene email, el boton de Hunter no aparece (la API lo requiere)
-- Los datos de Hunter se guardan en los mismos campos que Lusha (work_email, work_phone, etc.) solo si estan vacios, para no sobreescribir datos existentes
+### Detalle de cada cambio
+
+- `editData` pasa de `{ full_name, email, phone, position, linkedin_url }` a incluir `company_domain`
+- En `startEdit()`, se inicializa con `contact.company_domain || ""`
+- En `saveEdit()`, se envia `company_domain: editData.company_domain || null`
+- En la vista de lectura, se renderiza como enlace con `target="_blank"` y `rel="noopener noreferrer"`
+
+No se necesitan cambios en la pagina de Contactos (`Contacts.tsx`) ni en la base de datos, ya que el campo `company_domain` ya existe en la tabla y ya se muestra en las tarjetas de las vistas Kanban y Lista.
 
