@@ -57,10 +57,31 @@ function mapColumns(headers: string[]): Record<string, string> {
     sub_sector: ["sub industry", "company sub industry", "sub sector"],
   };
 
-  const find = (pats: string[]) => {
+  // Track columns already assigned to more specific fields
+  const assignedHeaders = new Set<string>();
+
+  const find = (pats: string[], excludePatterns?: string[]) => {
+    // First pass: exact matches only
     for (const p of pats) {
-      const idx = lower.findIndex((h) => h === p || h.includes(p));
-      if (idx >= 0) return headers[idx];
+      const idx = lower.findIndex((h) => h === p && !assignedHeaders.has(headers[idx]));
+      if (idx >= 0) {
+        assignedHeaders.add(headers[idx]);
+        return headers[idx];
+      }
+    }
+    // Second pass: includes matches, but skip if excluded
+    for (const p of pats) {
+      const idx = lower.findIndex((h) => {
+        if (assignedHeaders.has(headers[lower.indexOf(h)])) return false;
+        if (h === p) return false; // already tried
+        if (!h.includes(p)) return false;
+        if (excludePatterns && excludePatterns.some((ex) => h.includes(ex))) return false;
+        return true;
+      });
+      if (idx >= 0) {
+        assignedHeaders.add(headers[idx]);
+        return headers[idx];
+      }
     }
     return null;
   };
@@ -77,9 +98,19 @@ function mapColumns(headers: string[]): Record<string, string> {
     if (n) mapping["full_name"] = n;
   }
 
-  for (const [field, pats] of Object.entries(patterns)) {
-    if (field === "full_name") continue;
-    const found = find(pats);
+  // Map specific fields FIRST to claim their columns before generic ones
+  const fieldOrder = [
+    "work_email", "personal_email", "mobile_phone", "work_phone",
+    "linkedin_url", "company_domain", "company_website", "company_description",
+    "sub_sector", "position", "company", "sector", "postal_address",
+    "phone", "email",
+  ];
+
+  for (const field of fieldOrder) {
+    if (!patterns[field]) continue;
+    // For generic "email", exclude columns that match specific email fields
+    const excludes = field === "email" ? ["work", "personal", "private", "direct", "additional"] : undefined;
+    const found = find(patterns[field], excludes);
     if (found) mapping[field] = found;
   }
 

@@ -124,9 +124,10 @@ export default function ComposeEmail({
       if (selectedSignatureId && selectedSignatureId !== "none") {
         const sig = signatures.find((s) => s.id === selectedSignatureId);
         if (sig) {
-          signatureImageUrl = supabase.storage
+          const { data: signedData } = await supabase.storage
             .from("email-signatures")
-            .getPublicUrl(sig.image_path).data.publicUrl;
+            .createSignedUrl(sig.image_path, 3600);
+          if (signedData?.signedUrl) signatureImageUrl = signedData.signedUrl;
         }
       }
 
@@ -182,9 +183,18 @@ export default function ComposeEmail({
   };
 
   const selectedSig = signatures.find((s) => s.id === selectedSignatureId);
-  const sigPreviewUrl = selectedSig
-    ? supabase.storage.from("email-signatures").getPublicUrl(selectedSig.image_path).data.publicUrl
-    : null;
+  const [sigPreviewUrl, setSigPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedSig) {
+      supabase.storage
+        .from("email-signatures")
+        .createSignedUrl(selectedSig.image_path, 3600)
+        .then(({ data }) => setSigPreviewUrl(data?.signedUrl || null));
+    } else {
+      setSigPreviewUrl(null);
+    }
+  }, [selectedSignatureId, signatures]);
 
   return (
     <>
