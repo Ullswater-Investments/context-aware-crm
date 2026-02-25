@@ -12,10 +12,18 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { contact_id, email } = await req.json();
+    const body = await req.json();
+    const { contact_id, email, domain, full_name } = body;
 
-    if (!contact_id || !email) {
-      return new Response(JSON.stringify({ error: "contact_id and email are required" }), {
+    if (!contact_id) {
+      return new Response(JSON.stringify({ error: "contact_id is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!email && !(domain && full_name)) {
+      return new Response(JSON.stringify({ error: "Either email or (domain + full_name) is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -29,17 +37,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Call Hunter.io Email Finder (combined find not available, use email finder + verifier approach)
-    const hunterUrl = `https://api.hunter.io/v2/email-finder?email=${encodeURIComponent(email)}&api_key=${hunterKey}`;
-    const hunterRes = await fetch(hunterUrl);
-    
-    // Also try person search by email
-    const verifyUrl = `https://api.hunter.io/v2/email-verifier?email=${encodeURIComponent(email)}&api_key=${hunterKey}`;
-    const verifyRes = await fetch(verifyUrl);
-
-    const hunterData = hunterRes.ok ? await hunterRes.json() : null;
-    const verifyData = verifyRes.ok ? await verifyRes.json() : null;
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -52,11 +49,44 @@ Deno.serve(async (req) => {
       .eq("id", contact_id)
       .single();
 
-    const person = hunterData?.data || {};
-    const verification = verifyData?.data || {};
+    let person: Record<string, any> = {};
+    let foundEmail: string | null = null;
+    let isValid = false;
 
-    const isValid = verification?.status === "valid" || verification?.result === "deliverable";
-    const hasData = person.first_name || person.last_name || person.position || person.linkedin || verification?.status;
+    if (domain && full_name) {
+      // Mode: Email Finder by domain + full_name
+      const nameParts = full_name.trim().split(/\s+/);
+      const firstName = nameParts[0];
+      const lastName = nameParts.slice(1).join(" ");
+
+      const finderUrl = `https://api.hunter.io/v2/email-finder?domain=${encodeURIComponent(domain)}&first_name=${encodeURIComponent(firstName)}&last_name=${encodeURIComponent(lastName)}&api_key=${hunterKey}`;
+      const finderRes = await fetch(finderUrl);
+      const finderData = finderRes.ok ? await finderRes.json() : null;
+
+      if (finderData?.data) {
+        person = finderData.data;
+        foundEmail = person.email || null;
+        // confidence score > 0 means likely valid
+        isValid = (person.score || 0) > 30;
+      }
+    } else if (email) {
+      // Mode: Email Verifier (original behavior)
+      const verifyUrl = `https://api.hunter.io/v2/email-verifier?email=${encodeURIComponent(email)}&api_key=${hunterKey}`;
+      const verifyRes = await fetch(verifyUrl);
+      const verifyData = verifyRes.ok ? await verifyRes.json() : null;
+
+      const verification = verifyData?.data || {};
+      isValid = verification?.status === "valid" || verification?.result === "deliverable";
+      foundEmail = email;
+
+      // Also try email-finder for additional data
+      const hunterUrl = `https://api.hunter.io/v2/email-finder?email=${encodeURIComponent(email)}&api_key=${hunterKey}`;
+      const hunterRes = await fetch(hunterUrl);
+      const hunterData = hunterRes.ok ? await hunterRes.json() : null;
+      person = hunterData?.data || {};
+    }
+
+    const hasData = foundEmail || person.first_name || person.last_name || person.position || person.linkedin;
 
     if (!hasData && !isValid) {
       await supabase
@@ -74,8 +104,8 @@ Deno.serve(async (req) => {
       last_enriched_at: new Date().toISOString(),
     };
 
-    if (isValid && !currentContact?.work_email) {
-      updates.work_email = email;
+    if (foundEmail && isValid && !currentContact?.work_email) {
+      updates.work_email = foundEmail;
     }
     if (person.position && !currentContact?.position) {
       updates.position = person.position;

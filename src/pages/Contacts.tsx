@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2 } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
 import HunterSearch from "@/components/contacts/HunterSearch";
@@ -41,6 +41,7 @@ interface Contact {
   mobile_phone?: string | null;
   work_phone?: string | null;
   lusha_status?: string | null;
+  hunter_status?: string | null;
   last_enriched_at?: string | null;
 }
 
@@ -80,6 +81,27 @@ export default function Contacts() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [hunterOpen, setHunterOpen] = useState(false);
+  const [enrichingId, setEnrichingId] = useState<string | null>(null);
+
+  const enrichWithHunter = async (contactId: string, fullName: string, companyDomain: string) => {
+    setEnrichingId(contactId);
+    try {
+      const { data, error } = await supabase.functions.invoke("enrich-hunter-contact", {
+        body: { contact_id: contactId, domain: companyDomain, full_name: fullName },
+      });
+      if (error) throw error;
+      if (data?.status === "enriched") {
+        toast.success("Contacto enriquecido con Hunter.io");
+      } else {
+        toast.info("No se encontraron datos adicionales");
+      }
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Error al enriquecer con Hunter.io");
+    } finally {
+      setEnrichingId(null);
+    }
+  };
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -329,9 +351,21 @@ export default function Contacts() {
                               </a>
                             )}
                             {c.company_domain && (
-                              <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5 hover:text-primary">
-                                <Globe className="w-3 h-3" />{c.company_domain}
-                              </a>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-muted-foreground truncate flex items-center gap-1 hover:text-primary">
+                                  <Globe className="w-3 h-3" />{c.company_domain}
+                                </a>
+                                {c.hunter_status === "pending" && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }}
+                                    disabled={enrichingId === c.id}
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0"
+                                  >
+                                    {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                                    Hunter
+                                  </button>
+                                )}
+                              </div>
                             )}
                             {(c.tags || []).length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-2">
@@ -406,9 +440,21 @@ export default function Contacts() {
                     </a>
                   )}
                   {c.company_domain && (
-                    <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
-                      <Globe className="w-3.5 h-3.5" />{c.company_domain}
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
+                        <Globe className="w-3.5 h-3.5" />{c.company_domain}
+                      </a>
+                      {c.hunter_status === "pending" && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }}
+                          disabled={enrichingId === c.id}
+                          className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
+                        >
+                          {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                          Hunter
+                        </button>
+                      )}
+                    </div>
                   )}
                   {(c.tags || []).length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
