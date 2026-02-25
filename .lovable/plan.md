@@ -1,70 +1,81 @@
 
 
-## Plan: Correccion de Errores y Mejoras
+## Plan: Bandeja de Email Multicuenta con Carpetas por Cuenta y Vista Unificada
 
-Tras analizar todo el codigo del sistema de email (EdgeFunctions, componentes UI, base de datos), he identificado los siguientes problemas y mejoras a implementar.
+### Objetivo
 
----
-
-### ERRORES CRITICOS
-
-**1. Bucle infinito en EmailSettings.tsx (lineas 84-91)**
-
-El `useEffect` que auto-verifica cuentas depende de `accounts.length`. Cada vez que `fetchAccounts()` se completa (despues de `test-email-connection`), actualiza `accounts`, lo que cambia `accounts.length` y vuelve a disparar el efecto, creando un bucle infinito de llamadas a la Edge Function.
-
-**Solucion:** Usar un flag `hasChecked` con `useRef` para ejecutar la verificacion solo una vez al cargar la pagina.
-
-**2. Consulta duplicada en AppLayout.tsx (linea 49-50)**
-
-La consulta usa dos `.neq("status", ...)` encadenados, lo que en PostgREST se interpreta como `status != 'connected' AND status != 'checking'`. Sin embargo, se ejecuta 3 veces identicas segun los logs de red. Esto probablemente es porque el efecto se dispara multiples veces (React StrictMode + falta de array de dependencias correcto).
-
-**Solucion:** Mantener la consulta pero envolver en un control para evitar multiples ejecuciones.
-
-**3. `is_default` no se actualiza correctamente al crear cuenta nueva (linea 179-184)**
-
-Cuando se crea una cuenta nueva como "default", el codigo intenta hacer `.neq("id", selectedId || "")`. Pero `selectedId` es `null` al crear, asi que pasa `""` como ID, lo que significa que NO excluye ninguna cuenta del update (en realidad excluye IDs que sean cadena vacia, pero podria no excluir la cuenta recien creada). La cuenta recien creada no tiene su ID disponible despues del insert porque no se usa `.select("id").single()`.
-
-**Solucion:** Hacer el insert con `.select("id").single()` para obtener el ID, y usarlo en el update de `is_default`.
-
-**4. Passwords se guardan en texto plano**
-
-La funcion `get_decrypted_email_account` simplemente devuelve `ea.smtp_pass AS decrypted_smtp_pass` sin ninguna desencriptacion real. El parametro `_enc_key` se recibe pero no se usa. Las contrasenas se almacenan como texto plano en la tabla.
-
-**Solucion:** Implementar cifrado real con `pgp_sym_encrypt` al guardar y `pgp_sym_decrypt` al leer, usando la extension `pgcrypto` que ya esta habilitada.
+Redisenar la pagina de Emails para que el sidebar izquierdo muestre carpetas dinamicas (Inbox / Enviados) por cada cuenta registrada en `email_accounts`, una Bandeja Unificada que agrupe todo, y un buscador global. Cada email en la lista mostrara un badge de identidad de cuenta.
 
 ---
 
-### ERRORES MENORES
+### 1. Redisenar el Sidebar de `Emails.tsx`
 
-**5. ComposeEmail.tsx - consulta de cuentas sin filtro de usuario**
+**Estado actual:** El sidebar tiene filtros estaticos (Todos, Recibidos, Enviados, Fallidos).
 
-En `fetchEmailAccounts()` (linea 113-122), la consulta no filtra por `created_by`. Aunque RLS lo protege, es una buena practica incluirlo.
+**Nuevo diseno:**
 
-**6. Falta TooltipProvider en AccountStatusDot**
+```text
++---------------------------+
+| [+ Redactar]              |
+| [Sincronizar v]           |
+|---------------------------|
+| VISTAS GLOBALES           |
+|   Bandeja Unificada (12)  |
+|---------------------------|
+| v GLOBAL DATA CARE        |
+|     Inbox (5)             |
+|     Enviados (3)          |
+| v NEXT GENERATION         |
+|     Inbox (4)             |
+|     Enviados (2)          |
++---------------------------+
+```
 
-El componente usa `Tooltip` de Radix directamente, pero necesita estar envuelto en un `TooltipProvider` para funcionar correctamente. Si no hay un Provider global, los tooltips no se mostraran.
+- Usar `Accordion` (Radix) para secciones colapsables por cuenta
+- Cada cuenta se carga dinamicamente desde `email_accounts`
+- Contadores por carpeta usando queries `count: "exact", head: true`
 
-**Solucion:** Envolver el `Tooltip` en `TooltipProvider` dentro del componente.
+### 2. Nuevo estado de filtrado
 
----
+Reemplazar `statusFilter` por un sistema de dos variables:
 
-### MEJORAS PROPUESTAS
+| Variable | Tipo | Valores |
+|---|---|---|
+| `selectedAccountId` | `string` | `"all"` o UUID de cuenta |
+| `selectedFolder` | `string` | `"inbox"` o `"sent"` |
 
-**7. Proteccion contra leaked passwords**
+### 3. Logica de consulta actualizada
 
-El linter de seguridad reporta que la proteccion contra contrasenas filtradas esta deshabilitada. Se recomienda activarla.
+La query principal de `fetchEmails` cambia segun la seleccion:
 
-**8. Validacion de email en formularios**
+- **Bandeja Unificada (`all` + `inbox`)**: Trae todos los emails `direction = 'inbound'` (de cualquier cuenta del usuario)
+- **Cuenta especifica + Inbox**: Filtra `direction = 'inbound'` AND (`to_email = account.email_address` OR `from_email` para outbound)
+- **Cuenta especifica + Sent**: Filtra `direction = 'outbound'` AND `from_email = account.email_address`
 
-`EmailSettings.tsx` no valida el formato del email antes de guardar. Se puede agregar una validacion basica con regex.
+Para filtrar por cuenta usaremos `from_email` (para enviados) y `to_email` (para recibidos), comparando con el `email_address` de la cuenta seleccionada.
 
-**9. Limpieza de URLs de preview de firmas**
+### 4. Badge de identidad en la lista de emails
 
-En `SignatureManager.tsx`, se crea un `URL.createObjectURL` (linea 63) pero nunca se libera con `URL.revokeObjectURL`, lo que causa memory leaks.
+Cada fila de email en la lista central mostrara un pequeno badge de color que identifica a que cuenta pertenece:
 
-**10. Sync fallback innecesario en Emails.tsx**
+- Color dinamico por cuenta (primer cuenta = azul, segunda = purpura, etc.)
+- Texto abreviado del nombre de la cuenta (ej: "GDC", "NextGen")
+- Solo visible en la vista unificada
 
-Cuando no hay cuentas en `syncAccounts`, `handleSync` envia `account: "secondary"` (linea 128), que es el fallback legacy. Deberia mostrar un mensaje pidiendo al usuario que configure una cuenta primero.
+### 5. Buscador global
+
+El buscador existente ya busca por `to_email` y `subject`. Lo ampliaremos para buscar tambien por `from_email` y `body_text`, y funcionara en cualquier vista (unificada o por cuenta).
+
+### 6. Contadores por carpeta
+
+Para cada cuenta, calcularemos:
+- **Inbox count**: `direction = 'inbound'` AND (`to_email` contiene el email de la cuenta)
+- **Sent count**: `status = 'sent'` AND `direction = 'outbound'` AND (`from_email` contiene el email de la cuenta)
+- **Unificada count**: suma de todos los inbox
+
+### 7. Mobile: filtros adaptados
+
+En mobile, los filtros del sidebar se mostraran como chips horizontales con el nombre abreviado de la cuenta + carpeta seleccionada.
 
 ---
 
@@ -72,20 +83,16 @@ Cuando no hay cuentas en `syncAccounts`, `handleSync` envia `account: "secondary
 
 | Archivo | Cambios |
 |---|---|
-| `src/pages/EmailSettings.tsx` | Fix bucle infinito (#1), fix is_default (#3), validacion email (#8) |
-| `src/components/layout/AppLayout.tsx` | Fix ejecucion multiple (#2) |
-| `src/components/email/AccountStatusDot.tsx` | Agregar TooltipProvider (#6) |
-| `src/components/email/SignatureManager.tsx` | Liberar object URLs (#9) |
-| `src/components/email/ComposeEmail.tsx` | Filtro de usuario en consulta (#5) |
-| `src/pages/Emails.tsx` | Mejorar fallback sync (#10) |
-| `supabase/migrations/` | Nueva migracion para cifrado real de passwords (#4) |
-| Edge Functions | Actualizar para usar contrasenas cifradas (#4) |
+| `src/pages/Emails.tsx` | Redisenar sidebar completo: Accordion multicuenta, Bandeja Unificada, badge de identidad, nueva logica de filtrado, buscador ampliado |
 
-### Prioridad de implementacion
+### Flujo del usuario
 
-1. Fix bucle infinito en EmailSettings (critico - afecta rendimiento y costes)
-2. Fix is_default al crear cuenta
-3. Implementar cifrado real de passwords
-4. Agregar TooltipProvider
-5. Resto de mejoras menores
+```text
+1. Entra a Emails -> Ve "Bandeja Unificada" seleccionada por defecto
+2. Ve todos los emails recibidos de ambas cuentas, con badges "GDC" (azul) y "NextGen" (purpura)
+3. Busca "inversores" -> resultados de ambas cuentas
+4. Despliega "Next Generation" -> Click en "Inbox" -> solo emails recibidos en esa cuenta
+5. Click en "Enviados" -> solo emails enviados desde esa cuenta
+6. Vuelve a "Bandeja Unificada" para ver el panorama completo
+```
 
