@@ -91,15 +91,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    // People Finder mode
-    if (action === "people-find") {
+    // Combined Find mode (person + verification in one call)
+    if (action === "combined-find" || action === "people-find") {
       if (!email) {
         return new Response(JSON.stringify({ error: "email is required" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const url = `https://api.hunter.io/v2/people/find?email=${encodeURIComponent(email)}&api_key=${apiKey}`;
+      const url = `https://api.hunter.io/v2/combined/find?email=${encodeURIComponent(email)}&api_key=${apiKey}`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.errors) {
@@ -108,7 +108,8 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const p = data.data || {};
+      const p = data.data?.person || {};
+      const v = data.data?.verification || {};
       return new Response(JSON.stringify({
         first_name: p.first_name || null,
         last_name: p.last_name || null,
@@ -122,6 +123,11 @@ Deno.serve(async (req) => {
         phone_number: p.phone_number || null,
         company: p.company || null,
         country: p.country || null,
+        verification: {
+          status: v.status || "unknown",
+          result: v.result || "unknown",
+          score: v.score ?? null,
+        },
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
