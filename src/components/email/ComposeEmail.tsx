@@ -16,6 +16,16 @@ import {
 } from "lucide-react";
 import RichTextEditor from "./RichTextEditor";
 import SignatureManager, { type Signature } from "./SignatureManager";
+import AccountStatusDot from "./AccountStatusDot";
+
+type EmailAccountOption = {
+  id: string;
+  email_address: string;
+  display_name: string | null;
+  status: string;
+  error_message: string | null;
+  is_default: boolean;
+};
 
 interface ComposeEmailProps {
   open: boolean;
@@ -66,7 +76,8 @@ export default function ComposeEmail({
   const [showCcBcc, setShowCcBcc] = useState(false);
   const [sigPreviewOpen, setSigPreviewOpen] = useState(false);
   const [suggestingReply, setSuggestingReply] = useState(false);
-  const [fromAccount, setFromAccount] = useState<"primary" | "secondary">("secondary");
+  const [fromAccount, setFromAccount] = useState<string>("");
+  const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
 
   const fetchSignatures = async () => {
     if (!user) return;
@@ -92,8 +103,25 @@ export default function ComposeEmail({
       setAttachments([]);
       setShowCcBcc(!!defaultCc);
       fetchSignatures();
+      fetchEmailAccounts();
     }
     onOpenChange(isOpen);
+  };
+
+  const fetchEmailAccounts = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("email_accounts")
+      .select("id, email_address, display_name, status, error_message, is_default")
+      .eq("is_active", true)
+      .order("is_default", { ascending: false });
+    if (data) {
+      const accounts = data as EmailAccountOption[];
+      setEmailAccounts(accounts);
+      const def = accounts.find(a => a.is_default);
+      if (def) setFromAccount(def.id);
+      else if (accounts.length > 0) setFromAccount(accounts[0].id);
+    }
   };
 
   useEffect(() => {
@@ -208,7 +236,7 @@ export default function ComposeEmail({
           contact_id: contactId,
           organization_id: organizationId,
           project_id: projectId,
-          from_account: fromAccount,
+          account_id: fromAccount || undefined,
           attachments: uploadedAttachments.map((a) => ({
             filename: a.file_name,
             path: a.path,
@@ -292,13 +320,22 @@ export default function ComposeEmail({
               {/* Enviar desde */}
               <div className="flex items-center gap-2">
                 <Label className="shrink-0 text-xs text-muted-foreground w-10">De</Label>
-                <Select value={fromAccount} onValueChange={(v) => setFromAccount(v as "primary" | "secondary")}>
+                <Select value={fromAccount} onValueChange={setFromAccount}>
                   <SelectTrigger className="h-8 text-sm">
-                    <SelectValue />
+                    <SelectValue placeholder="Seleccionar cuenta" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="secondary">emilio.mulet@globaldatacare.es</SelectItem>
-                    <SelectItem value="primary">emilio.mulet@kitespaciodedatos.eu</SelectItem>
+                    {emailAccounts.map(acc => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        <span className="flex items-center gap-2">
+                          <AccountStatusDot status={acc.status} errorMessage={acc.error_message} />
+                          {acc.display_name ? `${acc.display_name} (${acc.email_address})` : acc.email_address}
+                        </span>
+                      </SelectItem>
+                    ))}
+                    {emailAccounts.length === 0 && (
+                      <SelectItem value="__none" disabled>No hay cuentas configuradas</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

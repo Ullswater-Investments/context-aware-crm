@@ -1,12 +1,14 @@
 import { ReactNode, useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Bot, LayoutDashboard, Building2, Users, FolderKanban,
-  FileText, CheckSquare, Mail, LogOut, Menu, X, Moon, Sun } from
+  FileText, CheckSquare, Mail, LogOut, Menu, X, Moon, Sun, Settings2 } from
 "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 const navItems = [
 { to: "/", icon: Bot, label: "Chat IA" },
@@ -16,12 +18,14 @@ const navItems = [
 { to: "/projects", icon: FolderKanban, label: "Proyectos" },
 { to: "/documents", icon: FileText, label: "Documentos" },
 { to: "/tasks", icon: CheckSquare, label: "Tareas" },
-{ to: "/emails", icon: Mail, label: "Emails" }];
+{ to: "/emails", icon: Mail, label: "Emails" },
+{ to: "/email-settings", icon: Settings2, label: "Ajustes Email" }];
 
 
 export default function AppLayout({ children }: {children: ReactNode;}) {
   const { signOut, user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dark, setDark] = useState(() => {
     if (typeof window !== "undefined") {
@@ -34,6 +38,27 @@ export default function AppLayout({ children }: {children: ReactNode;}) {
     document.documentElement.classList.toggle("dark", dark);
     localStorage.setItem("theme", dark ? "dark" : "light");
   }, [dark]);
+
+  // Proactive health check: alert on broken email accounts
+  useEffect(() => {
+    if (!user) return;
+    const checkAccounts = async () => {
+      const { data } = await supabase
+        .from("email_accounts")
+        .select("email_address, status, error_message")
+        .neq("status", "connected")
+        .neq("status", "checking");
+      if (data && data.length > 0) {
+        const acc = data[0] as any;
+        toast.error(`Problema con ${acc.email_address}`, {
+          description: acc.status === "expired" ? "La contraseña ha expirado. Actualízala en ajustes." : (acc.error_message || "Error de conexión"),
+          action: { label: "Reparar", onClick: () => navigate("/email-settings") },
+          duration: 10000,
+        });
+      }
+    };
+    checkAccounts();
+  }, [user]);
 
   return (
     <div className="flex h-screen overflow-hidden">

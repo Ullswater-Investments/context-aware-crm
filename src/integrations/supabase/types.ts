@@ -806,6 +806,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_decrypted_email_account: {
+        Args: { _account_id: string; _enc_key: string; _user_id: string }
+        Returns: {
+          decrypted_imap_pass: string
+          decrypted_smtp_pass: string
+          display_name: string
+          email_address: string
+          id: string
+          imap_host: string
+          imap_port: number
+          imap_user: string
+          is_active: boolean
+          is_default: boolean
+          provider: string
+          smtp_host: string
+          smtp_port: number
+          smtp_secure: boolean
+          smtp_user: string
+          status: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

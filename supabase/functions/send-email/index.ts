@@ -39,6 +39,7 @@ Deno.serve(async (req) => {
       contact_id, organization_id, project_id,
       attachments: attachmentPaths,
       from_account,
+      account_id,
     } = await req.json();
 
     if (!to || !subject) {
@@ -48,24 +49,53 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Select SMTP credentials based on from_account
-    const isSecondary = from_account === "secondary";
-    const smtpHost = isSecondary ? Deno.env.get("SMTP_HOST_2") : Deno.env.get("SMTP_HOST");
-    const smtpPort = Number(isSecondary ? Deno.env.get("SMTP_PORT_2") : Deno.env.get("SMTP_PORT")) || 465;
-    const smtpUser = isSecondary ? Deno.env.get("SMTP_USER_2") : Deno.env.get("SMTP_USER");
-    const smtpPass = isSecondary ? Deno.env.get("SMTP_PASS_2") : Deno.env.get("SMTP_PASS");
-
-    const defaultFrom = isSecondary
-      ? `EuroCRM <${Deno.env.get("SMTP_USER_2")}>`
-      : `EuroCRM <${Deno.env.get("SMTP_USER")}>`;
-    const fromEmail = from || defaultFrom;
-
-    // Download attachments from storage
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    let smtpHost: string | undefined;
+    let smtpPort: number;
+    let smtpUser: string | undefined;
+    let smtpPass: string | undefined;
+    let smtpSecure = true;
+    let fromEmail: string;
+
+    // Dynamic account from DB
+    if (account_id) {
+      const encKey = Deno.env.get("EMAIL_ENCRYPTION_KEY") || "";
+      const { data: account, error: accErr } = await supabaseAdmin.rpc("get_decrypted_email_account", {
+        _account_id: account_id,
+        _user_id: userId,
+        _enc_key: encKey,
+      });
+      if (accErr || !account || account.length === 0) {
+        return new Response(JSON.stringify({ error: "Cuenta de email no encontrada" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const acc = account[0];
+      smtpHost = acc.smtp_host;
+      smtpPort = acc.smtp_port;
+      smtpUser = acc.smtp_user;
+      smtpPass = acc.decrypted_smtp_pass;
+      smtpSecure = acc.smtp_secure;
+      fromEmail = from || `${acc.display_name || "CRM"} <${acc.email_address}>`;
+    } else {
+      // Legacy: env vars based on from_account
+      const isSecondary = from_account === "secondary";
+      smtpHost = isSecondary ? Deno.env.get("SMTP_HOST_2") : Deno.env.get("SMTP_HOST");
+      smtpPort = Number(isSecondary ? Deno.env.get("SMTP_PORT_2") : Deno.env.get("SMTP_PORT")) || 465;
+      smtpUser = isSecondary ? Deno.env.get("SMTP_USER_2") : Deno.env.get("SMTP_USER");
+      smtpPass = isSecondary ? Deno.env.get("SMTP_PASS_2") : Deno.env.get("SMTP_PASS");
+      const defaultFrom = isSecondary
+        ? `EuroCRM <${Deno.env.get("SMTP_USER_2")}>`
+        : `EuroCRM <${Deno.env.get("SMTP_USER")}>`;
+      fromEmail = from || defaultFrom;
+    }
+
+    // Download attachments from storage
     const mailAttachments: { filename: string; content: Buffer }[] = [];
     const attachmentRecords: { file_name: string; file_path: string; file_size?: number; file_type?: string }[] = [];
 
@@ -91,21 +121,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Parse CC emails
+    // Parse CC/BCC emails
     const ccEmails: string[] = cc
       ? (typeof cc === "string" ? cc.split(",").map((e: string) => e.trim()).filter(Boolean) : Array.isArray(cc) ? cc : [])
       : [];
-
-    // Parse BCC emails
     const bccEmails: string[] = bcc
       ? (typeof bcc === "string" ? bcc.split(",").map((e: string) => e.trim()).filter(Boolean) : Array.isArray(bcc) ? bcc : [])
       : [];
 
-    // Create SMTP transporter with selected account
+    // Create SMTP transporter
     const transporter = nodemailer.createTransport({
       host: smtpHost,
       port: smtpPort,
-      secure: true,
+      secure: smtpSecure,
+      ...(!smtpSecure ? { requireTLS: true } : {}),
       auth: {
         user: smtpUser,
         pass: smtpPass,
