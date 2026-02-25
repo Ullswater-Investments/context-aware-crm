@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
 import HunterSearch from "@/components/contacts/HunterSearch";
@@ -313,6 +313,26 @@ export default function Contacts() {
                                 <Phone className="w-3 h-3" />{c.phone || c.mobile_phone || c.work_phone}
                               </p>
                             )}
+                            {c.work_email && c.work_email !== c.email && (
+                              <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+                                <Mail className="w-3 h-3" />Corp: {c.work_email}
+                              </p>
+                            )}
+                            {c.mobile_phone && c.mobile_phone !== (c.phone || c.mobile_phone || c.work_phone) && (
+                              <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+                                <Phone className="w-3 h-3" />Móvil: {c.mobile_phone}
+                              </p>
+                            )}
+                            {c.linkedin_url && (
+                              <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5 hover:text-primary">
+                                <Linkedin className="w-3 h-3" />LinkedIn
+                              </a>
+                            )}
+                            {c.company_domain && (
+                              <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5 hover:text-primary">
+                                <Globe className="w-3 h-3" />{c.company_domain}
+                              </a>
+                            )}
                             {(c.tags || []).length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-2">
                                 {(c.tags || []).slice(0, 3).map((tag) => (
@@ -369,6 +389,26 @@ export default function Contacts() {
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Phone className="w-3.5 h-3.5" />{c.phone || c.mobile_phone || c.work_phone}
                     </div>
+                  )}
+                  {c.work_email && c.work_email !== c.email && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Mail className="w-3.5 h-3.5" />Corp: {c.work_email}
+                    </div>
+                  )}
+                  {c.mobile_phone && c.mobile_phone !== (c.phone || c.mobile_phone || c.work_phone) && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Phone className="w-3.5 h-3.5" />Móvil: {c.mobile_phone}
+                    </div>
+                  )}
+                  {c.linkedin_url && (
+                    <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
+                      <Linkedin className="w-3.5 h-3.5" />LinkedIn
+                    </a>
+                  )}
+                  {c.company_domain && (
+                    <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
+                      <Globe className="w-3.5 h-3.5" />{c.company_domain}
+                    </a>
                   )}
                   {(c.tags || []).length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
