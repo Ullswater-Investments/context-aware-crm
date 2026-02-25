@@ -64,7 +64,7 @@ function mapColumns(headers: string[]): Record<string, string> {
   const find = (pats: string[], excludePatterns?: string[]) => {
     // First pass: exact matches only
     for (const p of pats) {
-      const idx = lower.findIndex((h) => h === p && !assignedHeaders.has(headers[idx]));
+      const idx = lower.findIndex((h, i) => h === p && !assignedHeaders.has(headers[i]));
       if (idx >= 0) {
         assignedHeaders.add(headers[idx]);
         return headers[idx];
@@ -72,8 +72,8 @@ function mapColumns(headers: string[]): Record<string, string> {
     }
     // Second pass: includes matches, but skip if excluded
     for (const p of pats) {
-      const idx = lower.findIndex((h) => {
-        if (assignedHeaders.has(headers[lower.indexOf(h)])) return false;
+      const idx = lower.findIndex((h, i) => {
+        if (assignedHeaders.has(headers[i])) return false;
         if (h === p) return false; // already tried
         if (!h.includes(p)) return false;
         if (excludePatterns && excludePatterns.some((ex) => h.includes(ex))) return false;

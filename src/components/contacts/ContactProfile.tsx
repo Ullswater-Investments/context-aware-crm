@@ -444,7 +444,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
               {/* Lusha Data Section */}
               {hasLushaData && (
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" />Datos Lusha</Label>
+                  <Label className="text-sm font-semibold flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" />Datos de contacto adicionales</Label>
                   <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
                     {contact.work_email && (
                       <div className="flex items-center justify-between text-sm">
