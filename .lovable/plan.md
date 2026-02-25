@@ -1,145 +1,85 @@
 
 
-## Plan: Tabla `email_accounts` con Health Check y Pagina de Ajustes
+## Plan: Editor Expandido con Firma Oculta y Vista Previa Avanzada
 
-Este plan combina la creacion de la tabla dinamica de cuentas de email con el sistema de monitorizacion de salud y la pagina de ajustes, ya que ambos dependen de la misma infraestructura.
+### Objetivo
+
+Redisenar el compositor de emails para maximizar el espacio de escritura, ocultar la firma del area visible (inyectandola solo al enviar), y anadir una vista previa profesional con modo escritorio/movil.
 
 ---
 
-### 1. Migracion de base de datos
+### 1. Ampliar el Sheet y redisenar el layout
 
-Crear tabla `email_accounts` con todos los campos necesarios, incluyendo los de health check:
+**Archivo:** `src/components/email/ComposeEmail.tsx`
 
-| Columna | Tipo | Notas |
-|---|---|---|
-| id | UUID PK | |
-| created_by | UUID NOT NULL | usuario propietario |
-| email_address | TEXT NOT NULL | |
-| display_name | TEXT | nombre visible |
-| provider | TEXT DEFAULT 'custom' | hostinger/outlook/gmail/custom |
-| smtp_host | TEXT NOT NULL | |
-| smtp_port | INTEGER NOT NULL DEFAULT 465 | |
-| smtp_secure | BOOLEAN DEFAULT true | true=SSL, false=STARTTLS |
-| smtp_user | TEXT NOT NULL | |
-| smtp_pass | TEXT NOT NULL | cifrado con pgcrypto |
-| imap_host | TEXT | |
-| imap_port | INTEGER DEFAULT 993 | |
-| imap_user | TEXT | |
-| imap_pass | TEXT | cifrado con pgcrypto |
-| is_default | BOOLEAN DEFAULT false | |
-| is_active | BOOLEAN DEFAULT true | |
-| status | TEXT DEFAULT 'connected' | connected/error/expired/checking |
-| last_check | TIMESTAMPTZ DEFAULT now() | ultima verificacion |
-| error_message | TEXT | detalle del error |
-| created_at | TIMESTAMPTZ DEFAULT now() | |
+- Cambiar `sm:max-w-[600px]` a `sm:max-w-4xl` (800px) para un lienzo mas amplio
+- Asunto: usar `text-xl font-semibold` sin bordes visibles (estilo "canvas")
+- Aumentar el min-height del editor y el font-size del contenido a `text-base` (16px) en lugar de `prose-sm`
 
-- Habilitar extension `pgcrypto`
-- RLS: solo el propietario puede CRUD sus cuentas
-- Las contrasenas se cifran con `pgp_sym_encrypt` usando un secret `EMAIL_ENCRYPTION_KEY`
+### 2. Firma oculta con Switch "Firma automatica"
 
-### 2. Nuevo secret
+**Archivo:** `src/components/email/ComposeEmail.tsx`
 
-- `EMAIL_ENCRYPTION_KEY`: clave simetrica para cifrar/descifrar contrasenas en la base de datos.
+- Eliminar el bloque `Collapsible` de la firma del area de scroll del editor
+- Anadir un `Switch` en el footer sticky con label "Firma automatica" (activado por defecto si hay firma seleccionada)
+- Anadir indicador visual: punto verde + texto "Se anadira al enviar" cuando el switch esta activo
+- Mantener el selector de firma y boton de gestionar firmas en el footer, pero de forma compacta
+- En la funcion `send()`: concatenar el HTML de la firma al final del `htmlBody` solo si el switch esta activo (logica actual se mantiene, solo se mueve la visibilidad)
 
-### 3. Edge Functions
+### 3. Nuevo componente: Vista Previa Avanzada
 
-**3a. `test-email-connection` (NUEVA)**
-- Recibe `account_id` o datos de conexion directos (para probar antes de guardar)
-- Conecta via nodemailer `verify()` al SMTP
-- Actualiza `status`, `last_check` y `error_message` en la tabla
-- Detecta errores 535 (autenticacion) para marcar como `expired`
+**Archivo nuevo:** `src/components/email/EmailPreviewModal.tsx`
 
-**3b. `send-email` (MODIFICAR)**
-- Aceptar `account_id` (UUID) ademas del actual `from_account`
-- Si recibe `account_id`: consultar `email_accounts` con service role, descifrar credenciales
-- Si recibe `from_account`: mantener retrocompatibilidad con env vars
-- Soporte STARTTLS para Outlook (puerto 587): `secure: false, requireTLS: true`
+- Dialog que ocupa casi toda la pantalla (`max-w-5xl h-[90vh]`)
+- Header con:
+  - Titulo "Previsualizacion Profesional"
+  - Info del destinatario y asunto
+  - `Tabs` con dos opciones: "Escritorio" (icono Monitor) y "Movil" (icono Smartphone)
+- Area de contenido:
+  - Modo escritorio: contenedor al 100% del ancho
+  - Modo movil: contenedor de 375px centrado con borde grueso redondeado simulando smartphone, con "notch" decorativo
+  - Transicion suave entre modos (`transition-all duration-500`)
+- Renderiza `body + firma` usando `dangerouslySetInnerHTML`
+- CSS inline para imagenes: `max-width: 100%, height: auto`
+- Pie con nota informativa sobre responsiveness
 
-**3c. `sync-emails` (MODIFICAR)**
-- Aceptar `account_id` (UUID) para obtener credenciales IMAP de la tabla
+### 4. Integrar boton Vista Previa en el footer
 
-### 4. Componente `AccountStatusDot`
+**Archivo:** `src/components/email/ComposeEmail.tsx`
 
-Componente visual que muestra un punto de color con tooltip:
-- Verde fijo: `connected`
-- Rojo parpadeante (`animate-pulse`): `error`
-- Ambar parpadeante: `expired`
-- Azul rebotando (`animate-bounce`): `checking`
+- Anadir boton con icono `Eye` + "Vista Previa" entre el boton IA y el boton Enviar
+- Al hacer clic, abre `EmailPreviewModal` pasando: `subject`, `body`, firma HTML (construida igual que en send), y `recipient`
 
-### 5. Pagina `EmailSettings.tsx`
+### 5. Actualizar RichTextEditor para texto mas grande
 
-Layout de dos columnas:
-- **Izquierda**: lista de cuentas con `AccountStatusDot`, badges de proveedor y estado default
-- **Derecha**: formulario con:
-  - Selector de proveedor con presets auto-relleno:
+**Archivo:** `src/components/email/RichTextEditor.tsx`
 
-```text
-Hostinger:  smtp.hostinger.com:465 (SSL)  / imap.hostinger.com:993
-Outlook:    smtp.office365.com:587 (STARTTLS) / outlook.office365.com:993
-Gmail:      smtp.gmail.com:587 (STARTTLS) / imap.gmail.com:993
-```
+- Cambiar `prose-sm` a `prose` y `min-h-[140px]` a `min-h-[300px]` en los atributos del editor
+- El padding del editor pasa de `px-3 py-2` a `px-6 py-4` para sensacion de documento
 
-  - Campos SMTP y IMAP
-  - Boton "Probar Conexion" que invoca `test-email-connection`
-  - Avisos de seguridad para Outlook/Gmail (contrasenas de aplicacion)
-  - Guardar, editar, eliminar cuentas
+### 6. CSS global para imagenes en preview
 
-- Al cargar la pagina: verificacion automatica de todas las cuentas activas
+**Archivo:** `src/index.css`
 
-### 6. Notificacion proactiva al login
-
-En `AppLayout.tsx`, un `useEffect` que consulta `email_accounts` buscando cuentas con `status != 'connected'`. Si encuentra alguna, muestra un toast de Sonner con boton "Reparar" que navega a `/email-settings`.
-
-### 7. Actualizar `ComposeEmail.tsx`
-
-- Reemplazar el Select hardcodeado por un Select dinamico que carga cuentas activas desde `email_accounts`
-- Mostrar `display_name (email_address)` + `AccountStatusDot`
-- Seleccionar cuenta `is_default` por defecto
-- Pasar `account_id` al invocar `send-email`
-
-### 8. Actualizar `Emails.tsx`
-
-- Boton "Sincronizar" con dropdown para elegir cuenta
-- Pasar `account_id` al invocar `sync-emails`
-
-### 9. Routing y navegacion
-
-- Agregar ruta `/email-settings` en `App.tsx`
-- Agregar enlace "Ajustes Email" con icono `Settings2` en el sidebar de `AppLayout.tsx`
+- Anadir regla `.email-content-preview img { max-width: 100% !important; height: auto !important; display: block; }`
 
 ---
 
 ### Archivos a crear/modificar
 
-1. **Migracion SQL** - tabla `email_accounts` + pgcrypto + RLS
-2. **`supabase/functions/test-email-connection/index.ts`** (NUEVO)
-3. **`supabase/functions/send-email/index.ts`** - soporte `account_id`
-4. **`supabase/functions/sync-emails/index.ts`** - soporte `account_id`
-5. **`src/components/email/AccountStatusDot.tsx`** (NUEVO)
-6. **`src/pages/EmailSettings.tsx`** (NUEVO)
-7. **`src/components/email/ComposeEmail.tsx`** - select dinamico
-8. **`src/pages/Emails.tsx`** - sync por cuenta
-9. **`src/App.tsx`** - ruta `/email-settings`
-10. **`src/components/layout/AppLayout.tsx`** - enlace en sidebar + alerta proactiva
-11. **`supabase/config.toml`** - registrar `test-email-connection`
+1. **`src/components/email/EmailPreviewModal.tsx`** (NUEVO) - Dialog con vista previa desktop/movil
+2. **`src/components/email/ComposeEmail.tsx`** - Sheet mas ancho, firma oculta con Switch, boton Vista Previa, asunto estilo canvas
+3. **`src/components/email/RichTextEditor.tsx`** - Editor mas grande con texto 16px
+4. **`src/index.css`** - Regla CSS para imagenes en preview
 
 ### Flujo del usuario
 
 ```text
-CONFIGURACION:
-1. Sidebar -> "Ajustes Email"
-2. "Agregar Cuenta" -> Seleccionar "Outlook" -> campos auto-rellenados
-3. Introducir email y contrasena de aplicacion
-4. "Probar Conexion" -> punto verde = OK
-5. Guardar -> cuenta disponible en compositor y sincronizacion
-
-MONITORIZACION:
-- Al entrar al CRM: si hay cuentas con error/expired -> toast con boton "Reparar"
-- En ajustes: puntos de estado visibles junto a cada cuenta
-- Al verificar: punto azul rebotando -> verde (OK) o rojo parpadeante (error)
-
-ENVIO/RECEPCION:
-- Compositor: selector dinamico de cuentas con estado visual
-- Sincronizar: elegir cuenta especifica o todas
+1. Abre el compositor -> Sheet ancho (800px), editor limpio sin firma visible
+2. Escribe el mensaje en un area amplia con texto de 16px
+3. En el footer: Switch "Firma automatica" activado con punto verde
+4. Pulsa "Vista Previa" -> Dialog con el email completo + firma
+5. Cambia entre "Escritorio" y "Movil" para ver como se adaptan los logos
+6. Cierra la preview y pulsa "Enviar" -> la firma se concatena automaticamente
 ```
 
