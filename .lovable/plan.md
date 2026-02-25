@@ -1,74 +1,97 @@
 
 
-## Auditoria: Errores y Mejoras en la Plataforma
+## Plan: Campanas de email por etiqueta desde el chat
 
-### ERRORES ENCONTRADOS
+### Objetivo
+Permitir que el usuario diga al chat cosas como "envía un email a todos los contactos con la etiqueta dental" y que el asistente IA pueda: (1) buscar contactos por etiqueta, (2) redactar el email, y (3) enviarlo masivamente.
 
-#### 1. CRITICO - Edge Function `enrich-hunter-contact` sin autenticacion
-La funcion `enrich-hunter-contact` no verifica el JWT del usuario. Cualquier persona con la URL publica podria llamarla y gastar creditos de Hunter.io o modificar datos de contactos ajenos. Comparando con `enrich-lusha-contact` (que si valida JWT) y `hunter-domain-search` (que tambien valida), esta es la unica funcion de enriquecimiento sin proteccion.
+### Cambios necesarios
 
-**Solucion**: Añadir validacion JWT igual que en `enrich-lusha-contact`, usando `supabase.auth.getClaims(token)`.
+#### 1. Edge Function `supabase/functions/chat/index.ts` - Nuevas herramientas
 
-#### 2. CRITICO - Edge Function usa SERVICE_ROLE_KEY sin necesidad de auth
-En `enrich-hunter-contact`, se usa `SUPABASE_SERVICE_ROLE_KEY` para hacer el update. Esto bypasea las politicas RLS, lo cual es peligroso sin validacion de usuario. Un atacante podria modificar contactos de cualquier usuario.
+**a) Nueva tool: `search_contacts_by_tag`**
+- Busca contactos que tengan una etiqueta especifica en su array `tags`
+- Usa el operador `@>` de PostgreSQL para buscar dentro del array
+- Devuelve: lista de contactos con sus emails (email, work_email, personal_email)
+- Solo devuelve contactos que tengan al menos un email disponible
 
-**Solucion**: Tras añadir auth, validar que el contacto pertenece al usuario autenticado antes de actualizarlo.
+**b) Nueva tool: `send_campaign_email`**
+- Recibe: `tag` (etiqueta para filtrar), `subject`, `html_body`, `text_body`
+- Busca todos los contactos con esa etiqueta que tengan email
+- Llama a la edge function `send-email` para cada contacto (o usa Resend directamente)
+- Devuelve: resumen con cuantos emails se enviaron, cuantos fallaron, lista de destinatarios
 
-#### 3. ERROR - Boton Hunter en ContactProfile solo funciona con email, no con dominio
-En `ContactProfile.tsx` linea 237, `enrichWithHunter` requiere `contact.email` para funcionar. Si un contacto tiene `company_domain` pero no `email`, el boton no aparece (linea 383: `hunterStatus === "pending" && contact.email`). Sin embargo, la edge function ya soporta el modo `domain + full_name`. El perfil no aprovecha esta capacidad.
+**c) Nueva tool: `list_available_tags`**
+- Consulta todos los tags unicos existentes en la tabla contacts
+- Devuelve la lista de tags disponibles para que la IA pueda sugerirlos al usuario
 
-**Solucion**: Cambiar la condicion a `(contact.email || contact.company_domain)` y en la llamada, enviar `domain` + `full_name` cuando no hay email.
+#### 2. Implementacion de las funciones ejecutoras
 
-#### 4. ERROR - Interfaz Contact duplicada
-La interfaz `Contact` esta definida de forma identica en `Contacts.tsx` (linea 26) y `ContactProfile.tsx` (linea 32). Esto causa problemas de mantenimiento: cualquier cambio en la tabla requiere actualizar ambas.
+```text
+search_contacts_by_tag(supabase, tag):
+  SELECT id, full_name, email, work_email, personal_email, position, tags, organizations(name)
+  FROM contacts
+  WHERE tags @> ARRAY[tag]
+  AND (email IS NOT NULL OR work_email IS NOT NULL OR personal_email IS NOT NULL)
 
-**Solucion**: Extraer a un archivo compartido `src/types/contact.ts`.
+send_campaign_email(supabase, userId, tag, subject, html_body, text_body):
+  1. Busca contactos por tag con email
+  2. Para cada contacto, determina el mejor email (work_email > email > personal_email)
+  3. Llama a send-email para cada uno (con RESEND_API_KEY directamente)
+  4. Registra cada envio en email_logs
+  5. Devuelve resumen: {sent: N, failed: N, recipients: [...]}
 
-#### 5. ERROR MENOR - `config.toml` no incluye `enrich-hunter-contact` ni `hunter-domain-search`
-Las funciones `enrich-hunter-contact` y `hunter-domain-search` no estan configuradas en `supabase/config.toml`. Esto significa que usan la configuracion por defecto (verify_jwt = true), pero `enrich-hunter-contact` no implementa verificacion JWT en su codigo. Dado que se llama via `supabase.functions.invoke` (que envia el token automaticamente), el JWT se verifica a nivel de gateway pero no en el codigo.
+list_available_tags(supabase):
+  SELECT DISTINCT unnest(tags) as tag FROM contacts ORDER BY tag
+```
 
-**Nota**: Esto no es un error critico porque el gateway de Supabase ya verifica el JWT, pero es inconsistente con las demas funciones.
+#### 3. Actualizar el system prompt del chat
 
----
+Anadir instrucciones sobre las nuevas capacidades:
+- Puede buscar contactos por etiqueta
+- Puede enviar campanas de email a contactos filtrados por etiqueta
+- Puede listar las etiquetas disponibles
+- SIEMPRE debe mostrar al usuario la lista de destinatarios y pedir confirmacion antes de enviar
+- Debe redactar el email y mostrarlo al usuario para aprobacion antes de enviarlo
+- Incluir marcador `[CAMPAIGN_SENT:tag:count]` para feedback visual
 
-### MEJORAS PROPUESTAS
+#### 4. Flujo de interaccion esperado
 
-#### 1. Boton Hunter.io: mostrar tambien cuando `hunter_status` no es "pending"
-Actualmente el boton Hunter solo aparece si `hunter_status === "pending"`. Si un contacto fue marcado como "not_found" previamente, no hay forma de re-intentar desde la lista. Podria mostrarse tambien para "not_found" con texto diferente ("Reintentar").
+```text
+Usuario: "Envia un email a todos los contactos con etiqueta dental"
+    |
+    v
+IA: [list_available_tags] -> confirma que "dental" existe
+IA: [search_contacts_by_tag("dental")] -> obtiene 15 contactos con email
+IA: "He encontrado 15 contactos con la etiqueta 'dental'. 
+     Aqui tienes la lista: [nombres]. 
+     Redacta el mensaje o dime que quieres comunicar."
+    |
+    v
+Usuario: "Informales de la nueva convocatoria Horizon Europe..."
+    |
+    v
+IA: Redacta el email y lo muestra al usuario
+IA: "Este es el email que enviare. Confirmas el envio?"
+    |
+    v
+Usuario: "Si, envialo"
+    |
+    v
+IA: [send_campaign_email("dental", subject, html, text)]
+IA: "Campana enviada: 14 emails enviados correctamente, 1 fallido."
+```
 
-#### 2. Filtro por estado Hunter en la pagina de contactos
-Existe un filtro para estado Lusha pero no para Hunter. Seria util para encontrar rapidamente contactos pendientes de enriquecer con Hunter.io.
+### Archivos a modificar
 
-#### 3. Enriquecimiento masivo con Hunter.io
-Actualmente hay que hacer clic en cada contacto uno por uno. Un boton "Enriquecer todos" (con limite de rate) para contactos con `company_domain` y `hunter_status === "pending"` ahorraria mucho tiempo.
+1. **`supabase/functions/chat/index.ts`**
+   - Anadir 3 nuevas tools al array `tools`
+   - Implementar `executeSearchContactsByTag()`, `executeSendCampaignEmail()`, `executeListAvailableTags()`
+   - Actualizar system prompt con instrucciones de campanas
+   - Anadir los nuevos cases al switch de ejecucion de herramientas
 
-#### 4. Feedback visual del resultado de Hunter en la tarjeta
-Tras enriquecer, el boton desaparece pero no se muestra que datos se obtuvieron. Podria mostrarse un badge "Hunter: Enriquecido" o "Hunter: No encontrado" en las tarjetas, similar a como se muestra Lusha con el icono Sparkles.
-
-#### 5. Validacion del dominio antes de enviar a Hunter
-No se valida el formato del dominio. Valores como "sin web", "N/A" o URLs completas podrian enviarse a la API gastando creditos innecesariamente.
-
-**Solucion**: Validar con regex basico (`/^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$/`) antes de llamar a la API.
-
----
-
-### PLAN DE IMPLEMENTACION
-
-**Archivos a modificar:**
-
-1. `supabase/functions/enrich-hunter-contact/index.ts`
-   - Añadir validacion JWT (copiar patron de `enrich-lusha-contact`)
-   - Validar que el contacto pertenece al usuario autenticado
-
-2. `src/components/contacts/ContactProfile.tsx`
-   - Cambiar condicion del boton Hunter para soportar dominio sin email
-   - Actualizar `enrichWithHunter` para enviar `domain` + `full_name` como alternativa
-
-3. `src/pages/Contacts.tsx`
-   - Añadir validacion de dominio antes de enriquecer
-   - Añadir filtro por estado Hunter
-   - Mostrar badge de estado Hunter en tarjetas
-
-4. `src/types/contact.ts` (nuevo)
-   - Extraer interfaz Contact compartida
-
+### Consideraciones de seguridad
+- Las consultas usan el cliente autenticado del usuario (respeta RLS)
+- Los emails se envian con el RESEND_API_KEY del servidor
+- Se registra cada envio en email_logs con el userId
+- Rate limiting: limitar a maximo 50 contactos por campana para evitar abusos
