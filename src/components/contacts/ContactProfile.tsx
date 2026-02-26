@@ -341,6 +341,34 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
     }
   };
 
+  const enrichWithFindymail = async () => {
+    if (!contact || !contact.company_domain) return;
+    setEnrichingFindymail(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+        body: {
+          contact_id: contact.id,
+          full_name: contact.full_name,
+          domain: contact.company_domain,
+        },
+      });
+      if (error) {
+        toast.error("Error al conectar con Findymail");
+        return;
+      }
+      if (data?.status === "enriched") {
+        toast.success(`¡Email encontrado y verificado con Findymail: ${data.email}!`);
+      } else {
+        toast.warning("Findymail no encontró datos para este contacto");
+      }
+      onUpdate();
+    } catch {
+      toast.error("Error inesperado al enriquecer con Findymail");
+    } finally {
+      setEnrichingFindymail(false);
+    }
+  };
+
   if (!contact) return null;
 
   const lushaStatus = contact.lusha_status || "pending";
