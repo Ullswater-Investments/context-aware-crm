@@ -343,6 +343,7 @@ Deno.serve(async (req) => {
         hunter: "skipped",
         apollo: "skipped",
         lusha: "skipped",
+        findymail: "skipped",
       };
 
       // Hunter (needs domain, skip if already processed)
