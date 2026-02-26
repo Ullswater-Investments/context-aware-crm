@@ -195,6 +195,13 @@ function sanitizeEmailFields(row: ParsedRow): ParsedRow {
     row.company_description = undefined;
   }
 
+  // Check postal_address for misplaced emails
+  if (row.postal_address && EMAIL_REGEX.test(row.postal_address.trim())) {
+    if (!row.email) row.email = row.postal_address.trim();
+    else if (!row.work_email) row.work_email = row.postal_address.trim();
+    row.postal_address = undefined;
+  }
+
   return row;
 }
 

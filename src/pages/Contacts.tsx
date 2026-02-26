@@ -150,11 +150,15 @@ export default function Contacts() {
   };
 
   const quickFixEmail = async (c: Contact) => {
-    const fallback = c.work_email || c.personal_email;
+    const postalEmail = c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()) ? c.postal_address.trim() : null;
+    const fallback = c.work_email || c.personal_email || postalEmail;
     if (!fallback) return;
     const updates: Record<string, any> = { email: fallback };
     if (!c.company_domain && fallback.includes("@")) {
       updates.company_domain = fallback.split("@")[1];
+    }
+    if (postalEmail && fallback === postalEmail) {
+      updates.postal_address = null;
     }
     const { error } = await supabase.from("contacts").update(updates).eq("id", c.id);
     if (error) { toast.error(error.message); return; }
@@ -163,14 +167,22 @@ export default function Contacts() {
   };
 
   const bulkFixEmails = async () => {
-    const fixable = contacts.filter(c => !c.email && (c.work_email || c.personal_email));
+    const fixable = contacts.filter(c => {
+      if (c.email) return false;
+      const postalEmail = c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()) ? c.postal_address.trim() : null;
+      return !!(c.work_email || c.personal_email || postalEmail);
+    });
     if (fixable.length === 0) return;
     let fixed = 0;
     for (const c of fixable) {
-      const fallback = c.work_email || c.personal_email;
+      const postalEmail = c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()) ? c.postal_address.trim() : null;
+      const fallback = c.work_email || c.personal_email || postalEmail;
       const updates: Record<string, any> = { email: fallback };
       if (!c.company_domain && fallback && fallback.includes("@")) {
         updates.company_domain = fallback.split("@")[1];
+      }
+      if (postalEmail && fallback === postalEmail) {
+        updates.postal_address = null;
       }
       const { error } = await supabase.from("contacts").update(updates).eq("id", c.id);
       if (!error) fixed++;
@@ -320,7 +332,7 @@ export default function Contacts() {
               Enriquecer todos
             </Button>
           )}
-          {contacts.some(c => !c.email && (c.work_email || c.personal_email)) && (
+          {contacts.some(c => !c.email && (c.work_email || c.personal_email || (c.postal_address && EMAIL_REGEX.test(c.postal_address.trim())))) && (
             <Button variant="outline" onClick={bulkFixEmails} disabled={bulkEnriching}>
               <Mail className="w-4 h-4 mr-2" />Corregir emails
             </Button>
@@ -360,7 +372,15 @@ export default function Contacts() {
                   <div><Label>LinkedIn URL</Label><Input value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
                   <div><Label>Dominio empresa</Label><Input value={form.company_domain} onChange={(e) => setForm({ ...form, company_domain: e.target.value })} placeholder="empresa.com" /></div>
                 </div>
-                <div><Label>Dirección postal</Label><Input value={form.postal_address} onChange={(e) => setForm({ ...form, postal_address: e.target.value })} placeholder="C/ Ejemplo, 1, 28001 Madrid" /></div>
+                <div><Label>Dirección postal</Label><Input value={form.postal_address} onChange={(e) => {
+                  const v = e.target.value;
+                  if (v.includes("@") && EMAIL_REGEX.test(v.trim())) {
+                    setForm({ ...form, email: form.email || v.trim(), postal_address: "" });
+                    toast.info("Se detectó un email en Dirección postal. Movido a Email.");
+                  } else {
+                    setForm({ ...form, postal_address: v });
+                  }
+                }} placeholder="C/ Ejemplo, 1, 28001 Madrid" /></div>
                 <Button onClick={create} disabled={!form.full_name} className="w-full">Crear contacto</Button>
               </div>
             </DialogContent>
@@ -463,10 +483,10 @@ export default function Contacts() {
                                 className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5 hover:text-primary transition-colors">
                                 <Mail className="w-3 h-3" />{c.email}
                               </button>
-                            ) : (c.work_email || c.personal_email) ? (
+                            ) : (c.work_email || c.personal_email || (c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()))) ? (
                               <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
                                 className="text-xs text-amber-600 truncate flex items-center gap-1 mt-0.5 hover:text-amber-700 transition-colors">
-                                <Zap className="w-3 h-3" />Corregir email ({c.work_email || c.personal_email})
+                                <Zap className="w-3 h-3" />Corregir email ({c.work_email || c.personal_email || c.postal_address})
                               </button>
                             ) : (
                               <p className="text-xs text-muted-foreground/50 truncate flex items-center gap-1 mt-0.5"><Mail className="w-3 h-3" />Sin email</p>
@@ -565,10 +585,10 @@ export default function Contacts() {
                       className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
                       <Mail className="w-3.5 h-3.5" />{c.email}
                     </button>
-                  ) : (c.work_email || c.personal_email) ? (
+                  ) : (c.work_email || c.personal_email || (c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()))) ? (
                     <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
                       className="flex items-center gap-2 text-sm text-amber-600 hover:text-amber-700 transition-colors">
-                      <Zap className="w-3.5 h-3.5" />Corregir email ({c.work_email || c.personal_email})
+                      <Zap className="w-3.5 h-3.5" />Corregir email ({c.work_email || c.personal_email || c.postal_address})
                     </button>
                   ) : (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground/50"><Mail className="w-3.5 h-3.5" />Sin email</div>
