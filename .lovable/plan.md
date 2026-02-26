@@ -1,83 +1,61 @@
 
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+## Plan de Saneamiento y Validacion de Emails
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+### Fase 1: Migracion SQL (remediacion de 94 contactos)
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+Ejecutar una migracion que:
+1. Copie `work_email` a `email` donde `email IS NULL AND work_email IS NOT NULL`
+2. Copie `personal_email` a `email` como segundo fallback donde `email IS NULL AND personal_email IS NOT NULL`
+3. Extraiga el dominio del email y lo guarde en `company_domain` donde este vacio: `split_part(work_email, '@', 2)`
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
-
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
-
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
-
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
-
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
-
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
-
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
-
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
-
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
-
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
-
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
-
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
-
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
-
-### Resumen de cambios
-
-| Archivo | Cambio | Prioridad |
-|---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
-
-### Detalle tecnico
-
-**Contacts.tsx - Nuevos estados:**
-```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+```text
+UPDATE contacts SET email = work_email WHERE email IS NULL AND work_email IS NOT NULL;
+UPDATE contacts SET email = personal_email WHERE email IS NULL AND personal_email IS NOT NULL;
+UPDATE contacts SET company_domain = split_part(COALESCE(email, work_email), '@', 2) 
+  WHERE company_domain IS NULL AND COALESCE(email, work_email) LIKE '%@%';
 ```
 
-**Contacts.tsx - Nueva funcion:**
-```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
-    });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
-};
-```
+### Fase 2: Prevencion en el importador (`src/components/contacts/ContactImporter.tsx`)
 
-**Contacts.tsx - Filtro actualizado:**
-```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
-```
+**2a. Funcion `sanitizeEmailFields`**: Antes de construir el registro final en `parseRows()`, una funcion que:
+- Reciba el objeto ParsedRow
+- Use regex `/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/` para detectar emails
+- Si `company_domain` contiene `@`, extraiga solo el dominio y mueva el valor completo a `email` si esta vacio
+- Fallback: si `email` queda vacio pero `work_email` o `personal_email` tienen valor, copie al campo `email`
+- Extraiga automaticamente `company_domain` del email si esta vacio
 
-**Contacts.tsx - Bulk enrich corregido:**
-```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
-```
+**2b. Aplicar en la linea 241-261** del return de `parseRows()`: llamar a `sanitizeEmailFields()` sobre el objeto antes de retornarlo.
+
+**2c. Aplicar en la insercion (linea 417)**: asegurar que `email` siempre tenga valor si hay algun email disponible: `email: row.email || row.work_email || row.personal_email || null`
+
+### Fase 3: Validacion en formulario de edicion (`src/components/contacts/ContactProfile.tsx`)
+
+**3a. Validacion en `saveEdit()`**: Antes de guardar, si `editData.email` esta vacio pero `editData.work_email` o `editData.personal_email` tienen valor, copiar automaticamente al campo principal con un toast informativo.
+
+**3b. Deteccion de email en campo dominio**: En el handler de `company_domain` (linea 440), si el valor contiene `@`, mostrar toast de aviso y mover automaticamente el valor al campo `email`, dejando solo el dominio en `company_domain`.
+
+### Fase 4: Correccion rapida en Kanban (`src/pages/Contacts.tsx`)
+
+**4a. Alerta visual**: Donde aparece "Sin email" (lineas 423-424), si el contacto tiene `work_email` o `personal_email`, mostrar un boton de correccion rapida con icono `Zap` (rayo) en lugar del texto "Sin email".
+
+**4b. Funcion `quickFixEmail`**: Al hacer clic, ejecuta un `UPDATE` que copia `work_email` o `personal_email` al campo `email` y recarga la lista.
+
+**4c. Mismo tratamiento en vista Lista** (linea 520-521).
+
+### Archivos a modificar
+
+| Archivo | Cambios |
+|---|---|
+| Migracion SQL | 3 sentencias UPDATE para sanear 94+ contactos y extraer dominios |
+| `src/components/contacts/ContactImporter.tsx` | Funcion `sanitizeEmailFields`, fallback en insert, deteccion de @ en company_domain |
+| `src/components/contacts/ContactProfile.tsx` | Validacion en saveEdit, deteccion de @ en campo dominio |
+| `src/pages/Contacts.tsx` | Boton "Correccion rapida" con icono Zap en Kanban y Lista cuando hay email disponible en campo secundario |
+
+### Resultado esperado
+
+- 94 contactos corregidos inmediatamente tras la migracion
+- Importaciones futuras nunca dejaran `email` vacio si hay datos en `work_email`/`personal_email`
+- Errores de escritura en formularios se corrigen en tiempo real
+- Tarjetas Kanban ofrecen correccion con un clic para casos residuales
 
