@@ -76,6 +76,19 @@ export default function ImageBubbleMenu({ editor }: ImageBubbleMenuProps) {
         >
           <AlignRight className="h-3.5 w-3.5" />
         </Button>
+
+        <Separator orientation="vertical" className="h-6 mx-1" />
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-destructive hover:text-destructive"
+          onClick={() => editor.chain().focus().deleteSelection().run()}
+          title="Eliminar imagen"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
       </div>
     </BubbleMenu>
   );

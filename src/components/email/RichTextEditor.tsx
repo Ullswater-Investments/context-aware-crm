@@ -137,6 +137,7 @@ export default function RichTextEditor({
       Highlight.configure({ multicolor: true }),
       FontSize,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Underline,
     ],
     content,
     onUpdate: ({ editor }) => {
