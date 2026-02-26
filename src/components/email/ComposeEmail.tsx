@@ -310,24 +310,29 @@ export default function ComposeEmail({
   };
 
 
-  const getContactName = async (): Promise<string | null> => {
+  type ContactInfo = {
+    full_name: string | null;
+    email: string | null;
+    position: string | null;
+    organization_id: string | null;
+  };
+
+  const getContactInfo = async (): Promise<ContactInfo | null> => {
+    const fields = "full_name, email, position, organization_id";
     if (contactId) {
-      const { data } = await supabase
-        .from("contacts")
-        .select("full_name")
-        .eq("id", contactId)
-        .maybeSingle();
-      if (data?.full_name) return data.full_name;
+      const { data } = await supabase.from("contacts").select(fields).eq("id", contactId).maybeSingle();
+      if (data) return data as ContactInfo;
     }
     if (to) {
-      const { data } = await supabase
-        .from("contacts")
-        .select("full_name")
-        .eq("email", to)
-        .maybeSingle();
-      if (data?.full_name) return data.full_name;
+      const { data } = await supabase.from("contacts").select(fields).eq("email", to).maybeSingle();
+      if (data) return data as ContactInfo;
     }
     return null;
+  };
+
+  const getContactName = async (): Promise<string | null> => {
+    const info = await getContactInfo();
+    return info?.full_name || null;
   };
 
   const handleTemplateSelect = async (template: EmailTemplate) => {
