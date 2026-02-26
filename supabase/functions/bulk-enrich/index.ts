@@ -188,6 +188,56 @@ async function enrichWithLusha(
   }
 }
 
+async function enrichWithFindymail(
+  contact: any,
+  findymailKey: string,
+  supabase: any
+): Promise<string> {
+  if (!contact.company_domain) return "skipped";
+
+  try {
+    const nameParts = contact.full_name.trim().split(/\s+/);
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+    const domain = contact.company_domain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+
+    const res = await fetch("https://app.findymail.com/api/search/name", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${findymailKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ first_name: firstName, last_name: lastName, domain }),
+    });
+
+    if (!res.ok) {
+      console.error(`Findymail error for ${contact.full_name}: HTTP ${res.status}`);
+      return "error";
+    }
+
+    const data = await res.json();
+    const foundEmail = data?.email || null;
+
+    if (!foundEmail) {
+      await supabase.from("contacts").update({ findymail_status: "not_found", last_enriched_at: new Date().toISOString() }).eq("id", contact.id);
+      return "not_found";
+    }
+
+    // Re-read contact to get latest data
+    const { data: fresh } = await supabase.from("contacts").select("work_email").eq("id", contact.id).single();
+    const c = fresh || contact;
+
+    const updates: Record<string, any> = { findymail_status: "enriched", last_enriched_at: new Date().toISOString() };
+    if (foundEmail && !c.work_email) updates.work_email = foundEmail;
+
+    await supabase.from("contacts").update(updates).eq("id", contact.id);
+    return "enriched";
+  } catch (e) {
+    console.error(`Findymail exception for ${contact.full_name}:`, e.message);
+    return "error";
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
