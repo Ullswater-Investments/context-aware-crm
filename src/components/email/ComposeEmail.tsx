@@ -103,7 +103,6 @@ export default function ComposeEmail({
       const def = sigs.find((s) => s.is_default);
       if (def) {
         setSelectedSignatureId(def.id);
-        setIncludeSignature(true);
       }
     }
   };
