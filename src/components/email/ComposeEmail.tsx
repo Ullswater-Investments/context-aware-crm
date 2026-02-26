@@ -538,151 +538,139 @@ export default function ComposeEmail({
           </div>
 
           {/* FOOTER FIJO */}
-          <div className="shrink-0 border-t border-border bg-background px-4 py-3">
-            <div className="flex items-center justify-between">
-              {/* Lado izquierdo: adjuntar + firma oculta */}
-              <div className="flex items-center gap-2">
-                <label className="cursor-pointer" title="Adjuntar archivos">
-                  <Paperclip className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
-                  <input
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={handleAttachFiles}
-                    disabled={attachments.length >= MAX_FILES}
-                  />
-                </label>
-                {attachments.length > 0 && (
-                  <span className="text-xs text-muted-foreground">{attachments.length}/{MAX_FILES}</span>
-                )}
-
-                <div className="w-px h-4 bg-border mx-1" />
-
-                {/* Firma automática Switch */}
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={includeSignature && selectedSignatureId !== "none"}
-                    onCheckedChange={setIncludeSignature}
-                    disabled={selectedSignatureId === "none" && signatures.length === 0}
-                    className="scale-75"
-                  />
-                  <Label className="text-xs text-muted-foreground cursor-pointer">
-                    Firma automática
-                  </Label>
-                </div>
-
-                {includeSignature && selectedSignatureId !== "none" && (
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                    Se añadirá al enviar
-                  </span>
-                )}
-
-                <div className="w-px h-4 bg-border mx-1" />
-
-                <TemplatePicker onSelect={handleTemplateSelect} />
-                <button
-                  onClick={() => setTemplateManagerOpen(true)}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  title="Gestionar plantillas"
-                >
-                  <Settings2 className="w-3.5 h-3.5" />
-                </button>
-
-                <div className="w-px h-4 bg-border mx-1" />
-
-                <Select value={selectedSignatureId} onValueChange={setSelectedSignatureId}>
-                  <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs border-none bg-transparent shadow-none px-1">
-                    <SelectValue placeholder="Firma" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sin firma</SelectItem>
-                    {signatures.map((sig) => (
-                      <SelectItem key={sig.id} value={sig.id}>
-                        {sig.name}{sig.is_default ? " ⭐" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <button
-                  onClick={() => setSigManagerOpen(true)}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  title="Gestionar firmas"
-                >
-                  <Settings2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Lado derecho: Guardar plantilla + Vista Previa + IA + Enviar */}
-              <div className="flex items-center gap-2">
-                {/* Guardar como plantilla */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 text-xs"
-                  disabled={!body.replace(/<[^>]+>/g, "").trim()}
-                  onClick={() => setSaveTemplateOpen(true)}
-                  title="Guardar como plantilla"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span className="ml-1 hidden sm:inline">Plantilla</span>
-                </Button>
-
-                {/* Vista Previa */}
-                <EmailPreviewModal
-                  subject={subject}
-                  body={body}
-                  signatureHtml={getSignatureHtml()}
-                  recipient={to}
+          <div className="shrink-0 border-t border-border bg-background px-4 py-2 space-y-2">
+            {/* Fila 1: Herramientas */}
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <label className="cursor-pointer shrink-0" title="Adjuntar archivos">
+                <Paperclip className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleAttachFiles}
+                  disabled={attachments.length >= MAX_FILES}
                 />
+              </label>
+              {attachments.length > 0 && (
+                <span className="text-xs text-muted-foreground shrink-0">{attachments.length}/{MAX_FILES}</span>
+              )}
 
-                {/* Selector de tono IA */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={suggestingReply}
-                      className="h-8 border-primary/30 text-primary hover:bg-primary/10"
-                    >
-                      {suggestingReply ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-3.5 h-3.5" />
-                      )}
-                      <span className="ml-1 hidden sm:inline text-xs">
-                        {suggestingReply ? "Redactando..." : "IA"}
-                      </span>
-                      {!suggestingReply && <ChevronDown className="w-3 h-3 ml-0.5" />}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="bg-popover">
-                    {tones.map((tone) => (
-                      <DropdownMenuItem
-                        key={tone.id}
-                        onClick={() => handleSuggestReply(tone.id)}
-                        className="cursor-pointer"
-                      >
-                        <span className="mr-2">{tone.icon}</span>
-                        {tone.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+              <div className="w-px h-4 bg-border mx-1 shrink-0" />
 
-                {/* Botón Enviar */}
-                <Button onClick={send} disabled={sending || !to || !subject} size="sm" className="h-8">
-                  {sending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      Enviar
-                      <Send className="w-3.5 h-3.5 ml-1" />
-                    </>
-                  )}
-                </Button>
+              <div className="flex items-center gap-2 shrink-0">
+                <Switch
+                  checked={includeSignature && selectedSignatureId !== "none"}
+                  onCheckedChange={setIncludeSignature}
+                  disabled={selectedSignatureId === "none" && signatures.length === 0}
+                  className="scale-75"
+                />
+                <Label className="text-xs text-muted-foreground cursor-pointer whitespace-nowrap">
+                  Firma
+                </Label>
               </div>
+
+              {includeSignature && selectedSignatureId !== "none" && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+                  Al enviar
+                </span>
+              )}
+
+              <Select value={selectedSignatureId} onValueChange={setSelectedSignatureId}>
+                <SelectTrigger className="h-7 w-auto min-w-[80px] text-xs border-none bg-transparent shadow-none px-1 shrink-0">
+                  <SelectValue placeholder="Firma" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin firma</SelectItem>
+                  {signatures.map((sig) => (
+                    <SelectItem key={sig.id} value={sig.id}>
+                      {sig.name}{sig.is_default ? " ⭐" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <button
+                onClick={() => setSigManagerOpen(true)}
+                className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                title="Gestionar firmas"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+              </button>
+
+              <div className="w-px h-4 bg-border mx-1 shrink-0" />
+
+              <TemplatePicker onSelect={handleTemplateSelect} />
+              <button
+                onClick={() => setTemplateManagerOpen(true)}
+                className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                title="Gestionar plantillas"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+              </button>
+
+              <div className="flex-1" />
+
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs shrink-0"
+                disabled={!body.replace(/<[^>]+>/g, "").trim()}
+                onClick={() => setSaveTemplateOpen(true)}
+                title="Guardar como plantilla"
+              >
+                <Save className="w-3.5 h-3.5" />
+              </Button>
+
+              <EmailPreviewModal
+                subject={subject}
+                body={body}
+                signatureHtml={getSignatureHtml()}
+                recipient={to}
+              />
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={suggestingReply}
+                    className="h-7 border-primary/30 text-primary hover:bg-primary/10 shrink-0"
+                  >
+                    {suggestingReply ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5" />
+                    )}
+                    {!suggestingReply && <ChevronDown className="w-3 h-3 ml-0.5" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-popover">
+                  {tones.map((tone) => (
+                    <DropdownMenuItem
+                      key={tone.id}
+                      onClick={() => handleSuggestReply(tone.id)}
+                      className="cursor-pointer"
+                    >
+                      <span className="mr-2">{tone.icon}</span>
+                      {tone.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Fila 2: Botón Enviar */}
+            <div className="flex justify-end">
+              <Button onClick={send} disabled={sending || !to || !subject} className="px-6">
+                {sending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    Enviar
+                    <Send className="w-4 h-4 ml-1" />
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </SheetContent>
