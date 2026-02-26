@@ -344,10 +344,20 @@ export default function ContactImporter({ open, onOpenChange, onComplete }: Cont
       const { data: existingOrgs } = await supabase.from("organizations").select("id, name");
       existingOrgs?.forEach((o) => orgCache.set(o.name.toLowerCase(), o.id));
 
-      // Cache existing contacts for upsert
-      const { data: existingContacts } = await supabase.from("contacts").select("id, full_name");
+      // Cache existing contacts for upsert (by name and by email)
+      const { data: existingContacts } = await supabase.from("contacts").select("id, full_name, email, work_email, personal_email");
       const contactCache = new Map<string, string>();
-      existingContacts?.forEach((c) => contactCache.set(c.full_name.toLowerCase(), c.id));
+      const emailCache = new Map<string, string>();
+      existingContacts?.forEach((c) => {
+        // Normalize name: lowercase and remove accents
+        const normalized = c.full_name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        contactCache.set(normalized, c.id);
+        contactCache.set(c.full_name.toLowerCase(), c.id);
+        // Also index by emails for secondary dedup
+        if (c.email) emailCache.set(c.email.toLowerCase(), c.id);
+        if (c.work_email) emailCache.set(c.work_email.toLowerCase(), c.id);
+        if (c.personal_email) emailCache.set(c.personal_email.toLowerCase(), c.id);
+      });
 
       let success = 0;
       let errors = 0;
