@@ -132,7 +132,7 @@ export default function Emails() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, accounts, fetchCounts]);
+  }, [user, accounts, fetchCounts, fetchEmails]);
 
   const fetchEmails = useCallback(async () => {
     if (!user || !selectedAccountId) return;
