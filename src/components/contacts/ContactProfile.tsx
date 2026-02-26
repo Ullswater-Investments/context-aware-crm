@@ -358,8 +358,18 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
         toast.error("Error al conectar con Findymail");
         return;
       }
-      if (data?.status === "enriched") {
-        toast.success(`¡Email encontrado y verificado con Findymail: ${data.email}!`);
+      if (data?.error_code) {
+        const messages: Record<string, string> = {
+          auth_error: "API key de Findymail inválida o sin permisos",
+          no_credits: "Sin créditos en Findymail",
+          rate_limited: "Demasiadas solicitudes a Findymail, espera unos minutos",
+          subscription_paused: "Suscripción de Findymail pausada",
+          invalid_domain: `Dominio no válido: ${contact.company_domain}`,
+          invalid_payload: "Datos enviados no válidos",
+        };
+        toast.error(messages[data.error_code] || data.message || "Error desconocido de Findymail");
+      } else if (data?.status === "enriched") {
+        toast.success(`¡Email encontrado con Findymail: ${data.email}!`);
       } else {
         toast.warning("Findymail no encontró datos para este contacto");
       }

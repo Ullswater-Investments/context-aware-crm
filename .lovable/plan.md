@@ -1,85 +1,83 @@
 
-Objetivo: hacer un diagnóstico/reparación completa de Findymail para que el usuario vea exactamente por qué falla y para que el enriquecimiento vuelva a funcionar de forma confiable.
 
-Resumen del diagnóstico ya realizado:
-1) Secreto: `FINDYMAIL_API_KEY` sí está configurado en backend.
-2) Configuración de función: `enrich-findymail-contact` está registrada y activa.
-3) Estado de datos: hay 405 contactos, 214 con dominio, y Findymail está en `pending` para todos (0 `enriched`, 0 `not_found`), lo que indica que la integración no está cerrando correctamente los resultados.
-4) Código actual:
-   - Sí divide `full_name` en nombre/apellido.
-   - Sí limpia `http/https` y paths del dominio, pero no limpia `www.` ni casos más complejos.
-   - Usa `getClaims` (más frágil) en Findymail.
-   - Asume respuesta `data.email`, pero Findymail también puede devolver `contact.email`.
-   - En errores HTTP devuelve mensaje poco útil para UI.
+## Revision: Errores y Mejoras pendientes tras integracion Findymail
 
-Plan de reparación (secuencial y seguro):
-1) Endurecer autenticación en la función Findymail
-   - Archivo: `supabase/functions/enrich-findymail-contact/index.ts`
-   - Cambiar validación a `auth.getUser()` (alineado con política técnica del proyecto y consistente con otras funciones estables).
-   - Mantener validación de propiedad del contacto (`created_by`).
+### BUG 1: Bulk Enrich no incluye Findymail (Alta)
 
-2) Normalización robusta de dominio
-   - Archivos:
-     - `supabase/functions/enrich-findymail-contact/index.ts`
-     - `supabase/functions/bulk-enrich/index.ts` (helper Findymail)
-   - Implementar helper único de normalización:
-     - elimina `http://`, `https://`
-     - elimina `www.`
-     - elimina path/query/hash/puerto
-     - trim + lowercase
-   - Si el dominio queda inválido/vacío, devolver error explícito (`invalid_domain`) sin marcar `not_found`.
+**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
 
-3) Alinear request/response con Findymail de forma compatible
-   - Archivo: `supabase/functions/enrich-findymail-contact/index.ts`
-   - Mantener endpoint actual válido (`/api/search/name`) y construir payload compatible:
-     - enviar `name` (full_name) y también `first_name/last_name` como compatibilidad defensiva.
-   - Parsear email con fallback:
-     - `data.email || data.contact?.email || null`
-   - Resultado:
-     - solo marcar `not_found` cuando hay 200 OK sin email.
-     - en errores 4xx/5xx: devolver `api_error` + detalle, sin cambiar a `not_found`.
+**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
 
-4) Mejorar trazabilidad y mensajes de error (diagnóstico real)
-   - Archivos:
-     - `supabase/functions/enrich-findymail-contact/index.ts`
-     - `src/pages/Contacts.tsx`
-     - `src/components/contacts/ContactProfile.tsx`
-   - Backend: mapear códigos de error claros:
-     - 401/403 -> `auth_error`
-     - 402 -> `no_credits`
-     - 423 -> `subscription_paused`
-     - 429 -> `rate_limited`
-     - 400 -> `invalid_payload_or_domain`
-   - Frontend: mostrar toast específico según `error_code`/`message` (en vez de “Error con Findymail” genérico).
+### BUG 2: `findymail_status` accedido con cast `as any` (Media)
 
-5) Corregir flujo masivo para Findymail
-   - Archivo: `supabase/functions/bulk-enrich/index.ts`
-   - Reutilizar normalizador robusto y parser de respuesta.
-   - Mantener política correcta ya existente: errores API => `error` (reintento posible), no `not_found`.
-   - En `results`, incluir detalle de error por contacto para facilitar diagnóstico.
+**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
 
-6) Validación funcional end-to-end (obligatoria)
-   - Caso A (éxito): contacto con dominio válido + nombre completo -> debe guardar `work_email`/`findymail_status=enriched`.
-   - Caso B (sin resultado): 200 sin email -> `findymail_status=not_found`.
-   - Caso C (fallo API): error de autenticación o créditos -> estado no cambia a `not_found`, UI muestra causa exacta.
-   - Caso D (dominio sucio): `www.empresa.com/path` -> normaliza y procesa correctamente.
-   - Revisar logs de la función para confirmar request/response sanitizados.
+**Solucion:** Cambiar a `contact.findymail_status` sin cast.
 
-7) Higiene de seguridad
-   - El token fue expuesto en conversación; incluiré recomendación operativa de rotarlo en Findymail y actualizar el secreto seguro del proyecto (sin hardcodearlo en código).
+### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
 
-Respuesta específica a tu pregunta de nombres:
-- Sí: ahora mismo el sistema ya divide `full_name` por espacios para Findymail.
-- Mejora prevista: robustecer esa lógica para nombres compuestos y enviar también `name` completo para mejorar compatibilidad con la API.
+**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
 
-Archivos que tocaré al implementar:
-- `supabase/functions/enrich-findymail-contact/index.ts` (principal)
-- `supabase/functions/bulk-enrich/index.ts` (consistencia en enriquecimiento masivo)
-- `src/pages/Contacts.tsx` (mensajes de error más claros)
-- `src/components/contacts/ContactProfile.tsx` (mensajes de error más claros)
+**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
 
-Riesgos y mitigación:
-- Riesgo: cambiar endpoint/payload incorrectamente y romper más casos.
-  - Mitigación: enfoque compatible (payload dual + parser dual), pruebas por escenarios.
-- Riesgo: marcar contactos erróneamente como `not_found`.
-  - Mitigación: `not_found` solo con 200 OK y email ausente.
+### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
+
+**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
+
+**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
+
+### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
+
+**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
+
+**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
+
+### Resumen de cambios
+
+| Archivo | Cambio | Prioridad |
+|---|---|---|
+| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
+| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
+| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
+| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
+
+### Detalle tecnico
+
+**Contacts.tsx - Nuevos estados:**
+```typescript
+const [findymailFilter, setFindymailFilter] = useState("");
+const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+```
+
+**Contacts.tsx - Nueva funcion:**
+```typescript
+const enrichWithFindymailFromCard = async (c: Contact) => {
+  if (!c.company_domain) return;
+  setEnrichingFindymailId(c.id);
+  try {
+    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+    });
+    if (error) throw error;
+    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
+    else toast.info("Findymail no encontro datos");
+    load();
+  } catch (err: any) {
+    toast.error(err.message || "Error con Findymail");
+  } finally {
+    setEnrichingFindymailId(null);
+  }
+};
+```
+
+**Contacts.tsx - Filtro actualizado:**
+```typescript
+const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
+return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+```
+
+**Contacts.tsx - Bulk enrich corregido:**
+```typescript
+body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+```
+

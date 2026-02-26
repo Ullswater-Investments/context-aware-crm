@@ -188,6 +188,18 @@ async function enrichWithLusha(
   }
 }
 
+/** Normalize a raw URL/domain into a clean root domain */
+function cleanDomainHelper(raw: string): string {
+  let d = raw.trim().toLowerCase();
+  d = d.replace(/^(?:https?:\/\/)?/i, "");
+  d = d.replace(/^www\./i, "");
+  d = d.split("/")[0];
+  d = d.split("?")[0];
+  d = d.split("#")[0];
+  d = d.split(":")[0];
+  return d;
+}
+
 async function enrichWithFindymail(
   contact: any,
   findymailKey: string,
@@ -199,7 +211,12 @@ async function enrichWithFindymail(
     const nameParts = contact.full_name.trim().split(/\s+/);
     const firstName = nameParts[0] || "";
     const lastName = nameParts.slice(1).join(" ") || "";
-    const domain = contact.company_domain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    const domain = cleanDomainHelper(contact.company_domain);
+
+    if (!domain || !domain.includes(".")) {
+      console.error(`Findymail: invalid domain for ${contact.full_name}: "${contact.company_domain}" → "${domain}"`);
+      return "error";
+    }
 
     const res = await fetch("https://app.findymail.com/api/search/name", {
       method: "POST",
@@ -216,7 +233,7 @@ async function enrichWithFindymail(
     }
 
     const data = await res.json();
-    const foundEmail = data?.email || null;
+    const foundEmail = data?.email || data?.contact?.email || null;
 
     if (!foundEmail) {
       await supabase.from("contacts").update({ findymail_status: "not_found", last_enriched_at: new Date().toISOString() }).eq("id", contact.id);

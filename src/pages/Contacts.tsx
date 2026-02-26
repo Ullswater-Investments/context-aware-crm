@@ -157,11 +157,18 @@ export default function Contacts() {
         body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
       });
       if (error) throw error;
-      if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-      else toast.info("Findymail no encontró datos");
+      if (data?.error_code) {
+        toast.error(data.message || `Error Findymail: ${data.error_code}`);
+      } else if (data?.status === "enriched") {
+        toast.success(`Email encontrado con Findymail: ${data.email}`);
+      } else if (data?.status === "not_found") {
+        toast.info("Findymail no encontró datos para este contacto");
+      } else {
+        toast.info("Findymail no encontró datos");
+      }
       load();
     } catch (err: any) {
-      toast.error(err.message || "Error con Findymail");
+      toast.error(err.message || "Error de conexión con Findymail");
     } finally {
       setEnrichingFindymailId(null);
     }
