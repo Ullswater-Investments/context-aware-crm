@@ -1,57 +1,86 @@
 
-## Plan: Sistema de Plantillas de Email Inteligentes
+
+## Auditoria Completa: Estado del Editor de Email
+
+### Estado general: TODO COMPLETADO CORRECTAMENTE
+
+Tras una revision exhaustiva del codigo, las dependencias instaladas, los imports, y la configuracion, el sistema esta completo y funcional. A continuacion el detalle:
+
+### Verificacion de errores
+
+#### 1. Import de BubbleMenu (ImageBubbleMenu.tsx) - SIN ERROR
+El import `from "@tiptap/react/menus"` es CORRECTO. TipTap v3.20.0 exporta `BubbleMenu` desde ese subpath (`./menus` en el package.json de `@tiptap/react`). No requiere cambio.
+
+#### 2. Sincronizacion de contenido (RichTextEditor.tsx) - CORREGIDO
+La condicion del `useEffect` ya sincroniza correctamente: `content !== editor.getHTML()`. Las plantillas se aplican visualmente al editor. Correcto.
+
+#### 3. Selectores reactivos de fuente y tamano - CORREGIDO
+Los selectores reflejan los valores actuales de la seleccion gracias al `useEffect` con `editor.on("selectionUpdate")` y `editor.on("transaction")`. Correcto.
+
+#### 4. Undo/Redo - IMPLEMENTADO
+Botones presentes con estados `disabled` correctos. Correcto.
+
+#### 5. Alineacion de texto - IMPLEMENTADO
+Cuatro botones (Left, Center, Right, Justify) con `TextAlign` extension configurada. Correcto.
+
+#### 6. Limpieza de codigo muerto (ComposeEmail.tsx) - CORREGIDO
+La variable `selectedSig` y el import `Eye` fueron eliminados correctamente.
+
+#### 7. Plantillas de email - COMPLETO
+La tabla `email_templates` existe en la base de datos con tipos generados. El componente `TemplatePicker` carga plantillas, las agrupa por categoria, y al seleccionar una, el asunto y cuerpo se actualizan con sustitucion de variables.
+
+#### 8. Extension FontSize personalizada - CORRECTO
+Genera `<span style="font-size: Xpx">` como inline style para compatibilidad con clientes de email.
+
+#### 9. Extension EmailImage - CORRECTO
+Genera estilos inline para width, float y margin, asegurando compatibilidad con Outlook/Gmail.
+
+### Mejoras propuestas
+
+#### 1. Boton de Subrayado (Underline) en la barra de herramientas
+Falta soporte para subrayado, una funcion basica de cualquier editor profesional. StarterKit no incluye Underline por defecto, se necesita instalar `@tiptap/extension-underline` y anadir un boton con el icono `Underline` de Lucide.
+
+**Archivos afectados:** `RichTextEditor.tsx` (import + extension + boton)
+
+#### 2. Boton para limpiar formato (Clear Formatting)
+No existe forma de quitar todos los estilos de una seleccion. Seria util un boton "Limpiar formato" que ejecute `editor.chain().focus().clearNodes().unsetAllMarks().run()`.
+
+**Archivos afectados:** `RichTextEditor.tsx` (boton nuevo con icono `RemoveFormatting` de Lucide)
+
+#### 3. Eliminar imagen desde el BubbleMenu
+Actualmente el BubbleMenu de imagen permite redimensionar y alinear, pero no eliminar la imagen. Anadir un boton "Eliminar" con icono `Trash2` que ejecute `editor.chain().focus().deleteSelection().run()`.
+
+**Archivos afectados:** `ImageBubbleMenu.tsx` (boton nuevo)
+
+#### 4. Gestor de plantillas (CRUD)
+Actualmente las plantillas solo se pueden leer. No existe interfaz para crear, editar o eliminar plantillas. Crear una pagina o modal de gestion de plantillas con formulario (nombre, asunto, categoria, entidad, contenido HTML con el mismo editor TipTap).
+
+**Archivos afectados:** Nuevo componente `TemplateManager.tsx`, posible nueva ruta o modal
+
+#### 5. Confirmacion antes de cerrar el compositor con contenido
+Si el usuario tiene texto escrito y cierra el panel lateral (Sheet), pierde todo sin confirmacion. Anadir un dialogo de confirmacion "Tienes un borrador sin enviar. Descartar?" usando `AlertDialog`.
+
+**Archivos afectados:** `ComposeEmail.tsx` (logica de intercepcion del cierre)
 
 ### Resumen
-Crear una tabla `email_templates` en la base de datos, un componente selector de plantillas con busqueda rapida (CommandDialog), e integrarlo en el compositor de email para que al elegir una plantilla se rellene automaticamente el asunto y el cuerpo del mensaje.
 
-### 1. Base de datos: Migracion SQL
-
-Crear tabla `email_templates` con los siguientes campos:
-- `id` (UUID, PK)
-- `name` (TEXT, NOT NULL) - Nombre de la plantilla
-- `subject` (TEXT) - Asunto predefinido
-- `content_html` (TEXT, NOT NULL) - Cuerpo HTML
-- `category` (TEXT) - Categoria: Ventas, Legal, Seguimiento, etc.
-- `entity` (TEXT) - Filtro por empresa: GDC, NextGen, General
-- `created_by` (UUID) - Vinculado al usuario autenticado
-- `created_at` (TIMESTAMPTZ)
-- `updated_at` (TIMESTAMPTZ)
-
-Politicas RLS: CRUD completo restringido a `created_by = auth.uid()`.
-
-Insertar 3 plantillas de ejemplo (Propuesta de Inversion, Saludo Inicial GDC, Factura Pendiente).
-
-### 2. Nuevo componente: `src/components/email/TemplatePicker.tsx`
-
-Un boton "Plantillas" que abre un `CommandDialog` (ya disponible en el proyecto) con:
-- Buscador de texto (CommandInput)
-- Plantillas agrupadas por categoria (CommandGroup)
-- Cada item muestra nombre y asunto
-- Al seleccionar, dispara callback `onSelect(template)` con subject y content_html
-- Carga plantillas desde la base de datos al abrirse
-- Filtrado opcional por `entity`
-
-### 3. Modificar: `src/components/email/ComposeEmail.tsx`
-
-- Importar `TemplatePicker`
-- Anadir boton de plantillas en el footer (lado izquierdo, junto a los controles existentes)
-- Al seleccionar una plantilla:
-  - `setSubject(template.subject)` si la plantilla tiene asunto
-  - `setBody(template.content_html)` para reemplazar el contenido del editor
-- Sustitucion basica de variables: si el `defaultTo` coincide con un contacto, reemplazar `{{nombre}}` por el nombre del contacto (busqueda simple en la tabla contacts por email)
-
-### Archivos afectados
-
-| Archivo | Accion |
+| Area | Estado |
 |---|---|
-| Migracion SQL | Crear tabla `email_templates` + RLS + datos ejemplo |
-| `src/components/email/TemplatePicker.tsx` | Crear - selector con CommandDialog |
-| `src/components/email/ComposeEmail.tsx` | Modificar - integrar TemplatePicker en el footer |
+| BubbleMenu import | Correcto |
+| Sincronizacion de contenido | Corregido |
+| Selectores reactivos | Corregido |
+| Undo/Redo | Implementado |
+| Alineacion de texto | Implementado |
+| Codigo muerto limpiado | Corregido |
+| Plantillas de email | Completo |
+| FontSize inline styles | Correcto |
+| EmailImage inline styles | Correcto |
 
-### Flujo de usuario
-1. Abre el compositor de email
-2. Pulsa el boton "Plantillas" en el footer
-3. Busca o navega por las plantillas disponibles
-4. Selecciona una plantilla
-5. El asunto y el cuerpo se rellenan automaticamente
-6. El usuario edita lo que necesite y envia
+### Mejoras recomendadas (por prioridad)
+
+1. Confirmacion al cerrar con borrador (evita perdida de trabajo)
+2. Boton de eliminar imagen en BubbleMenu (usabilidad critica)
+3. Subrayado en la barra de herramientas (funcion basica esperada)
+4. Limpiar formato (productividad)
+5. Gestor de plantillas CRUD (funcionalidad completa)
+
