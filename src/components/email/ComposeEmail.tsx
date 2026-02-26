@@ -24,6 +24,7 @@ import SignatureManager, { type Signature } from "./SignatureManager";
 import AccountStatusDot from "./AccountStatusDot";
 import EmailPreviewModal from "./EmailPreviewModal";
 import TemplatePicker, { type EmailTemplate } from "./TemplatePicker";
+import TemplateManager from "./TemplateManager";
 
 type EmailAccountOption = {
   id: string;
@@ -85,11 +86,12 @@ export default function ComposeEmail({
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [templateCategory, setTemplateCategory] = useState("");
-  const [templateEntity, setTemplateEntity] = useState("");
+  const [templateEntity, setTemplateEntity] = useState("none");
   const [suggestingReply, setSuggestingReply] = useState(false);
   const [fromAccount, setFromAccount] = useState<string>("");
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
 
   const fetchSignatures = async () => {
     if (!user) return;
@@ -298,7 +300,8 @@ export default function ComposeEmail({
       }
 
       toast.success("Email enviado correctamente");
-      handleOpenChange(false);
+      setTo(""); setCc(""); setBcc(""); setSubject(""); setBody(""); setAttachments([]);
+      onOpenChange(false);
       onSent?.();
     } catch (e: any) {
       console.error("Send email error:", e);
@@ -309,37 +312,47 @@ export default function ComposeEmail({
   };
 
 
-  const getContactName = async (): Promise<string | null> => {
+  type ContactInfo = {
+    full_name: string | null;
+    email: string | null;
+    position: string | null;
+    organization_id: string | null;
+  };
+
+  const getContactInfo = async (): Promise<ContactInfo | null> => {
+    const fields = "full_name, email, position, organization_id";
     if (contactId) {
-      const { data } = await supabase
-        .from("contacts")
-        .select("full_name")
-        .eq("id", contactId)
-        .maybeSingle();
-      if (data?.full_name) return data.full_name;
+      const { data } = await supabase.from("contacts").select(fields).eq("id", contactId).maybeSingle();
+      if (data) return data as ContactInfo;
     }
     if (to) {
-      const { data } = await supabase
-        .from("contacts")
-        .select("full_name")
-        .eq("email", to)
-        .maybeSingle();
-      if (data?.full_name) return data.full_name;
+      const { data } = await supabase.from("contacts").select(fields).eq("email", to).maybeSingle();
+      if (data) return data as ContactInfo;
     }
     return null;
   };
 
+  const getContactName = async (): Promise<string | null> => {
+    const info = await getContactInfo();
+    return info?.full_name || null;
+  };
+
   const handleTemplateSelect = async (template: EmailTemplate) => {
     let html = template.content_html;
-    if (html.includes("{{nombre}}")) {
-      const name = await getContactName();
-      if (name) {
-        html = html.replace(/\{\{nombre\}\}/g, name);
+    const hasVars = /\{\{(nombre|email|empresa|cargo)\}\}/.test(html);
+    if (hasVars) {
+      const info = await getContactInfo();
+      if (info) {
+        if (info.full_name) html = html.replace(/\{\{nombre\}\}/g, info.full_name);
+        if (info.email) html = html.replace(/\{\{email\}\}/g, info.email);
+        if (info.position) html = html.replace(/\{\{cargo\}\}/g, info.position);
+        if (info.organization_id) {
+          const { data: org } = await supabase.from("organizations").select("name").eq("id", info.organization_id).maybeSingle();
+          if (org?.name) html = html.replace(/\{\{empresa\}\}/g, org.name);
+        }
       }
     }
-    if (template.subject) {
-      setSubject(template.subject);
-    }
+    if (template.subject) setSubject(template.subject);
     setBody(html);
   };
 
@@ -350,10 +363,20 @@ export default function ComposeEmail({
     }
     try {
       let htmlToSave = body;
-      const contactName = await getContactName();
-      if (contactName) {
-        const escapedName = contactName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        htmlToSave = htmlToSave.replace(new RegExp(escapedName, "gi"), "{{nombre}}");
+      const info = await getContactInfo();
+      if (info) {
+        const replaceInHtml = (value: string | null, variable: string) => {
+          if (!value) return;
+          const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          htmlToSave = htmlToSave.replace(new RegExp(escaped, "gi"), variable);
+        };
+        replaceInHtml(info.full_name, "{{nombre}}");
+        replaceInHtml(info.email, "{{email}}");
+        replaceInHtml(info.position, "{{cargo}}");
+        if (info.organization_id) {
+          const { data: org } = await supabase.from("organizations").select("name").eq("id", info.organization_id).maybeSingle();
+          replaceInHtml(org?.name || null, "{{empresa}}");
+        }
       }
 
       const { error } = await supabase.from("email_templates").insert({
@@ -361,7 +384,7 @@ export default function ComposeEmail({
         subject: subject || null,
         content_html: htmlToSave,
         category: templateCategory.trim() || null,
-        entity: templateEntity || null,
+        entity: templateEntity === "none" ? null : templateEntity,
         created_by: user.id,
       });
       if (error) throw error;
@@ -369,7 +392,7 @@ export default function ComposeEmail({
       setSaveTemplateOpen(false);
       setTemplateName("");
       setTemplateCategory("");
-      setTemplateEntity("");
+      setTemplateEntity("none");
     } catch (e: any) {
       toast.error(e.message || "Error al guardar la plantilla");
     }
@@ -542,6 +565,13 @@ export default function ComposeEmail({
                 <div className="w-px h-4 bg-border mx-1" />
 
                 <TemplatePicker onSelect={handleTemplateSelect} />
+                <button
+                  onClick={() => setTemplateManagerOpen(true)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title="Gestionar plantillas"
+                >
+                  <Settings2 className="w-3.5 h-3.5" />
+                </button>
 
                 <div className="w-px h-4 bg-border mx-1" />
 
@@ -674,6 +704,7 @@ export default function ComposeEmail({
                   <SelectValue placeholder="Seleccionar entidad" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Ninguna</SelectItem>
                   <SelectItem value="general">General</SelectItem>
                   <SelectItem value="gdc">GDC</SelectItem>
                   <SelectItem value="nextgen">NextGen</SelectItem>
@@ -681,7 +712,7 @@ export default function ComposeEmail({
               </Select>
             </div>
             <p className="text-xs text-muted-foreground">
-              Si el email contiene el nombre del contacto, se reemplazará por {"{{nombre}}"} para reutilizar con otros contactos.
+              Variables automáticas: {"{{nombre}}"}, {"{{email}}"}, {"{{empresa}}"}, {"{{cargo}}"}. Se detectan y sustituyen automáticamente.
             </p>
           </div>
           <DialogFooter>
@@ -698,6 +729,11 @@ export default function ComposeEmail({
         open={sigManagerOpen}
         onOpenChange={setSigManagerOpen}
         onSignaturesChange={fetchSignatures}
+      />
+
+      <TemplateManager
+        open={templateManagerOpen}
+        onOpenChange={setTemplateManagerOpen}
       />
 
       <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>

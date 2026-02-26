@@ -1,86 +1,57 @@
 
+## Plan: Sistema de Plantillas de Email Inteligentes
 
-## Revision del Editor de Email: Errores y Mejoras
+### Resumen
+Crear una tabla `email_templates` en la base de datos, un componente selector de plantillas con busqueda rapida (CommandDialog), e integrarlo en el compositor de email para que al elegir una plantilla se rellene automaticamente el asunto y el cuerpo del mensaje.
 
-### BUG CRITICO: Dialogo de descarte aparece tras enviar email
+### 1. Base de datos: Migracion SQL
 
-**Problema:** Despues de enviar un email correctamente, la linea 301 llama a `handleOpenChange(false)`. En ese momento, `subject` y `body` todavia tienen contenido, asi que `hasDraft` es `true` y se muestra el dialogo "Descartar borrador?" al usuario que acaba de enviar con exito.
+Crear tabla `email_templates` con los siguientes campos:
+- `id` (UUID, PK)
+- `name` (TEXT, NOT NULL) - Nombre de la plantilla
+- `subject` (TEXT) - Asunto predefinido
+- `content_html` (TEXT, NOT NULL) - Cuerpo HTML
+- `category` (TEXT) - Categoria: Ventas, Legal, Seguimiento, etc.
+- `entity` (TEXT) - Filtro por empresa: GDC, NextGen, General
+- `created_by` (UUID) - Vinculado al usuario autenticado
+- `created_at` (TIMESTAMPTZ)
+- `updated_at` (TIMESTAMPTZ)
 
-**Solucion:** En la funcion `send()`, tras el envio exitoso, llamar directamente a `onOpenChange(false)` y limpiar los campos manualmente, sin pasar por `handleOpenChange` que contiene la logica de proteccion de borrador.
+Politicas RLS: CRUD completo restringido a `created_by = auth.uid()`.
 
-**Archivo:** `src/components/email/ComposeEmail.tsx`, funcion `send()` (lineas 300-302)
+Insertar 3 plantillas de ejemplo (Propuesta de Inversion, Saludo Inicial GDC, Factura Pendiente).
 
----
+### 2. Nuevo componente: `src/components/email/TemplatePicker.tsx`
 
-### BUG MENOR: Entidad vacia al guardar plantilla
+Un boton "Plantillas" que abre un `CommandDialog` (ya disponible en el proyecto) con:
+- Buscador de texto (CommandInput)
+- Plantillas agrupadas por categoria (CommandGroup)
+- Cada item muestra nombre y asunto
+- Al seleccionar, dispara callback `onSelect(template)` con subject y content_html
+- Carga plantillas desde la base de datos al abrirse
+- Filtrado opcional por `entity`
 
-**Problema:** El `Select` de entidad en el dialogo "Guardar como plantilla" no tiene opcion para deseleccionar. Si el usuario selecciona "GDC" y luego quiere quitar la seleccion, no puede. Ademas, el valor inicial `""` no coincide con ningun `SelectItem`, lo cual puede causar comportamiento inconsistente en Radix.
+### 3. Modificar: `src/components/email/ComposeEmail.tsx`
 
-**Solucion:** Cambiar el valor por defecto de `templateEntity` a `"none"` y anadir un `SelectItem` con valor `"none"` y label "Ninguna". En `handleSaveAsTemplate`, convertir `"none"` a `null` antes de insertar.
+- Importar `TemplatePicker`
+- Anadir boton de plantillas en el footer (lado izquierdo, junto a los controles existentes)
+- Al seleccionar una plantilla:
+  - `setSubject(template.subject)` si la plantilla tiene asunto
+  - `setBody(template.content_html)` para reemplazar el contenido del editor
+- Sustitucion basica de variables: si el `defaultTo` coincide con un contacto, reemplazar `{{nombre}}` por el nombre del contacto (busqueda simple en la tabla contacts por email)
 
-**Archivo:** `src/components/email/ComposeEmail.tsx`
+### Archivos afectados
 
----
+| Archivo | Accion |
+|---|---|
+| Migracion SQL | Crear tabla `email_templates` + RLS + datos ejemplo |
+| `src/components/email/TemplatePicker.tsx` | Crear - selector con CommandDialog |
+| `src/components/email/ComposeEmail.tsx` | Modificar - integrar TemplatePicker en el footer |
 
-### MEJORA 1: Gestor de plantillas (editar y eliminar)
-
-Actualmente las plantillas solo se pueden crear y leer. No hay forma de editarlas o eliminarlas. Propuesta:
-
-- Anadir un boton de engranaje o "Gestionar" junto al boton "Plantillas" en el footer
-- Crear un componente `TemplateManager` (similar a `SignatureManager`) con un `Dialog` que liste las plantillas del usuario
-- Cada plantilla muestra nombre, categoria y entidad, con botones para editar (abre formulario con los datos precargados + editor TipTap) y eliminar (con confirmacion)
-- La tabla `email_templates` ya tiene RLS con CRUD completo, no se necesitan cambios en base de datos
-
-**Archivos:**
-- Nuevo: `src/components/email/TemplateManager.tsx`
-- Modificar: `src/components/email/ComposeEmail.tsx` (anadir boton para abrir el gestor)
-
----
-
-### MEJORA 2: Variables adicionales en plantillas
-
-Actualmente solo se soporta `{{nombre}}`. Propuesta de variables adicionales:
-
-- `{{email}}` - email del contacto
-- `{{empresa}}` - nombre de la organizacion del contacto
-- `{{cargo}}` - posicion/cargo del contacto
-
-La sustitucion se haria en `handleTemplateSelect` consultando los datos del contacto. La sustitucion inversa (al guardar plantilla) tambien detectaria estos campos.
-
-**Archivo:** `src/components/email/ComposeEmail.tsx` (funciones `handleTemplateSelect` y `handleSaveAsTemplate`)
-
----
-
-### MEJORA 3: Preview de plantilla antes de seleccionar
-
-Actualmente al seleccionar una plantilla en el `CommandDialog` se aplica inmediatamente. Seria util poder ver una vista previa del contenido HTML antes de confirmar la seleccion.
-
-- Anadir un panel lateral o tooltip que muestre el `content_html` renderizado al pasar el cursor sobre una plantilla
-- Alternativa mas simple: anadir un pequeno extracto de texto plano (primeros 80 caracteres) debajo del nombre y asunto en cada `CommandItem`
-
-**Archivo:** `src/components/email/TemplatePicker.tsx`
-
----
-
-### Resumen de cambios
-
-| Tipo | Descripcion | Prioridad |
-|---|---|---|
-| Bug critico | Dialogo de descarte tras envio exitoso | Alta |
-| Bug menor | Select de entidad sin opcion "ninguna" | Media |
-| Mejora | Gestor de plantillas CRUD completo | Media |
-| Mejora | Variables adicionales en plantillas | Baja |
-| Mejora | Preview de plantilla en selector | Baja |
-
-### Detalles tecnicos
-
-**Fix del bug critico (send):**
-Reemplazar `handleOpenChange(false)` por:
-```typescript
-setTo(""); setCc(""); setBcc(""); setSubject(""); setBody(""); setAttachments([]);
-onOpenChange(false);
-```
-
-**Fix del Select de entidad:**
-Cambiar estado inicial a `"none"`, anadir `<SelectItem value="none">Ninguna</SelectItem>`, y en `handleSaveAsTemplate` usar `templateEntity === "none" ? null : templateEntity`.
-
+### Flujo de usuario
+1. Abre el compositor de email
+2. Pulsa el boton "Plantillas" en el footer
+3. Busca o navega por las plantillas disponibles
+4. Selecciona una plantilla
+5. El asunto y el cuerpo se rellenan automaticamente
+6. El usuario edita lo que necesite y envia
