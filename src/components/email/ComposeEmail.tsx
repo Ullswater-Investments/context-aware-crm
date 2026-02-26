@@ -17,7 +17,7 @@ import {
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Save,
+  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Save, XCircle,
 } from "lucide-react";
 import RichTextEditor from "./RichTextEditor";
 import SignatureManager, { type Signature } from "./SignatureManager";
@@ -109,7 +109,11 @@ export default function ComposeEmail({
     }
   };
 
-  const hasDraft = subject.trim() !== "" || body.replace(/<[^>]+>/g, "").trim() !== "" || attachments.length > 0;
+  const hasDraft =
+    (to.trim() !== "" && to !== defaultTo) ||
+    (subject.trim() !== "" && subject !== defaultSubject) ||
+    (body.replace(/<[^>]+>/g, "").trim() !== "" && body !== defaultBody) ||
+    attachments.length > 0;
 
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen) {
@@ -120,8 +124,6 @@ export default function ComposeEmail({
       setBody(defaultBody);
       setAttachments([]);
       setShowCcBcc(!!defaultCc);
-      fetchSignatures();
-      fetchEmailAccounts();
       onOpenChange(true);
     } else if (hasDraft) {
       setShowDiscardDialog(true);
@@ -388,7 +390,18 @@ export default function ComposeEmail({
         created_by: user.id,
       });
       if (error) throw error;
-      toast.success("Plantilla guardada correctamente");
+      // Detect which variables were substituted
+      const detectedVars: string[] = [];
+      if (htmlToSave.includes("{{nombre}}")) detectedVars.push("{{nombre}}");
+      if (htmlToSave.includes("{{email}}")) detectedVars.push("{{email}}");
+      if (htmlToSave.includes("{{empresa}}")) detectedVars.push("{{empresa}}");
+      if (htmlToSave.includes("{{cargo}}")) detectedVars.push("{{cargo}}");
+      
+      if (detectedVars.length > 0) {
+        toast.success(`Plantilla guardada. Variables detectadas: ${detectedVars.join(", ")}`);
+      } else {
+        toast.success("Plantilla guardada correctamente");
+      }
       setSaveTemplateOpen(false);
       setTemplateName("");
       setTemplateCategory("");
@@ -404,8 +417,11 @@ export default function ComposeEmail({
         <SheetContent side="right" className="p-0 w-full sm:max-w-4xl flex flex-col [&>button]:hidden">
           {/* HEADER FIJO */}
           <div className="shrink-0 border-b border-border">
-            <SheetHeader className="px-4 py-3">
+            <SheetHeader className="px-4 py-3 flex flex-row items-center justify-between">
               <SheetTitle className="text-base">Redactar email</SheetTitle>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenChange(false)} title="Cerrar">
+                <XCircle className="h-4 w-4" />
+              </Button>
             </SheetHeader>
 
             <div className="px-4 pb-3 space-y-2">

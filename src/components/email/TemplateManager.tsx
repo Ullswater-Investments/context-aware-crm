@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Pencil, Trash2, Plus, Save } from "lucide-react";
+import RichTextEditor from "./RichTextEditor";
 import type { EmailTemplate } from "./TemplatePicker";
 
 interface TemplateManagerProps {
@@ -186,13 +186,15 @@ export default function TemplateManager({ open, onOpenChange }: TemplateManagerP
               </div>
             </div>
             <div>
-              <Label className="text-xs">Contenido HTML</Label>
-              <Textarea
-                value={contentHtml}
-                onChange={(e) => setContentHtml(e.target.value)}
-                placeholder="<p>Contenido de la plantilla...</p>"
-                className="mt-1 text-xs font-mono min-h-[80px]"
-              />
+              <Label className="text-xs">Contenido</Label>
+              <div className="mt-1">
+                <RichTextEditor
+                  content={contentHtml}
+                  onChange={setContentHtml}
+                  userId={user?.id || ""}
+                  placeholder="Contenido de la plantilla..."
+                />
+              </div>
             </div>
             <p className="text-[10px] text-muted-foreground">
               Variables: {"{{nombre}}"}, {"{{email}}"}, {"{{empresa}}"}, {"{{cargo}}"}
