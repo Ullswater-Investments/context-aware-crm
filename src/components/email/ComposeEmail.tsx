@@ -406,8 +406,11 @@ export default function ComposeEmail({
         <SheetContent side="right" className="p-0 w-full sm:max-w-4xl flex flex-col [&>button]:hidden">
           {/* HEADER FIJO */}
           <div className="shrink-0 border-b border-border">
-            <SheetHeader className="px-4 py-3">
+            <SheetHeader className="px-4 py-3 flex flex-row items-center justify-between">
               <SheetTitle className="text-base">Redactar email</SheetTitle>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenChange(false)} title="Cerrar">
+                <XCircle className="h-4 w-4" />
+              </Button>
             </SheetHeader>
 
             <div className="px-4 pb-3 space-y-2">
