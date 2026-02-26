@@ -480,7 +480,15 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                       }
                     }} placeholder="empresa.com" /></div>
                   </div>
-                  <div><Label>Dirección postal</Label><Input value={editData.postal_address} onChange={(e) => setEditData({ ...editData, postal_address: e.target.value })} placeholder="C/ Ejemplo, 1, 28001 Madrid" /></div>
+                  <div><Label>Dirección postal</Label><Input value={editData.postal_address} onChange={(e) => {
+                    const v = e.target.value;
+                    if (v.includes("@") && /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(v.trim())) {
+                      setEditData({ ...editData, email: editData.email || v.trim(), postal_address: "" });
+                      toast.info("Se detectó un email en Dirección postal. Movido a Email.");
+                    } else {
+                      setEditData({ ...editData, postal_address: v });
+                    }
+                  }} placeholder="C/ Ejemplo, 1, 28001 Madrid" /></div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={saveEdit} disabled={!editData.full_name}><Save className="w-3.5 h-3.5 mr-1" />Guardar</Button>
                     <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
