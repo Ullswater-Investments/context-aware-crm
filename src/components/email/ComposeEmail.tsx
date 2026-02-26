@@ -731,6 +731,11 @@ export default function ComposeEmail({
         onSignaturesChange={fetchSignatures}
       />
 
+      <TemplateManager
+        open={templateManagerOpen}
+        onOpenChange={setTemplateManagerOpen}
+      />
+
       <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
