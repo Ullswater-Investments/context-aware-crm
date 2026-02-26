@@ -695,6 +695,7 @@ export default function ComposeEmail({
                   <SelectValue placeholder="Seleccionar entidad" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Ninguna</SelectItem>
                   <SelectItem value="general">General</SelectItem>
                   <SelectItem value="gdc">GDC</SelectItem>
                   <SelectItem value="nextgen">NextGen</SelectItem>
