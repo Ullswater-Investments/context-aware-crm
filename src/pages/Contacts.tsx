@@ -204,7 +204,13 @@ export default function Contacts() {
     }
   };
 
+  const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
   const create = async () => {
+    if (form.email && !EMAIL_REGEX.test(form.email)) {
+      toast.error("El formato del email principal no es válido");
+      return;
+    }
     const emailValue = form.email || form.work_email || form.personal_email || null;
     const domainValue = form.company_domain || (emailValue && emailValue.includes("@") ? emailValue.split("@")[1] : null);
     const insert: any = {

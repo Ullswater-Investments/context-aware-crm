@@ -408,7 +408,12 @@ export default function ContactImporter({ open, onOpenChange, onComplete }: Cont
           }
 
           const tags = row.sector ? row.sector.split(", ") : [];
-          const existingId = contactCache.get(row.full_name.toLowerCase());
+          const normalizedName = row.full_name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const existingId = contactCache.get(normalizedName)
+            || contactCache.get(row.full_name.toLowerCase())
+            || (row.email ? emailCache.get(row.email.toLowerCase()) : undefined)
+            || (row.work_email ? emailCache.get(row.work_email.toLowerCase()) : undefined)
+            || undefined;
 
           if (existingId) {
             // Upsert: update only null/empty fields
