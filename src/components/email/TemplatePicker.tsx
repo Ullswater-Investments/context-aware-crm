@@ -83,16 +83,19 @@ export default function TemplatePicker({ onSelect }: TemplatePickerProps) {
                   }}
                   className="cursor-pointer"
                 >
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                     <span className="font-medium text-sm">{t.name}</span>
                     {t.subject && (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground truncate">
                         {t.subject}
                       </span>
                     )}
+                    <span className="text-[11px] text-muted-foreground/70 truncate">
+                      {t.content_html.replace(/<[^>]+>/g, "").slice(0, 80)}
+                    </span>
                   </div>
                   {t.entity && (
-                    <span className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                    <span className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded shrink-0">
                       {t.entity}
                     </span>
                   )}
