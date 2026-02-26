@@ -28,7 +28,7 @@ const providerMeta: Record<string, { label: string; icon: typeof Globe; color: s
 
 function getProgressColor(percent: number) {
   if (percent <= 5) return "bg-destructive";
-  if (percent <= 20) return "bg-orange-500";
+  if (percent <= 20) return "bg-warning";
   return "bg-primary";
 }
 
