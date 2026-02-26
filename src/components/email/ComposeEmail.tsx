@@ -24,6 +24,7 @@ import SignatureManager, { type Signature } from "./SignatureManager";
 import AccountStatusDot from "./AccountStatusDot";
 import EmailPreviewModal from "./EmailPreviewModal";
 import TemplatePicker, { type EmailTemplate } from "./TemplatePicker";
+import TemplateManager from "./TemplateManager";
 
 type EmailAccountOption = {
   id: string;
