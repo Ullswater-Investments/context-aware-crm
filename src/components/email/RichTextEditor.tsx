@@ -1,12 +1,25 @@
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import { TextStyle } from "@tiptap/extension-text-style";
+import FontFamily from "@tiptap/extension-font-family";
+import Color from "@tiptap/extension-color";
+import Highlight from "@tiptap/extension-highlight";
+import { FontSize } from "@/lib/tiptap-font-size";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import {
   Bold,
   Italic,
@@ -16,8 +29,9 @@ import {
   ImagePlus,
   Minus,
   Loader2,
+  Highlighter,
 } from "lucide-react";
-import { useState } from "react";
+import ImageBubbleMenu from "./ImageBubbleMenu";
 
 interface RichTextEditorProps {
   content: string;
@@ -25,6 +39,45 @@ interface RichTextEditorProps {
   userId: string;
   placeholder?: string;
 }
+
+const FONT_FAMILIES = [
+  { label: "Arial", value: "Arial" },
+  { label: "Times New Roman", value: "Times New Roman" },
+  { label: "Georgia", value: "Georgia" },
+  { label: "Verdana", value: "Verdana" },
+  { label: "Courier New", value: "Courier New" },
+];
+
+const FONT_SIZES = ["12px", "14px", "16px", "18px", "20px", "24px", "32px"];
+
+// Extended Image with width/align inline styles for email compatibility
+const EmailImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: "100%",
+        parseHTML: (el) => el.style.width || el.getAttribute("width") || "100%",
+      },
+      align: {
+        default: "center",
+        parseHTML: (el) => {
+          if (el.style.float === "left") return "left";
+          if (el.style.float === "right") return "right";
+          return "center";
+        },
+      },
+    };
+  },
+  renderHTML({ HTMLAttributes }) {
+    const { width = "100%", align = "center", ...rest } = HTMLAttributes;
+    let style = `max-width: 100%; height: auto; width: ${width};`;
+    if (align === "left") style += " float: left; margin-right: 1rem; margin-bottom: 1rem;";
+    else if (align === "right") style += " float: right; margin-left: 1rem; margin-bottom: 1rem;";
+    else style += " display: block; margin-left: auto; margin-right: auto;";
+    return ["img", { ...rest, style }];
+  },
+});
 
 export default function RichTextEditor({
   content,
@@ -49,16 +102,12 @@ export default function RichTextEditor({
       const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const path = `${userId}/${safeName}`;
 
-      const { error } = await supabase.storage
-        .from("email-images")
-        .upload(path, file);
+      const { error } = await supabase.storage.from("email-images").upload(path, file);
       if (error) {
         toast.error("Error subiendo imagen: " + error.message);
         return null;
       }
-      const { data } = supabase.storage
-        .from("email-images")
-        .getPublicUrl(path);
+      const { data } = supabase.storage.from("email-images").getPublicUrl(path);
       return data?.publicUrl || null;
     },
     [userId]
@@ -67,9 +116,14 @@ export default function RichTextEditor({
   const editor = useEditor({
     extensions: [
       StarterKit,
-      Image.configure({ inline: false, allowBase64: false }),
+      EmailImage.configure({ inline: false, allowBase64: false }),
       Link.configure({ openOnClick: false, autolink: true }),
       Placeholder.configure({ placeholder }),
+      TextStyle,
+      FontFamily,
+      Color,
+      Highlight.configure({ multicolor: true }),
+      FontSize,
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -79,13 +133,11 @@ export default function RichTextEditor({
       handlePaste: (view, event) => {
         const items = event.clipboardData?.items;
         if (!items) return false;
-
         for (const item of Array.from(items)) {
           if (item.type.startsWith("image/")) {
             event.preventDefault();
             const file = item.getAsFile();
             if (!file) return false;
-
             setUploading(true);
             uploadImage(file)
               .then((url) => {
@@ -106,26 +158,16 @@ export default function RichTextEditor({
       handleDrop: (view, event) => {
         const files = event.dataTransfer?.files;
         if (!files?.length) return false;
-
-        const imageFile = Array.from(files).find((f) =>
-          f.type.startsWith("image/")
-        );
+        const imageFile = Array.from(files).find((f) => f.type.startsWith("image/"));
         if (!imageFile) return false;
-
         event.preventDefault();
         setUploading(true);
-
-        const pos = view.posAtCoords({
-          left: event.clientX,
-          top: event.clientY,
-        });
-
+        const pos = view.posAtCoords({ left: event.clientX, top: event.clientY });
         uploadImage(imageFile)
           .then((url) => {
             if (url && pos) {
               const node = view.state.schema.nodes.image.create({ src: url });
-              const tr = view.state.tr.insert(pos.pos, node);
-              view.dispatch(tr);
+              view.dispatch(view.state.tr.insert(pos.pos, node));
             }
           })
           .finally(() => setUploading(false));
@@ -150,7 +192,6 @@ export default function RichTextEditor({
       const file = e.target.files?.[0];
       if (!file || !editor) return;
       e.target.value = "";
-
       setUploading(true);
       const url = await uploadImage(file);
       if (url) {
@@ -177,8 +218,65 @@ export default function RichTextEditor({
 
   return (
     <div className="border border-input rounded-md bg-background overflow-hidden">
-      {/* Toolbar */}
+      {/* Premium Toolbar */}
       <div className="flex items-center gap-0.5 border-b border-border px-1 py-1 bg-muted/30 flex-wrap">
+        {/* Font Family */}
+        <Select
+          onValueChange={(v) => editor.chain().focus().setFontFamily(v).run()}
+        >
+          <SelectTrigger className="w-[130px] h-7 text-xs">
+            <SelectValue placeholder="Tipo de letra" />
+          </SelectTrigger>
+          <SelectContent>
+            {FONT_FAMILIES.map((f) => (
+              <SelectItem key={f.value} value={f.value} style={{ fontFamily: f.value }}>
+                {f.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Font Size */}
+        <Select
+          onValueChange={(v) => editor.chain().focus().setFontSize(v).run()}
+        >
+          <SelectTrigger className="w-[72px] h-7 text-xs">
+            <SelectValue placeholder="16px" />
+          </SelectTrigger>
+          <SelectContent>
+            {FONT_SIZES.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Separator orientation="vertical" className="h-5 mx-0.5" />
+
+        {/* Color picker */}
+        <input
+          type="color"
+          onChange={(e) => editor.chain().focus().setColor(e.target.value).run()}
+          className="w-7 h-7 p-0.5 cursor-pointer bg-transparent border border-input rounded"
+          title="Color de texto"
+        />
+
+        {/* Highlight */}
+        <Button
+          type="button"
+          variant={editor.isActive("highlight") ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().toggleHighlight({ color: "#fef08a" }).run()}
+          title="Resaltar"
+        >
+          <Highlighter className="h-3.5 w-3.5" />
+        </Button>
+
+        <Separator orientation="vertical" className="h-5 mx-0.5" />
+
+        {/* Bold */}
         <Button
           type="button"
           variant={editor.isActive("bold") ? "secondary" : "ghost"}
@@ -189,6 +287,8 @@ export default function RichTextEditor({
         >
           <Bold className="h-3.5 w-3.5" />
         </Button>
+
+        {/* Italic */}
         <Button
           type="button"
           variant={editor.isActive("italic") ? "secondary" : "ghost"}
@@ -199,26 +299,8 @@ export default function RichTextEditor({
         >
           <Italic className="h-3.5 w-3.5" />
         </Button>
-        <Button
-          type="button"
-          variant={editor.isActive("bulletList") ? "secondary" : "ghost"}
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-          title="Lista"
-        >
-          <List className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant={editor.isActive("orderedList") ? "secondary" : "ghost"}
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          title="Lista numerada"
-        >
-          <ListOrdered className="h-3.5 w-3.5" />
-        </Button>
+
+        {/* Link */}
         <Button
           type="button"
           variant={editor.isActive("link") ? "secondary" : "ghost"}
@@ -230,8 +312,45 @@ export default function RichTextEditor({
           <LinkIcon className="h-3.5 w-3.5" />
         </Button>
 
-        <div className="w-px h-5 bg-border mx-0.5" />
+        {/* Bullet List */}
+        <Button
+          type="button"
+          variant={editor.isActive("bulletList") ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          title="Lista"
+        >
+          <List className="h-3.5 w-3.5" />
+        </Button>
 
+        {/* Ordered List */}
+        <Button
+          type="button"
+          variant={editor.isActive("orderedList") ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          title="Lista numerada"
+        >
+          <ListOrdered className="h-3.5 w-3.5" />
+        </Button>
+
+        <Separator orientation="vertical" className="h-5 mx-0.5" />
+
+        {/* Horizontal Rule */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().setHorizontalRule().run()}
+          title="Separador"
+        >
+          <Minus className="h-3.5 w-3.5" />
+        </Button>
+
+        {/* Image Upload */}
         <Button
           type="button"
           variant="ghost"
@@ -254,23 +373,13 @@ export default function RichTextEditor({
           className="hidden"
           onChange={handleFileSelect}
         />
-
-        <div className="w-px h-5 bg-border mx-0.5" />
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => editor.chain().focus().setHorizontalRule().run()}
-          title="Separador"
-        >
-          <Minus className="h-3.5 w-3.5" />
-        </Button>
       </div>
 
       {/* Editor */}
       <EditorContent editor={editor} />
+
+      {/* Image Bubble Menu */}
+      <ImageBubbleMenu editor={editor} />
 
       {uploading && (
         <div className="px-3 py-1 text-xs text-muted-foreground flex items-center gap-1 border-t border-border">
