@@ -392,6 +392,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                 <Badge className={lushaConfig.className}>Lusha: {lushaConfig.label}</Badge>
                 <Badge className={hunterConfig.className}>Hunter: {hunterConfig.label}</Badge>
                 <Badge className={apolloConfig.className}>Apollo: {apolloConfig.label}</Badge>
+                <Badge className={findymailConfig.className}>Findymail: {findymailConfig.label}</Badge>
               </div>
               <div className="flex gap-1">
                 {!editing && (
