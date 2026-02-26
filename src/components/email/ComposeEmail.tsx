@@ -568,8 +568,21 @@ export default function ComposeEmail({
                 </button>
               </div>
 
-              {/* Lado derecho: Vista Previa + IA + Enviar */}
+              {/* Lado derecho: Guardar plantilla + Vista Previa + IA + Enviar */}
               <div className="flex items-center gap-2">
+                {/* Guardar como plantilla */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={!body.replace(/<[^>]+>/g, "").trim()}
+                  onClick={() => setSaveTemplateOpen(true)}
+                  title="Guardar como plantilla"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span className="ml-1 hidden sm:inline">Plantilla</span>
+                </Button>
+
                 {/* Vista Previa */}
                 <EmailPreviewModal
                   subject={subject}
