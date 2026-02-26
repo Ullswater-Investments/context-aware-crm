@@ -31,7 +31,7 @@ export default function ImageBubbleMenu({ editor }: ImageBubbleMenuProps) {
     <BubbleMenu
       editor={editor}
       shouldShow={({ editor }) => editor.isActive("image")}
-      options={{ duration: 150, placement: "top" }}
+      options={{ placement: "top" }}
     >
       <div className="flex items-center gap-0.5 bg-popover border border-border rounded-lg shadow-lg p-1 animate-in zoom-in-95">
         {sizes.map((s) => (
