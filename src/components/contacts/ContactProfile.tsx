@@ -540,6 +540,16 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                 </Button>
               )}
 
+              {(findymailStatus === "pending" || findymailStatus === "not_found") && contact.company_domain && (
+                <Button onClick={enrichWithFindymail} disabled={enrichingFindymail} className="w-full" variant="outline">
+                  {enrichingFindymail ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Buscando en Findymail...</>
+                  ) : (
+                    <><Sparkles className="w-4 h-4 mr-2" />{findymailStatus === "not_found" ? "🔄 Reintentar Findymail" : "✉️ Enriquecer con Findymail"}</>
+                  )}
+                </Button>
+              )}
+
               <div className="space-y-2">
                 <Label className="text-sm font-semibold">Estado del embudo</Label>
                 <div className="flex flex-wrap gap-1.5">
