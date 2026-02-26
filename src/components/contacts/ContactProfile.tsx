@@ -463,7 +463,15 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label>LinkedIn URL</Label><Input value={editData.linkedin_url} onChange={(e) => setEditData({ ...editData, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
-                    <div><Label>Dominio empresa</Label><Input value={editData.company_domain} onChange={(e) => setEditData({ ...editData, company_domain: e.target.value })} placeholder="empresa.com" /></div>
+                    <div><Label>Dominio empresa</Label><Input value={editData.company_domain} onChange={(e) => {
+                      const v = e.target.value;
+                      if (v.includes("@") && /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(v.trim())) {
+                        setEditData({ ...editData, email: editData.email || v.trim(), company_domain: v.trim().split("@")[1] });
+                        toast.info("Se detectó un email en el campo Dominio. Movido a Email automáticamente.");
+                      } else {
+                        setEditData({ ...editData, company_domain: v });
+                      }
+                    }} placeholder="empresa.com" /></div>
                   </div>
                   <div><Label>Dirección postal</Label><Input value={editData.postal_address} onChange={(e) => setEditData({ ...editData, postal_address: e.target.value })} placeholder="C/ Ejemplo, 1, 28001 Madrid" /></div>
                   <div className="flex gap-2">

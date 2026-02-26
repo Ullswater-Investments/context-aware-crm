@@ -193,7 +193,7 @@ export default function Contacts() {
     const insert: any = {
       full_name: form.full_name, email: emailValue, phone: form.phone || null,
       position: form.position || null, linkedin_url: form.linkedin_url || null,
-      company_domain: form.company_domain || null, postal_address: form.postal_address || null,
+      company_domain: domainValue, postal_address: form.postal_address || null,
       work_email: form.work_email || null, personal_email: form.personal_email || null,
       mobile_phone: form.mobile_phone || null, work_phone: form.work_phone || null,
       created_by: user!.id,

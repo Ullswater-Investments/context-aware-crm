@@ -445,7 +445,7 @@ export default function ContactImporter({ open, onOpenChange, onComplete }: Cont
           } else {
             const { error } = await supabase.from("contacts").insert({
               full_name: row.full_name,
-              email: row.email || null,
+              email: row.email || row.work_email || row.personal_email || null,
               phone: row.phone || null,
               position: row.position || null,
               organization_id: orgId,
