@@ -232,7 +232,7 @@ Deno.serve(async (req) => {
     // Only get contacts missing ALL email AND ALL phone, and not fully processed by all 3 services
     let query = supabase
       .from("contacts")
-      .select("id, full_name, company_domain, email, phone, work_email, personal_email, mobile_phone, work_phone, position, linkedin_url, organization_id, hunter_status, apollo_status, lusha_status")
+      .select("id, full_name, company_domain, email, phone, work_email, personal_email, mobile_phone, work_phone, position, linkedin_url, organization_id, hunter_status, apollo_status, lusha_status, findymail_status")
       .eq("created_by", userId)
       .or("email.is.null,email.eq.")
       .or("work_email.is.null,work_email.eq.")
