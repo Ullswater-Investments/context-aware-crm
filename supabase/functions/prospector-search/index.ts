@@ -146,19 +146,26 @@ serve(async (req) => {
       const emails = results.filter((r) => r.email).map((r) => r.email.toLowerCase());
       const names = results.map((r) => r.name.toLowerCase());
 
-      const { data: existing } = await supabase
-        .from("contacts")
-        .select("email, full_name, company_domain")
-        .or(
-          emails.length > 0
-            ? `email.in.(${emails.join(",")}),full_name.in.(${names.join(",")})`
-            : `full_name.in.(${names.join(",")})`
-        );
+      const existingEmails = new Set<string>();
+      const existingNames = new Set<string>();
 
-      if (existing && existing.length > 0) {
-        const existingEmails = new Set(existing.map((c: any) => (c.email || "").toLowerCase()));
-        const existingNames = new Set(existing.map((c: any) => (c.full_name || "").toLowerCase()));
+      if (emails.length > 0) {
+        const { data: byEmail } = await supabase
+          .from("contacts")
+          .select("email")
+          .in("email", emails);
+        if (byEmail) byEmail.forEach((c: any) => existingEmails.add((c.email || "").toLowerCase()));
+      }
 
+      if (names.length > 0) {
+        const { data: byName } = await supabase
+          .from("contacts")
+          .select("full_name")
+          .in("full_name", names);
+        if (byName) byName.forEach((c: any) => existingNames.add((c.full_name || "").toLowerCase()));
+      }
+
+      if (existingEmails.size > 0 || existingNames.size > 0) {
         results = results.map((r) => ({
           ...r,
           already_in_crm: existingEmails.has(r.email.toLowerCase()) || existingNames.has(r.name.toLowerCase()),

@@ -77,13 +77,7 @@ function ProviderCard({ data }: { data: ProviderData }) {
               <span className="text-muted-foreground">Créditos restantes</span>
               <span className="font-semibold">{remaining.toLocaleString()} / {total.toLocaleString()}</span>
             </div>
-            <div className="relative">
-              <Progress value={percent} className="h-3" />
-              <div
-                className={`absolute inset-0 h-3 rounded-full ${getProgressColor(percent)} transition-all`}
-                style={{ width: `${percent}%` }}
-              />
-            </div>
+            <Progress value={percent} className={`h-3 [&>div]:${getProgressColor(percent)}`} />
             {percent <= 20 && (
               <p className="text-xs font-medium text-orange-500">
                 {percent <= 5 ? "⚠️ ¡Créditos casi agotados!" : "⚡ Créditos bajos"}
