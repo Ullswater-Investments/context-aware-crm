@@ -1,46 +1,83 @@
 
 
-## Mejora de visibilidad del boton WhatsApp
+## Revision: Errores y Mejoras pendientes tras integracion Findymail
 
-### Cambios en `src/pages/Contacts.tsx`
+### BUG 1: Bulk Enrich no incluye Findymail (Alta)
 
-**1. Import:** Cambiar `MessageCircle` por `MessageSquare` en la linea de imports (linea 13).
+**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
 
-**2. Kanban - Icono junto al telefono (lineas 429-431):**
-Aumentar tamano del icono y anadir fondo verde con padding:
-- De: `p-0.5 rounded hover:bg-[#25d366]/10` + `MessageCircle w-3 h-3`
-- A: `p-1 rounded-md bg-[#25d366]/15 hover:bg-[#25d366]/25` + `MessageSquare w-4 h-4`
+**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
 
-**3. Kanban - Boton WhatsApp en fila de herramientas (despues de linea 469):**
-Anadir un boton "WhatsApp" al final de la fila, solo visible si el contacto tiene telefono:
-```text
-[Hunter] [Apollo] [Lusha] [Findymail] [WhatsApp]
-```
-Estilo: `bg-[#25d366]/15 text-[#25d366] hover:bg-[#25d366]/25` con icono `MessageSquare w-3 h-3`.
+### BUG 2: `findymail_status` accedido con cast `as any` (Media)
 
-**4. Lista - Icono junto al telefono (lineas 520-522):**
-Mismo tratamiento que Kanban: fondo verde, `rounded-md`, `p-1`, `MessageSquare w-4 h-4`.
+**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
 
-**5. Lista - Boton WhatsApp en fila de herramientas (despues de linea 555):**
-Igual que en Kanban, boton "WhatsApp" al final de la fila si tiene telefono.
+**Solucion:** Cambiar a `contact.findymail_status` sin cast.
 
-### Cambios en `src/components/contacts/ContactProfile.tsx`
+### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
 
-**6. Import:** Cambiar `MessageCircle` por `MessageSquare`.
+**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
 
-**7. Boton junto al telefono (lineas 469-471):**
-Convertir en boton prominente con fondo solido verde:
-- De: icono discreto con hover
-- A: boton con `bg-[#25d366] hover:bg-[#1da851] text-white px-2 py-1 rounded-md` e icono `MessageSquare` + texto "WhatsApp"
+**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
 
-### Resumen
+### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
 
-| Ubicacion | Antes | Despues |
+**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
+
+**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
+
+### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
+
+**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
+
+**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
+
+### Resumen de cambios
+
+| Archivo | Cambio | Prioridad |
 |---|---|---|
-| Kanban telefono | Punto verde 12px | Boton con fondo verde 16px |
-| Kanban herramientas | No existia | Boton "WhatsApp" verde |
-| Lista telefono | Icono 14px sin fondo | Boton con fondo verde 16px |
-| Lista herramientas | No existia | Boton "WhatsApp" verde |
-| Perfil contacto | Icono discreto | Boton solido verde con texto |
+| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
+| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
+| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
+| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
 
-Archivos a modificar: `src/pages/Contacts.tsx` y `src/components/contacts/ContactProfile.tsx`. No hay cambios de logica ni backend - todos los botones usan `setWhatsappContact(c)` y `setWhatsappOpen(true)` existentes.
+### Detalle tecnico
+
+**Contacts.tsx - Nuevos estados:**
+```typescript
+const [findymailFilter, setFindymailFilter] = useState("");
+const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+```
+
+**Contacts.tsx - Nueva funcion:**
+```typescript
+const enrichWithFindymailFromCard = async (c: Contact) => {
+  if (!c.company_domain) return;
+  setEnrichingFindymailId(c.id);
+  try {
+    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+    });
+    if (error) throw error;
+    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
+    else toast.info("Findymail no encontro datos");
+    load();
+  } catch (err: any) {
+    toast.error(err.message || "Error con Findymail");
+  } finally {
+    setEnrichingFindymailId(null);
+  }
+};
+```
+
+**Contacts.tsx - Filtro actualizado:**
+```typescript
+const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
+return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+```
+
+**Contacts.tsx - Bulk enrich corregido:**
+```typescript
+body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+```
+

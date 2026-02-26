@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2, MapPin, Zap, MessageCircle } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2, MapPin, Zap, MessageSquare } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
 import HunterSearch from "@/components/contacts/HunterSearch";
@@ -426,8 +426,8 @@ export default function Contacts() {
                             {(c.phone || c.mobile_phone || c.work_phone) ? (
                               <div className="flex items-center gap-1 mt-0.5">
                                 <p className="text-xs text-muted-foreground truncate flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone || c.mobile_phone || c.work_phone}</p>
-                                <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }} className="p-0.5 rounded hover:bg-[#25d366]/10 text-[#25d366] transition-colors" title="WhatsApp">
-                                  <MessageCircle className="w-3 h-3" />
+                                <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }} className="p-1 rounded-md bg-[#25d366]/15 hover:bg-[#25d366]/25 text-[#25d366] transition-colors" title="WhatsApp">
+                                  <MessageSquare className="w-4 h-4" />
                                 </button>
                               </div>
                             ) : (
@@ -465,6 +465,12 @@ export default function Contacts() {
                                 <button onClick={(e) => { e.stopPropagation(); enrichWithFindymailFromCard(c); }} disabled={enrichingFindymailId === c.id}
                                   className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0">
                                   {enrichingFindymailId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}Findymail
+                                </button>
+                              )}
+                              {(c.phone || c.mobile_phone || c.work_phone) && (
+                                <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-[#25d366]/15 text-[#25d366] hover:bg-[#25d366]/25 transition-colors flex items-center gap-0.5 shrink-0">
+                                  <MessageSquare className="w-3 h-3" />WhatsApp
                                 </button>
                               )}
                             </div>
@@ -517,8 +523,8 @@ export default function Contacts() {
                   {(c.phone || c.mobile_phone || c.work_phone) ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Phone className="w-3.5 h-3.5" />{c.phone || c.mobile_phone || c.work_phone}
-                      <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }} className="p-0.5 rounded hover:bg-[#25d366]/10 text-[#25d366] transition-colors" title="WhatsApp">
-                        <MessageCircle className="w-3.5 h-3.5" />
+                      <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }} className="p-1 rounded-md bg-[#25d366]/15 hover:bg-[#25d366]/25 text-[#25d366] transition-colors" title="WhatsApp">
+                        <MessageSquare className="w-4 h-4" />
                       </button>
                     </div>
                   ) : (
@@ -552,6 +558,12 @@ export default function Contacts() {
                       <button onClick={(e) => { e.stopPropagation(); enrichWithFindymailFromCard(c); }} disabled={enrichingFindymailId === c.id}
                         className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0">
                         {enrichingFindymailId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}Findymail
+                      </button>
+                    )}
+                    {(c.phone || c.mobile_phone || c.work_phone) && (
+                      <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }}
+                        className="text-xs px-2 py-0.5 rounded bg-[#25d366]/15 text-[#25d366] hover:bg-[#25d366]/25 transition-colors flex items-center gap-1 shrink-0">
+                        <MessageSquare className="w-3 h-3" />WhatsApp
                       </button>
                     )}
                   </div>
