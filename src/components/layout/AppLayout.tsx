@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Bot, LayoutDashboard, Building2, Users, FolderKanban,
-  FileText, CheckSquare, Mail, LogOut, Menu, X, Moon, Sun, Settings2, MessageCircle } from
+  FileText, CheckSquare, Mail, LogOut, Menu, X, Moon, Sun, Settings2, MessageCircle, Search, Activity } from
 "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -19,6 +19,8 @@ const navItems = [
 { to: "/documents", icon: FileText, label: "Documentos" },
 { to: "/tasks", icon: CheckSquare, label: "Tareas" },
 { to: "/emails", icon: Mail, label: "Emails" },
+{ to: "/prospector", icon: Search, label: "Prospector" },
+{ to: "/api-credits", icon: Activity, label: "Créditos APIs" },
 { to: "/email-settings", icon: Settings2, label: "Ajustes Email" }];
 
 

@@ -15,6 +15,8 @@ import Projects from "./pages/Projects";
 import Documents from "./pages/Documents";
 import Tasks from "./pages/Tasks";
 import Emails from "./pages/Emails";
+import Prospector from "./pages/Prospector";
+import ApiCredits from "./pages/ApiCredits";
 import EmailSettings from "./pages/EmailSettings";
 import NotFound from "./pages/NotFound";
 
@@ -38,6 +40,8 @@ function AppRoutes() {
                 <Route path="/documents" element={<Documents />} />
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/emails" element={<Emails />} />
+                <Route path="/prospector" element={<Prospector />} />
+                <Route path="/api-credits" element={<ApiCredits />} />
                 <Route path="/email-settings" element={<EmailSettings />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
