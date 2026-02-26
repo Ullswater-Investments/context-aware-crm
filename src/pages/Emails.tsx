@@ -373,6 +373,26 @@ export default function Emails() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
+                    const reSubject = selected.subject.startsWith("Re:")
+                      ? selected.subject
+                      : `Re: ${selected.subject}`;
+                    const quotedBody = `<br/><br/><blockquote style="border-left: 2px solid #ccc; padding-left: 12px; color: #666;">${selected.body_html || selected.body_text || ""}</blockquote>`;
+                    setResendData({
+                      to: selected.from_email,
+                      cc: "",
+                      subject: reSubject,
+                      body: quotedBody,
+                    });
+                    setComposeOpen(true);
+                  }}
+                >
+                  <ArrowDownLeft className="w-3.5 h-3.5 mr-1" />
+                  Responder
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
                     setResendData({
                       to: selected.to_email,
                       cc: selected.cc_emails || "",
