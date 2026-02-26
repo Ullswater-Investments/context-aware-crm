@@ -523,8 +523,8 @@ export default function Contacts() {
                   {(c.phone || c.mobile_phone || c.work_phone) ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Phone className="w-3.5 h-3.5" />{c.phone || c.mobile_phone || c.work_phone}
-                      <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }} className="p-0.5 rounded hover:bg-[#25d366]/10 text-[#25d366] transition-colors" title="WhatsApp">
-                        <MessageCircle className="w-3.5 h-3.5" />
+                      <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }} className="p-1 rounded-md bg-[#25d366]/15 hover:bg-[#25d366]/25 text-[#25d366] transition-colors" title="WhatsApp">
+                        <MessageSquare className="w-4 h-4" />
                       </button>
                     </div>
                   ) : (
