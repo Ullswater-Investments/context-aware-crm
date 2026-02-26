@@ -72,6 +72,7 @@ export default function Contacts() {
   const [enrichingLushaId, setEnrichingLushaId] = useState<string | null>(null);
   const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
   const [emailContact, setEmailContact] = useState<{ id: string; email: string } | null>(null);
+  const [whatsappContact, setWhatsappContact] = useState<Contact | null>(null);
   const [bulkEnriching, setBulkEnriching] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ processed: 0, total: 0 });
 
