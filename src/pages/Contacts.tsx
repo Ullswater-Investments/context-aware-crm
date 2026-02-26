@@ -558,8 +558,8 @@ export default function Contacts() {
       )}
 
       <ContactProfile contact={selectedContact} open={profileOpen} onOpenChange={setProfileOpen} onUpdate={() => { load(); if (selectedContact) { supabase.from("contacts").select("*, organizations(name)").eq("id", selectedContact.id).single().then(({ data }) => { if (data) setSelectedContact(data as Contact); }); } }} />
-      <ContactImporter open={importerOpen} onOpenChange={setImporterOpen} onImported={load} />
-      <HunterSearch open={hunterOpen} onOpenChange={setHunterOpen} onContactsAdded={load} />
+      <ContactImporter open={importerOpen} onOpenChange={setImporterOpen} onComplete={load} />
+      <HunterSearch open={hunterOpen} onOpenChange={setHunterOpen} />
       {emailContact && <ComposeEmail open={!!emailContact} onOpenChange={(o) => { if (!o) setEmailContact(null); }} defaultTo={emailContact.email} contactId={emailContact.id} />}
     </div>
   );
