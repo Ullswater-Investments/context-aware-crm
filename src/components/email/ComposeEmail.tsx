@@ -642,6 +642,58 @@ export default function ComposeEmail({
         </SheetContent>
       </Sheet>
 
+      {/* Dialog para guardar como plantilla */}
+      <Dialog open={saveTemplateOpen} onOpenChange={setSaveTemplateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Guardar como plantilla</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="text-sm">Nombre *</Label>
+              <Input
+                placeholder="Ej: Propuesta comercial GDC"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-sm">Categoría</Label>
+              <Input
+                placeholder="Ej: Ventas, Seguimiento..."
+                value={templateCategory}
+                onChange={(e) => setTemplateCategory(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-sm">Entidad</Label>
+              <Select value={templateEntity} onValueChange={setTemplateEntity}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Seleccionar entidad" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">General</SelectItem>
+                  <SelectItem value="gdc">GDC</SelectItem>
+                  <SelectItem value="nextgen">NextGen</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Si el email contiene el nombre del contacto, se reemplazará por {"{{nombre}}"} para reutilizar con otros contactos.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveTemplateOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveAsTemplate} disabled={!templateName.trim()}>
+              <Save className="w-4 h-4 mr-1" />
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <SignatureManager
         open={sigManagerOpen}
         onOpenChange={setSigManagerOpen}
