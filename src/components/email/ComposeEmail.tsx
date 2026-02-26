@@ -565,6 +565,13 @@ export default function ComposeEmail({
                 <div className="w-px h-4 bg-border mx-1" />
 
                 <TemplatePicker onSelect={handleTemplateSelect} />
+                <button
+                  onClick={() => setTemplateManagerOpen(true)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title="Gestionar plantillas"
+                >
+                  <Settings2 className="w-3.5 h-3.5" />
+                </button>
 
                 <div className="w-px h-4 bg-border mx-1" />
 
