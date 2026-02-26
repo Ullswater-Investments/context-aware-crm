@@ -377,7 +377,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const hunterConfig = LUSHA_STATUS_CONFIG[hunterStatus] || LUSHA_STATUS_CONFIG.pending;
   const apolloStatus = contact.apollo_status || "pending";
   const apolloConfig = LUSHA_STATUS_CONFIG[apolloStatus] || LUSHA_STATUS_CONFIG.pending;
-  const findymailStatus = (contact as any).findymail_status || "pending";
+  const findymailStatus = contact.findymail_status || "pending";
   const findymailConfig = LUSHA_STATUS_CONFIG[findymailStatus] || LUSHA_STATUS_CONFIG.pending;
   const hasLushaData = contact.work_email || contact.personal_email || contact.mobile_phone || contact.work_phone;
 
