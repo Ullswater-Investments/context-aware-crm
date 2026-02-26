@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -80,6 +84,7 @@ export default function ComposeEmail({
   const [suggestingReply, setSuggestingReply] = useState(false);
   const [fromAccount, setFromAccount] = useState<string>("");
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
   const fetchSignatures = async () => {
     if (!user) return;
@@ -98,6 +103,8 @@ export default function ComposeEmail({
     }
   };
 
+  const hasDraft = subject.trim() !== "" || body.replace(/<[^>]+>/g, "").trim() !== "" || attachments.length > 0;
+
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen) {
       setTo(defaultTo);
@@ -109,8 +116,23 @@ export default function ComposeEmail({
       setShowCcBcc(!!defaultCc);
       fetchSignatures();
       fetchEmailAccounts();
+      onOpenChange(true);
+    } else if (hasDraft) {
+      setShowDiscardDialog(true);
+    } else {
+      onOpenChange(false);
     }
-    onOpenChange(isOpen);
+  };
+
+  const confirmDiscard = () => {
+    setShowDiscardDialog(false);
+    setTo("");
+    setCc("");
+    setBcc("");
+    setSubject("");
+    setBody("");
+    setAttachments([]);
+    onOpenChange(false);
   };
 
   const fetchEmailAccounts = async () => {
@@ -281,7 +303,6 @@ export default function ComposeEmail({
       setSending(false);
     }
   };
-
 
 
   const handleTemplateSelect = async (template: EmailTemplate) => {
@@ -562,6 +583,23 @@ export default function ComposeEmail({
         onOpenChange={setSigManagerOpen}
         onSignaturesChange={fetchSignatures}
       />
+
+      <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Descartar borrador?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tienes un borrador sin enviar. Si cierras, se perderá el contenido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDiscard} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
