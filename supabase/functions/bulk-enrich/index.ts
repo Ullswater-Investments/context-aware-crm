@@ -365,9 +365,15 @@ Deno.serve(async (req) => {
         await new Promise((r) => setTimeout(r, 500));
       }
 
+      // Findymail (skip if already processed)
+      if (services.includes("findymail") && findymailKey && contact.company_domain && contact.findymail_status === "pending") {
+        result.findymail = await enrichWithFindymail(contact, findymailKey, supabase);
+        await new Promise((r) => setTimeout(r, 500));
+      }
+
       lastProcessedId = contact.id;
       results.push(result);
-      console.log(`Enriched ${contact.full_name}: H=${result.hunter} A=${result.apollo} L=${result.lusha}`);
+      console.log(`Enriched ${contact.full_name}: H=${result.hunter} A=${result.apollo} L=${result.lusha} F=${result.findymail}`);
     }
 
     return new Response(
