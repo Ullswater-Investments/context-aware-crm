@@ -38,7 +38,7 @@ export default function EmailPreviewModal({
     <Dialog>
       <DialogTrigger asChild>
         {trigger || (
-          <Button variant="outline" size="sm" className="h-8">
+          <Button variant="outline" size="sm" className="h-7">
             <Eye className="w-3.5 h-3.5" />
             <span className="ml-1 hidden sm:inline text-xs">Vista Previa</span>
           </Button>

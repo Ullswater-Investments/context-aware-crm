@@ -111,6 +111,8 @@ export default function ComposeEmail({
 
   const hasDraft =
     (to.trim() !== "" && to !== defaultTo) ||
+    (cc.trim() !== "" && cc !== defaultCc) ||
+    (bcc.trim() !== "") ||
     (subject.trim() !== "" && subject !== defaultSubject) ||
     (body.replace(/<[^>]+>/g, "").trim() !== "" && body !== defaultBody) ||
     attachments.length > 0;

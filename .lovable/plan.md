@@ -1,134 +1,57 @@
 
+## Plan: Sistema de Plantillas de Email Inteligentes
 
-## Revision del Sistema de Email: Errores y Mejoras
+### Resumen
+Crear una tabla `email_templates` en la base de datos, un componente selector de plantillas con busqueda rapida (CommandDialog), e integrarlo en el compositor de email para que al elegir una plantilla se rellene automaticamente el asunto y el cuerpo del mensaje.
 
-### BUG 1: CC/BCC no incluidos en la evaluacion de borrador (Alta)
+### 1. Base de datos: Migracion SQL
 
-**Problema:** Si el usuario solo rellena los campos CC o BCC sin modificar nada mas, al cerrar el compositor no se mostrara el dialogo de descarte. El contenido de CC/BCC se perdera silenciosamente.
+Crear tabla `email_templates` con los siguientes campos:
+- `id` (UUID, PK)
+- `name` (TEXT, NOT NULL) - Nombre de la plantilla
+- `subject` (TEXT) - Asunto predefinido
+- `content_html` (TEXT, NOT NULL) - Cuerpo HTML
+- `category` (TEXT) - Categoria: Ventas, Legal, Seguimiento, etc.
+- `entity` (TEXT) - Filtro por empresa: GDC, NextGen, General
+- `created_by` (UUID) - Vinculado al usuario autenticado
+- `created_at` (TIMESTAMPTZ)
+- `updated_at` (TIMESTAMPTZ)
 
-**Archivo:** `src/components/email/ComposeEmail.tsx`, linea 112
+Politicas RLS: CRUD completo restringido a `created_by = auth.uid()`.
 
-**Solucion:** Anadir `cc` y `bcc` a la evaluacion de `hasDraft`:
+Insertar 3 plantillas de ejemplo (Propuesta de Inversion, Saludo Inicial GDC, Factura Pendiente).
 
-```typescript
-const hasDraft =
-  (to.trim() !== "" && to !== defaultTo) ||
-  (cc.trim() !== "" && cc !== defaultCc) ||
-  (bcc.trim() !== "") ||
-  (subject.trim() !== "" && subject !== defaultSubject) ||
-  (body.replace(/<[^>]+>/g, "").trim() !== "" && body !== defaultBody) ||
-  attachments.length > 0;
-```
+### 2. Nuevo componente: `src/components/email/TemplatePicker.tsx`
 
----
+Un boton "Plantillas" que abre un `CommandDialog` (ya disponible en el proyecto) con:
+- Buscador de texto (CommandInput)
+- Plantillas agrupadas por categoria (CommandGroup)
+- Cada item muestra nombre y asunto
+- Al seleccionar, dispara callback `onSelect(template)` con subject y content_html
+- Carga plantillas desde la base de datos al abrirse
+- Filtrado opcional por `entity`
 
-### BUG 2: Closure obsoleta de `fetchEmails` en el canal realtime (Media)
+### 3. Modificar: `src/components/email/ComposeEmail.tsx`
 
-**Problema:** En `src/pages/Emails.tsx`, el `useEffect` del canal realtime (linea 117-135) referencia `fetchEmails` en el callback, pero `fetchEmails` no esta en el array de dependencias. Esto significa que cuando cambia la cuenta seleccionada, la carpeta o la pagina, el callback del canal seguira ejecutando la version antigua de `fetchEmails`, mostrando datos desactualizados.
+- Importar `TemplatePicker`
+- Anadir boton de plantillas en el footer (lado izquierdo, junto a los controles existentes)
+- Al seleccionar una plantilla:
+  - `setSubject(template.subject)` si la plantilla tiene asunto
+  - `setBody(template.content_html)` para reemplazar el contenido del editor
+- Sustitucion basica de variables: si el `defaultTo` coincide con un contacto, reemplazar `{{nombre}}` por el nombre del contacto (busqueda simple en la tabla contacts por email)
 
-**Archivo:** `src/pages/Emails.tsx`, linea 135
+### Archivos afectados
 
-**Solucion:** Anadir `fetchEmails` al array de dependencias del useEffect:
+| Archivo | Accion |
+|---|---|
+| Migracion SQL | Crear tabla `email_templates` + RLS + datos ejemplo |
+| `src/components/email/TemplatePicker.tsx` | Crear - selector con CommandDialog |
+| `src/components/email/ComposeEmail.tsx` | Modificar - integrar TemplatePicker en el footer |
 
-```typescript
-}, [user, accounts, fetchCounts, fetchEmails]);
-```
-
----
-
-### BUG 3: Boton "Vista Previa" con tamano inconsistente en el footer (Baja)
-
-**Problema:** El componente `EmailPreviewModal` renderiza su boton trigger con clase `h-8`, mientras que todos los demas botones del footer usan `h-7`. Esto causa una desalineacion visual sutil.
-
-**Archivo:** `src/components/email/EmailPreviewModal.tsx`, linea 41
-
-**Solucion:** Pasar un trigger personalizado desde ComposeEmail con `h-7` en vez de depender del trigger por defecto, o cambiar la altura del trigger por defecto a `h-7`:
-
-```tsx
-<EmailPreviewModal
-  subject={subject}
-  body={body}
-  signatureHtml={getSignatureHtml()}
-  recipient={to}
-  trigger={
-    <Button variant="outline" size="sm" className="h-7 text-xs shrink-0">
-      <Eye className="w-3.5 h-3.5" />
-    </Button>
-  }
-/>
-```
-
-Esto requiere importar `Eye` de lucide-react en ComposeEmail.
-
----
-
-### MEJORA 1: Boton "Responder" ademas de "Reenviar" (Alta)
-
-**Problema:** En la vista de detalle de email (panel derecho de `Emails.tsx`), solo existe el boton "Reenviar". No hay boton de "Responder", que es la accion mas comun al leer un email entrante.
-
-**Archivo:** `src/pages/Emails.tsx`, lineas 371-386
-
-**Solucion:** Anadir un boton "Responder" junto al de "Reenviar" que abra el compositor con:
-- `defaultTo` = `from_email` del email seleccionado (para responder al remitente)
-- `defaultSubject` = `"Re: " + subject` (si no empieza ya con "Re:")
-- `defaultBody` = cita del email original con formato `<blockquote>`
-
-```tsx
-<Button
-  variant="outline"
-  size="sm"
-  onClick={() => {
-    const reSubject = selected.subject.startsWith("Re:") 
-      ? selected.subject 
-      : `Re: ${selected.subject}`;
-    const quotedBody = `<br/><br/><blockquote style="border-left: 2px solid #ccc; padding-left: 12px; color: #666;">${selected.body_html || selected.body_text || ""}</blockquote>`;
-    setResendData({
-      to: selected.from_email,
-      cc: "",
-      subject: reSubject,
-      body: quotedBody,
-    });
-    setComposeOpen(true);
-  }}
->
-  <ArrowDownLeft className="w-3.5 h-3.5 mr-1" />
-  Responder
-</Button>
-```
-
----
-
-### MEJORA 2: Indicador visual de emails no leidos en la lista (Media)
-
-**Problema:** La lista de emails no distingue visualmente entre emails leidos y no leidos. El campo `is_read` existe en la base de datos y se actualiza al seleccionar, pero el estilo de la lista no cambia.
-
-**Archivo:** `src/pages/Emails.tsx`, lineas 281-318
-
-**Solucion:** Aplicar estilo diferenciado a emails no leidos (solo inbox/inbound):
-
-```tsx
-<button
-  key={email.id}
-  onClick={...}
-  className={cn(
-    "w-full text-left px-4 py-3 hover:bg-accent/30 transition-colors",
-    selected?.id === email.id && "bg-accent/50",
-    email.direction === "inbound" && !(email as any).is_read && "bg-primary/5 font-semibold"
-  )}
->
-```
-
-Tambien aplicar el font-weight al asunto para que los no leidos destaquen con texto en negrita.
-
----
-
-### Resumen de cambios
-
-| Tipo | Descripcion | Archivo | Prioridad |
-|---|---|---|---|
-| Bug | CC/BCC no evaluados en hasDraft | ComposeEmail.tsx | Alta |
-| Bug | Closure obsoleta de fetchEmails en realtime | Emails.tsx | Media |
-| Bug | Boton Vista Previa con tamano h-8 vs h-7 | ComposeEmail.tsx | Baja |
-| Mejora | Boton "Responder" en detalle de email | Emails.tsx | Alta |
-| Mejora | Indicador visual de emails no leidos | Emails.tsx | Media |
-
+### Flujo de usuario
+1. Abre el compositor de email
+2. Pulsa el boton "Plantillas" en el footer
+3. Busca o navega por las plantillas disponibles
+4. Selecciona una plantilla
+5. El asunto y el cuerpo se rellenan automaticamente
+6. El usuario edita lo que necesite y envia

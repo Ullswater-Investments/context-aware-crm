@@ -113,27 +113,6 @@ export default function Emails() {
     fetchCounts();
   }, [fetchCounts]);
 
-  // Realtime: update counts when email_logs changes
-  useEffect(() => {
-    if (!user || accounts.length === 0) return;
-
-    const channel = supabase
-      .channel("email-unread-counts")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "email_logs" },
-        () => {
-          fetchCounts();
-          fetchEmails();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, accounts, fetchCounts]);
-
   const fetchEmails = useCallback(async () => {
     if (!user || !selectedAccountId) return;
     setLoading(true);
@@ -175,6 +154,27 @@ export default function Emails() {
   useEffect(() => {
     fetchEmails();
   }, [fetchEmails]);
+
+  // Realtime: update counts when email_logs changes
+  useEffect(() => {
+    if (!user || accounts.length === 0) return;
+
+    const channel = supabase
+      .channel("email-unread-counts")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "email_logs" },
+        () => {
+          fetchCounts();
+          fetchEmails();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, accounts, fetchCounts, fetchEmails]);
 
   const handleSync = async (accountId?: string) => {
     setSyncing(true);
@@ -290,7 +290,8 @@ export default function Emails() {
                     }}
                     className={cn(
                       "w-full text-left px-4 py-3 hover:bg-accent/30 transition-colors",
-                      selected?.id === email.id && "bg-accent/50"
+                      selected?.id === email.id && "bg-accent/50",
+                      email.direction === "inbound" && !(email as any).is_read && "bg-primary/5"
                     )}
                   >
                     <div className="flex items-center gap-2 mb-1">
@@ -299,7 +300,7 @@ export default function Emails() {
                       ) : (
                         <ArrowUpRight className="w-3.5 h-3.5 text-green-500 shrink-0" />
                       )}
-                      <span className="text-sm font-medium truncate flex-1">
+                      <span className={cn("text-sm truncate flex-1", email.direction === "inbound" && !(email as any).is_read ? "font-semibold" : "font-medium")}>
                         {email.direction === "inbound" ? email.from_email : email.to_email}
                       </span>
                       <Badge
@@ -368,6 +369,26 @@ export default function Emails() {
                 <Badge variant={selected.status === "sent" ? "default" : "destructive"}>
                   {selected.status === "sent" ? "Enviado" : "Fallido"}
                 </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const reSubject = selected.subject.startsWith("Re:")
+                      ? selected.subject
+                      : `Re: ${selected.subject}`;
+                    const quotedBody = `<br/><br/><blockquote style="border-left: 2px solid #ccc; padding-left: 12px; color: #666;">${selected.body_html || selected.body_text || ""}</blockquote>`;
+                    setResendData({
+                      to: selected.from_email,
+                      cc: "",
+                      subject: reSubject,
+                      body: quotedBody,
+                    });
+                    setComposeOpen(true);
+                  }}
+                >
+                  <ArrowDownLeft className="w-3.5 h-3.5 mr-1" />
+                  Responder
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
