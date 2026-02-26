@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Bot, LayoutDashboard, Building2, Users, FolderKanban,
-  FileText, CheckSquare, Mail, LogOut, Menu, X, Moon, Sun, Settings2, MessageCircle } from
+  FileText, CheckSquare, Mail, LogOut, Menu, X, Moon, Sun, Settings2, MessageCircle, Search, Activity } from
 "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
