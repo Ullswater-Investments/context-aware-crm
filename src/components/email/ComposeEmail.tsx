@@ -85,7 +85,7 @@ export default function ComposeEmail({
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [templateCategory, setTemplateCategory] = useState("");
-  const [templateEntity, setTemplateEntity] = useState("");
+  const [templateEntity, setTemplateEntity] = useState("none");
   const [suggestingReply, setSuggestingReply] = useState(false);
   const [fromAccount, setFromAccount] = useState<string>("");
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
