@@ -15,6 +15,7 @@ import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
 import HunterSearch from "@/components/contacts/HunterSearch";
 import ComposeEmail from "@/components/email/ComposeEmail";
+import WhatsAppChat from "@/components/whatsapp/WhatsAppChat";
 import { Progress } from "@/components/ui/progress";
 import { Contact } from "@/types/contact";
 
