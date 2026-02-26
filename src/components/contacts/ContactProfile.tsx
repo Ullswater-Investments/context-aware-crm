@@ -74,6 +74,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const [enrichingHunter, setEnrichingHunter] = useState(false);
   const [enrichingApollo, setEnrichingApollo] = useState(false);
   const [enrichingFindymail, setEnrichingFindymail] = useState(false);
+  const [whatsappOpen, setWhatsappOpen] = useState(false);
 
   const loadNotes = async (contactId: string) => {
     setLoadingNotes(true);
