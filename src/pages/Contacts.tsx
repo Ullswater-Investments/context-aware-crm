@@ -508,7 +508,12 @@ export default function Contacts() {
                     <div className="flex items-center gap-2 text-sm text-muted-foreground/50"><Mail className="w-3.5 h-3.5" />Sin email</div>
                   )}
                   {(c.phone || c.mobile_phone || c.work_phone) ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground"><Phone className="w-3.5 h-3.5" />{c.phone || c.mobile_phone || c.work_phone}</div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Phone className="w-3.5 h-3.5" />{c.phone || c.mobile_phone || c.work_phone}
+                      <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }} className="p-0.5 rounded hover:bg-[#25d366]/10 text-[#25d366] transition-colors" title="WhatsApp">
+                        <MessageCircle className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   ) : (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground/50"><Phone className="w-3.5 h-3.5" />Sin teléfono</div>
                   )}
