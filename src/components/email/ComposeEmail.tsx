@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import {
-  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Eye,
+  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2,
 } from "lucide-react";
 import RichTextEditor from "./RichTextEditor";
 import SignatureManager, { type Signature } from "./SignatureManager";
@@ -282,7 +282,7 @@ export default function ComposeEmail({
     }
   };
 
-  const selectedSig = signatures.find((s) => s.id === selectedSignatureId);
+
 
   const handleTemplateSelect = async (template: EmailTemplate) => {
     let html = template.content_html;
