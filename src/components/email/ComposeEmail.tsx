@@ -18,6 +18,7 @@ import RichTextEditor from "./RichTextEditor";
 import SignatureManager, { type Signature } from "./SignatureManager";
 import AccountStatusDot from "./AccountStatusDot";
 import EmailPreviewModal from "./EmailPreviewModal";
+import TemplatePicker, { type EmailTemplate } from "./TemplatePicker";
 
 type EmailAccountOption = {
   id: string;
@@ -283,6 +284,25 @@ export default function ComposeEmail({
 
   const selectedSig = signatures.find((s) => s.id === selectedSignatureId);
 
+  const handleTemplateSelect = async (template: EmailTemplate) => {
+    let html = template.content_html;
+    // Variable substitution: replace {{nombre}} with contact name if available
+    if (to && html.includes("{{nombre}}")) {
+      const { data: contact } = await supabase
+        .from("contacts")
+        .select("full_name")
+        .eq("email", to)
+        .maybeSingle();
+      if (contact?.full_name) {
+        html = html.replace(/\{\{nombre\}\}/g, contact.full_name);
+      }
+    }
+    if (template.subject) {
+      setSubject(template.subject);
+    }
+    setBody(html);
+  };
+
   return (
     <>
       <Sheet open={open} onOpenChange={handleOpenChange}>
@@ -446,6 +466,10 @@ export default function ComposeEmail({
                     Se añadirá al enviar
                   </span>
                 )}
+
+                <div className="w-px h-4 bg-border mx-1" />
+
+                <TemplatePicker onSelect={handleTemplateSelect} />
 
                 <div className="w-px h-4 bg-border mx-1" />
 
