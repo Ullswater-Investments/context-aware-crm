@@ -208,9 +208,6 @@ async function enrichWithFindymail(
   if (!contact.company_domain) return "skipped";
 
   try {
-    const nameParts = contact.full_name.trim().split(/\s+/);
-    const firstName = nameParts[0] || "";
-    const lastName = nameParts.slice(1).join(" ") || "";
     const domain = cleanDomainHelper(contact.company_domain);
 
     if (!domain || !domain.includes(".")) {
@@ -224,7 +221,7 @@ async function enrichWithFindymail(
         Authorization: `Bearer ${findymailKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ first_name: firstName, last_name: lastName, domain }),
+      body: JSON.stringify({ name: contact.full_name.trim(), domain }),
     });
 
     if (!res.ok) {
