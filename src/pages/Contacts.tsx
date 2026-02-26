@@ -167,14 +167,22 @@ export default function Contacts() {
   };
 
   const bulkFixEmails = async () => {
-    const fixable = contacts.filter(c => !c.email && (c.work_email || c.personal_email));
+    const fixable = contacts.filter(c => {
+      if (c.email) return false;
+      const postalEmail = c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()) ? c.postal_address.trim() : null;
+      return !!(c.work_email || c.personal_email || postalEmail);
+    });
     if (fixable.length === 0) return;
     let fixed = 0;
     for (const c of fixable) {
-      const fallback = c.work_email || c.personal_email;
+      const postalEmail = c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()) ? c.postal_address.trim() : null;
+      const fallback = c.work_email || c.personal_email || postalEmail;
       const updates: Record<string, any> = { email: fallback };
       if (!c.company_domain && fallback && fallback.includes("@")) {
         updates.company_domain = fallback.split("@")[1];
+      }
+      if (postalEmail && fallback === postalEmail) {
+        updates.postal_address = null;
       }
       const { error } = await supabase.from("contacts").update(updates).eq("id", c.id);
       if (!error) fixed++;
