@@ -649,6 +649,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       </Dialog>
 
       <ComposeEmail open={composeOpen} onOpenChange={setComposeOpen} defaultTo={contact.email || contact.work_email || contact.personal_email || ""} contactId={contact.id} organizationId={contact.organization_id || undefined} />
+      <WhatsAppChat contact={contact} open={whatsappOpen} onOpenChange={setWhatsappOpen} />
 
       {/* Delete Contact Confirmation */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
