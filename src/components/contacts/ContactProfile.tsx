@@ -169,18 +169,44 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
 
   const saveEdit = async () => {
     if (!contact) return;
+    const finalData = { ...editData };
+
+    // Auto-fix: if email is empty but work_email or personal_email has value, copy it
+    if (!finalData.email && (finalData.work_email || finalData.personal_email)) {
+      finalData.email = finalData.work_email || finalData.personal_email;
+      toast.info("Email principal rellenado automáticamente desde email secundario");
+    }
+
+    // Auto-fix: if company_domain contains @, extract domain and move email
+    if (finalData.company_domain && finalData.company_domain.includes("@")) {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (emailRegex.test(finalData.company_domain)) {
+        if (!finalData.email) finalData.email = finalData.company_domain;
+        finalData.company_domain = finalData.company_domain.split("@")[1];
+        toast.info("Se detectó un email en el campo Dominio. Corregido automáticamente.");
+      }
+    }
+
+    // Auto-extract domain from email if company_domain is empty
+    if (!finalData.company_domain && finalData.email) {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (emailRegex.test(finalData.email)) {
+        finalData.company_domain = finalData.email.split("@")[1];
+      }
+    }
+
     const { error } = await supabase.from("contacts").update({
-      full_name: editData.full_name,
-      email: editData.email || null,
-      phone: editData.phone || null,
-      position: editData.position || null,
-      linkedin_url: editData.linkedin_url || null,
-      company_domain: editData.company_domain || null,
-      postal_address: editData.postal_address || null,
-      work_email: editData.work_email || null,
-      personal_email: editData.personal_email || null,
-      mobile_phone: editData.mobile_phone || null,
-      work_phone: editData.work_phone || null,
+      full_name: finalData.full_name,
+      email: finalData.email || null,
+      phone: finalData.phone || null,
+      position: finalData.position || null,
+      linkedin_url: finalData.linkedin_url || null,
+      company_domain: finalData.company_domain || null,
+      postal_address: finalData.postal_address || null,
+      work_email: finalData.work_email || null,
+      personal_email: finalData.personal_email || null,
+      mobile_phone: finalData.mobile_phone || null,
+      work_phone: finalData.work_phone || null,
     } as any).eq("id", contact.id);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto actualizado");
