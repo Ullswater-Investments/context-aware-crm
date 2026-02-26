@@ -82,7 +82,12 @@ export default function Contacts() {
       .select("*, organizations(name)")
       .order("created_at", { ascending: false })
       .limit(2000);
-    if (data) setContacts(data as Contact[]);
+    if (data) {
+      setContacts(data as Contact[]);
+      if (data.length === 2000) {
+        toast.warning("Mostrando los primeros 2000 contactos. Usa los filtros para acotar la búsqueda.");
+      }
+    }
   }, []);
 
   useEffect(() => {
