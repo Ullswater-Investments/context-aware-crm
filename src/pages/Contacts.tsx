@@ -483,10 +483,10 @@ export default function Contacts() {
                                 className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5 hover:text-primary transition-colors">
                                 <Mail className="w-3 h-3" />{c.email}
                               </button>
-                            ) : (c.work_email || c.personal_email) ? (
+                            ) : (c.work_email || c.personal_email || (c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()))) ? (
                               <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
                                 className="text-xs text-amber-600 truncate flex items-center gap-1 mt-0.5 hover:text-amber-700 transition-colors">
-                                <Zap className="w-3 h-3" />Corregir email ({c.work_email || c.personal_email})
+                                <Zap className="w-3 h-3" />Corregir email ({c.work_email || c.personal_email || c.postal_address})
                               </button>
                             ) : (
                               <p className="text-xs text-muted-foreground/50 truncate flex items-center gap-1 mt-0.5"><Mail className="w-3 h-3" />Sin email</p>
