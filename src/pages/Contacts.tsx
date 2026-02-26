@@ -188,8 +188,10 @@ export default function Contacts() {
   };
 
   const create = async () => {
+    const emailValue = form.email || form.work_email || form.personal_email || null;
+    const domainValue = form.company_domain || (emailValue && emailValue.includes("@") ? emailValue.split("@")[1] : null);
     const insert: any = {
-      full_name: form.full_name, email: form.email || null, phone: form.phone || null,
+      full_name: form.full_name, email: emailValue, phone: form.phone || null,
       position: form.position || null, linkedin_url: form.linkedin_url || null,
       company_domain: form.company_domain || null, postal_address: form.postal_address || null,
       work_email: form.work_email || null, personal_email: form.personal_email || null,
