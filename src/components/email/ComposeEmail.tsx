@@ -703,7 +703,7 @@ export default function ComposeEmail({
               </Select>
             </div>
             <p className="text-xs text-muted-foreground">
-              Si el email contiene el nombre del contacto, se reemplazará por {"{{nombre}}"} para reutilizar con otros contactos.
+              Variables automáticas: {"{{nombre}}"}, {"{{email}}"}, {"{{empresa}}"}, {"{{cargo}}"}. Se detectan y sustituyen automáticamente.
             </p>
           </div>
           <DialogFooter>
