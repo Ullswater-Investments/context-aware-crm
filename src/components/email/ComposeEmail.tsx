@@ -337,15 +337,20 @@ export default function ComposeEmail({
 
   const handleTemplateSelect = async (template: EmailTemplate) => {
     let html = template.content_html;
-    if (html.includes("{{nombre}}")) {
-      const name = await getContactName();
-      if (name) {
-        html = html.replace(/\{\{nombre\}\}/g, name);
+    const hasVars = /\{\{(nombre|email|empresa|cargo)\}\}/.test(html);
+    if (hasVars) {
+      const info = await getContactInfo();
+      if (info) {
+        if (info.full_name) html = html.replace(/\{\{nombre\}\}/g, info.full_name);
+        if (info.email) html = html.replace(/\{\{email\}\}/g, info.email);
+        if (info.position) html = html.replace(/\{\{cargo\}\}/g, info.position);
+        if (info.organization_id) {
+          const { data: org } = await supabase.from("organizations").select("name").eq("id", info.organization_id).maybeSingle();
+          if (org?.name) html = html.replace(/\{\{empresa\}\}/g, org.name);
+        }
       }
     }
-    if (template.subject) {
-      setSubject(template.subject);
-    }
+    if (template.subject) setSubject(template.subject);
     setBody(html);
   };
 
