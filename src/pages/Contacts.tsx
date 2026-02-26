@@ -537,6 +537,11 @@ export default function Contacts() {
                       className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
                       <Mail className="w-3.5 h-3.5" />{c.email || c.work_email || c.personal_email}
                     </button>
+                  ) : (c.work_email || c.personal_email) ? (
+                    <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
+                      className="flex items-center gap-2 text-sm text-amber-600 hover:text-amber-700 transition-colors">
+                      <Zap className="w-3.5 h-3.5" />Corregir email ({c.work_email || c.personal_email})
+                    </button>
                   ) : (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground/50"><Mail className="w-3.5 h-3.5" />Sin email</div>
                   )}
