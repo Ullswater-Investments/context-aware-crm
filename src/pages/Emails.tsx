@@ -300,7 +300,7 @@ export default function Emails() {
                       ) : (
                         <ArrowUpRight className="w-3.5 h-3.5 text-green-500 shrink-0" />
                       )}
-                      <span className="text-sm font-medium truncate flex-1">
+                      <span className={cn("text-sm truncate flex-1", email.direction === "inbound" && !(email as any).is_read ? "font-semibold" : "font-medium")}>
                         {email.direction === "inbound" ? email.from_email : email.to_email}
                       </span>
                       <Badge
