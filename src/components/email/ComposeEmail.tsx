@@ -309,23 +309,70 @@ export default function ComposeEmail({
   };
 
 
-  const handleTemplateSelect = async (template: EmailTemplate) => {
-    let html = template.content_html;
-    // Variable substitution: replace {{nombre}} with contact name if available
-    if (to && html.includes("{{nombre}}")) {
-      const { data: contact } = await supabase
+  const getContactName = async (): Promise<string | null> => {
+    if (contactId) {
+      const { data } = await supabase
+        .from("contacts")
+        .select("full_name")
+        .eq("id", contactId)
+        .maybeSingle();
+      if (data?.full_name) return data.full_name;
+    }
+    if (to) {
+      const { data } = await supabase
         .from("contacts")
         .select("full_name")
         .eq("email", to)
         .maybeSingle();
-      if (contact?.full_name) {
-        html = html.replace(/\{\{nombre\}\}/g, contact.full_name);
+      if (data?.full_name) return data.full_name;
+    }
+    return null;
+  };
+
+  const handleTemplateSelect = async (template: EmailTemplate) => {
+    let html = template.content_html;
+    if (html.includes("{{nombre}}")) {
+      const name = await getContactName();
+      if (name) {
+        html = html.replace(/\{\{nombre\}\}/g, name);
       }
     }
     if (template.subject) {
       setSubject(template.subject);
     }
     setBody(html);
+  };
+
+  const handleSaveAsTemplate = async () => {
+    if (!templateName.trim() || !user) {
+      toast.error("El nombre de la plantilla es obligatorio");
+      return;
+    }
+    try {
+      let htmlToSave = body;
+      const contactName = await getContactName();
+      if (contactName) {
+        const escapedName = contactName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        htmlToSave = htmlToSave.replace(new RegExp(escapedName, "gi"), "{{nombre}}");
+      }
+
+      const { error } = await supabase.from("email_templates").insert({
+        name: templateName.trim(),
+        subject: subject || null,
+        content_html: htmlToSave,
+        category: templateCategory.trim() || null,
+        entity: templateEntity || null,
+        created_by: user.id,
+      });
+      if (error) throw error;
+      toast.success("Plantilla guardada correctamente");
+      setSaveTemplateOpen(false);
+      setTemplateName("");
+      setTemplateCategory("");
+      setTemplateEntity("");
+    } catch (e: any) {
+      toast.error(e.message || "Error al guardar la plantilla");
+    }
   };
 
   return (
