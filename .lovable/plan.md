@@ -1,57 +1,83 @@
 
-## Plan: Sistema de Plantillas de Email Inteligentes
 
-### Resumen
-Crear una tabla `email_templates` en la base de datos, un componente selector de plantillas con busqueda rapida (CommandDialog), e integrarlo en el compositor de email para que al elegir una plantilla se rellene automaticamente el asunto y el cuerpo del mensaje.
+## Revision: Errores y Mejoras pendientes tras integracion Findymail
 
-### 1. Base de datos: Migracion SQL
+### BUG 1: Bulk Enrich no incluye Findymail (Alta)
 
-Crear tabla `email_templates` con los siguientes campos:
-- `id` (UUID, PK)
-- `name` (TEXT, NOT NULL) - Nombre de la plantilla
-- `subject` (TEXT) - Asunto predefinido
-- `content_html` (TEXT, NOT NULL) - Cuerpo HTML
-- `category` (TEXT) - Categoria: Ventas, Legal, Seguimiento, etc.
-- `entity` (TEXT) - Filtro por empresa: GDC, NextGen, General
-- `created_by` (UUID) - Vinculado al usuario autenticado
-- `created_at` (TIMESTAMPTZ)
-- `updated_at` (TIMESTAMPTZ)
+**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
 
-Politicas RLS: CRUD completo restringido a `created_by = auth.uid()`.
+**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
 
-Insertar 3 plantillas de ejemplo (Propuesta de Inversion, Saludo Inicial GDC, Factura Pendiente).
+### BUG 2: `findymail_status` accedido con cast `as any` (Media)
 
-### 2. Nuevo componente: `src/components/email/TemplatePicker.tsx`
+**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
 
-Un boton "Plantillas" que abre un `CommandDialog` (ya disponible en el proyecto) con:
-- Buscador de texto (CommandInput)
-- Plantillas agrupadas por categoria (CommandGroup)
-- Cada item muestra nombre y asunto
-- Al seleccionar, dispara callback `onSelect(template)` con subject y content_html
-- Carga plantillas desde la base de datos al abrirse
-- Filtrado opcional por `entity`
+**Solucion:** Cambiar a `contact.findymail_status` sin cast.
 
-### 3. Modificar: `src/components/email/ComposeEmail.tsx`
+### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
 
-- Importar `TemplatePicker`
-- Anadir boton de plantillas en el footer (lado izquierdo, junto a los controles existentes)
-- Al seleccionar una plantilla:
-  - `setSubject(template.subject)` si la plantilla tiene asunto
-  - `setBody(template.content_html)` para reemplazar el contenido del editor
-- Sustitucion basica de variables: si el `defaultTo` coincide con un contacto, reemplazar `{{nombre}}` por el nombre del contacto (busqueda simple en la tabla contacts por email)
+**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
 
-### Archivos afectados
+**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
 
-| Archivo | Accion |
-|---|---|
-| Migracion SQL | Crear tabla `email_templates` + RLS + datos ejemplo |
-| `src/components/email/TemplatePicker.tsx` | Crear - selector con CommandDialog |
-| `src/components/email/ComposeEmail.tsx` | Modificar - integrar TemplatePicker en el footer |
+### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
 
-### Flujo de usuario
-1. Abre el compositor de email
-2. Pulsa el boton "Plantillas" en el footer
-3. Busca o navega por las plantillas disponibles
-4. Selecciona una plantilla
-5. El asunto y el cuerpo se rellenan automaticamente
-6. El usuario edita lo que necesite y envia
+**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
+
+**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
+
+### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
+
+**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
+
+**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
+
+### Resumen de cambios
+
+| Archivo | Cambio | Prioridad |
+|---|---|---|
+| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
+| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
+| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
+| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
+
+### Detalle tecnico
+
+**Contacts.tsx - Nuevos estados:**
+```typescript
+const [findymailFilter, setFindymailFilter] = useState("");
+const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+```
+
+**Contacts.tsx - Nueva funcion:**
+```typescript
+const enrichWithFindymailFromCard = async (c: Contact) => {
+  if (!c.company_domain) return;
+  setEnrichingFindymailId(c.id);
+  try {
+    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+    });
+    if (error) throw error;
+    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
+    else toast.info("Findymail no encontro datos");
+    load();
+  } catch (err: any) {
+    toast.error(err.message || "Error con Findymail");
+  } finally {
+    setEnrichingFindymailId(null);
+  }
+};
+```
+
+**Contacts.tsx - Filtro actualizado:**
+```typescript
+const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
+return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+```
+
+**Contacts.tsx - Bulk enrich corregido:**
+```typescript
+body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+```
+
