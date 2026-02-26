@@ -40,6 +40,8 @@ function AppRoutes() {
                 <Route path="/documents" element={<Documents />} />
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/emails" element={<Emails />} />
+                <Route path="/prospector" element={<Prospector />} />
+                <Route path="/api-credits" element={<ApiCredits />} />
                 <Route path="/email-settings" element={<EmailSettings />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

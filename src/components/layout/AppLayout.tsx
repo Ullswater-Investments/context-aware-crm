@@ -19,6 +19,8 @@ const navItems = [
 { to: "/documents", icon: FileText, label: "Documentos" },
 { to: "/tasks", icon: CheckSquare, label: "Tareas" },
 { to: "/emails", icon: Mail, label: "Emails" },
+{ to: "/prospector", icon: Search, label: "Prospector" },
+{ to: "/api-credits", icon: Activity, label: "Créditos APIs" },
 { to: "/email-settings", icon: Settings2, label: "Ajustes Email" }];
 
 
