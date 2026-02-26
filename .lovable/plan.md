@@ -1,127 +1,83 @@
 
 
-## Revision: Errores y Mejoras en la integracion WhatsApp
+## Revision: Errores y Mejoras pendientes tras integracion Findymail
 
-### BUG 1: Mensajes entrantes invisibles (CRITICO)
+### BUG 1: Bulk Enrich no incluye Findymail (Alta)
 
-**Problema:** La politica RLS de SELECT en `whatsapp_messages` es `created_by = auth.uid()`. Los mensajes inbound llegan via webhook con `created_by = NULL`, por lo que el usuario **nunca vera los mensajes recibidos** en el chat.
+**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
 
-**Solucion:** Cambiar la politica SELECT para permitir ver mensajes donde:
-- `created_by = auth.uid()` (mensajes enviados por el usuario), O
-- el `contact_id` pertenece al usuario (via JOIN con `contacts.created_by = auth.uid()`)
+**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
 
-```sql
-DROP POLICY "Users can view own whatsapp messages" ON whatsapp_messages;
-CREATE POLICY "Users can view own whatsapp messages" ON whatsapp_messages
-  FOR SELECT USING (
-    created_by = auth.uid()
-    OR EXISTS (
-      SELECT 1 FROM contacts
-      WHERE contacts.id = whatsapp_messages.contact_id
-        AND contacts.created_by = auth.uid()
-    )
-  );
-```
+### BUG 2: `findymail_status` accedido con cast `as any` (Media)
 
-### BUG 2: Politica INSERT inbound mal configurada (MEDIO)
+**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
 
-**Problema:** La politica "Service role can insert inbound messages" con `direction = 'inbound'` es innecesaria porque `service_role` ya bypasea RLS. Peor aun, como politica RESTRICTIVE bloquea inserts normales si no se cumple la condicion.
+**Solucion:** Cambiar a `contact.findymail_status` sin cast.
 
-**Solucion:** Eliminar esa politica. El webhook ya usa `service_role` que ignora RLS. La politica de INSERT del usuario (`created_by = auth.uid()`) es suficiente para mensajes outbound.
+### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
 
-```sql
-DROP POLICY "Service role can insert inbound messages" ON whatsapp_messages;
-```
+**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
 
-### BUG 3: UPDATE policy demasiado restrictiva para inbound (BAJO)
+**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
 
-**Problema:** La politica UPDATE solo permite `created_by = auth.uid()`. Si se quiere actualizar el estado de un mensaje inbound (ej: marcarlo como leido), no sera posible.
+### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
 
-**Solucion:** Ampliar la politica UPDATE igual que SELECT:
+**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
 
-```sql
-DROP POLICY "Users can update own whatsapp messages" ON whatsapp_messages;
-CREATE POLICY "Users can update own whatsapp messages" ON whatsapp_messages
-  FOR UPDATE USING (
-    created_by = auth.uid()
-    OR EXISTS (
-      SELECT 1 FROM contacts
-      WHERE contacts.id = whatsapp_messages.contact_id
-        AND contacts.created_by = auth.uid()
-    )
-  );
-```
+**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
 
-### MEJORA 1: Variable {{email}} en barra rapida del chat
+### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
 
-**Problema:** El componente WhatsAppChat tiene 4 variables rapidas pero falta `{{email}}` que si esta soportada en la Edge Function.
+**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
 
-**Solucion:** Anadir `{ label: "Email", value: "{{email}}" }` al array `VARIABLE_OPTIONS`.
-
-### MEJORA 2: Seguridad del webhook - validacion de payload
-
-**Problema:** El webhook acepta cualquier POST sin verificar que viene de Whapi.cloud. Un atacante podria inyectar mensajes falsos.
-
-**Solucion:** Anadir un secret `WHAPI_WEBHOOK_SECRET` opcional y validar un header de autenticacion si esta configurado. Si no esta configurado, funciona como ahora (compatibilidad).
-
-### MEJORA 3: Leaked password protection
-
-**Problema:** El linter de seguridad reporta que la proteccion contra contrasenas filtradas esta deshabilitada.
-
-**Solucion:** Activar "leaked password protection" en la configuracion de autenticacion.
-
----
+**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
 
 ### Resumen de cambios
 
-| Archivo / Recurso | Cambio | Prioridad |
+| Archivo | Cambio | Prioridad |
 |---|---|---|
-| Migration SQL (RLS) | Corregir SELECT, eliminar INSERT inbound, corregir UPDATE | Critico |
-| `src/components/whatsapp/WhatsAppChat.tsx` | Anadir variable `{{email}}` | Baja |
-| `supabase/functions/whatsapp-webhook/index.ts` | Validacion opcional de webhook secret | Media |
+| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
+| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
+| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
+| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
 
 ### Detalle tecnico
 
-**Migration SQL completa:**
-
-```sql
--- Fix SELECT: allow viewing messages for user's contacts
-DROP POLICY "Users can view own whatsapp messages" ON whatsapp_messages;
-CREATE POLICY "Users can view own whatsapp messages" ON whatsapp_messages
-  FOR SELECT USING (
-    created_by = auth.uid()
-    OR EXISTS (
-      SELECT 1 FROM contacts
-      WHERE contacts.id = whatsapp_messages.contact_id
-        AND contacts.created_by = auth.uid()
-    )
-  );
-
--- Remove broken restrictive inbound policy
-DROP POLICY "Service role can insert inbound messages" ON whatsapp_messages;
-
--- Fix UPDATE: allow updating messages for user's contacts
-DROP POLICY "Users can update own whatsapp messages" ON whatsapp_messages;
-CREATE POLICY "Users can update own whatsapp messages" ON whatsapp_messages
-  FOR UPDATE USING (
-    created_by = auth.uid()
-    OR EXISTS (
-      SELECT 1 FROM contacts
-      WHERE contacts.id = whatsapp_messages.contact_id
-        AND contacts.created_by = auth.uid()
-    )
-  );
+**Contacts.tsx - Nuevos estados:**
+```typescript
+const [findymailFilter, setFindymailFilter] = useState("");
+const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
 ```
 
-**WhatsAppChat.tsx - Variable email:**
-
+**Contacts.tsx - Nueva funcion:**
 ```typescript
-const VARIABLE_OPTIONS = [
-  { label: "Nombre", value: "{{first_name}}" },
-  { label: "Apellido", value: "{{last_name}}" },
-  { label: "Nombre completo", value: "{{full_name}}" },
-  { label: "Empresa", value: "{{company}}" },
-  { label: "Email", value: "{{email}}" },
-];
+const enrichWithFindymailFromCard = async (c: Contact) => {
+  if (!c.company_domain) return;
+  setEnrichingFindymailId(c.id);
+  try {
+    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+    });
+    if (error) throw error;
+    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
+    else toast.info("Findymail no encontro datos");
+    load();
+  } catch (err: any) {
+    toast.error(err.message || "Error con Findymail");
+  } finally {
+    setEnrichingFindymailId(null);
+  }
+};
+```
+
+**Contacts.tsx - Filtro actualizado:**
+```typescript
+const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
+return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+```
+
+**Contacts.tsx - Bulk enrich corregido:**
+```typescript
+body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
 ```
 

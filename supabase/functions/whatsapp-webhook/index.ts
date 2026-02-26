@@ -17,6 +17,19 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Optional webhook secret validation
+    const webhookSecret = Deno.env.get("WHAPI_WEBHOOK_SECRET");
+    if (webhookSecret) {
+      const authHeader = req.headers.get("authorization") || req.headers.get("x-webhook-secret") || "";
+      if (authHeader !== webhookSecret && authHeader !== `Bearer ${webhookSecret}`) {
+        console.error("Webhook secret mismatch");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const payload = await req.json();
 
     // Whapi.cloud sends messages in payload.messages array
