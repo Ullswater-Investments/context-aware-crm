@@ -332,7 +332,7 @@ export default function Contacts() {
               Enriquecer todos
             </Button>
           )}
-          {contacts.some(c => !c.email && (c.work_email || c.personal_email)) && (
+          {contacts.some(c => !c.email && (c.work_email || c.personal_email || (c.postal_address && EMAIL_REGEX.test(c.postal_address.trim())))) && (
             <Button variant="outline" onClick={bulkFixEmails} disabled={bulkEnriching}>
               <Mail className="w-4 h-4 mr-2" />Corregir emails
             </Button>
