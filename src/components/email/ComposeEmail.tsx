@@ -103,6 +103,8 @@ export default function ComposeEmail({
     }
   };
 
+  const hasDraft = subject.trim() !== "" || body.replace(/<[^>]+>/g, "").trim() !== "" || attachments.length > 0;
+
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen) {
       setTo(defaultTo);
@@ -114,8 +116,23 @@ export default function ComposeEmail({
       setShowCcBcc(!!defaultCc);
       fetchSignatures();
       fetchEmailAccounts();
+      onOpenChange(true);
+    } else if (hasDraft) {
+      setShowDiscardDialog(true);
+    } else {
+      onOpenChange(false);
     }
-    onOpenChange(isOpen);
+  };
+
+  const confirmDiscard = () => {
+    setShowDiscardDialog(false);
+    setTo("");
+    setCc("");
+    setBcc("");
+    setSubject("");
+    setBody("");
+    setAttachments([]);
+    onOpenChange(false);
   };
 
   const fetchEmailAccounts = async () => {
