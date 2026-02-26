@@ -33,6 +33,7 @@ const VARIABLE_OPTIONS = [
   { label: "Apellido", value: "{{last_name}}" },
   { label: "Nombre completo", value: "{{full_name}}" },
   { label: "Empresa", value: "{{company}}" },
+  { label: "Email", value: "{{email}}" },
 ];
 
 function StatusIcon({ status }: { status: string }) {
