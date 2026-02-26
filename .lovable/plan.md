@@ -1,83 +1,95 @@
 
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+## Auditoria de Errores y Soluciones
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+### BUG 1 (Critico): Edge Functions sin configurar en config.toml
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+Las funciones `get-api-usage` y `prospector-search` no estan registradas en `supabase/config.toml`. Esto significa que **no se despliegan** y las llamadas desde el frontend fallan silenciosamente.
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
+Tambien faltan: `sync-emails`, `test-email-connection`, `suggest-reply`.
 
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
+**Solucion:** Anadir las entradas al `config.toml`:
+```text
+[functions.get-api-usage]
+verify_jwt = false
 
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
+[functions.prospector-search]
+verify_jwt = false
 
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
+[functions.sync-emails]
+verify_jwt = false
 
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
+[functions.test-email-connection]
+verify_jwt = false
 
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
+[functions.suggest-reply]
+verify_jwt = false
+```
 
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
+---
 
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
+### BUG 2 (Critico): `supabase.auth.getClaims()` no existe
 
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
+Tanto `get-api-usage` (linea 105) como `prospector-search` (linea 118) usan `supabase.auth.getClaims(token)`, que **no es un metodo valido** del cliente Supabase JS v2. Esto causa un error en tiempo de ejecucion y bloquea ambas funciones.
 
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
+**Solucion:** Reemplazar por `supabase.auth.getUser()` que es el metodo correcto:
 
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
+```text
+// ANTES (no funciona):
+const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
 
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
+// DESPUES (correcto):
+const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+if (userError || !user) { return 401 }
+const userId = user.id;
+```
 
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
+Aplicar en ambos archivos.
+
+---
+
+### BUG 3 (Medio): Inyeccion SQL en anti-duplicados del Prospector
+
+En `prospector-search/index.ts` linea 154, los nombres y emails de los resultados se interpolan directamente en la query `.or()`:
+
+```text
+`email.in.(${emails.join(",")}),full_name.in.(${names.join(",")})`
+```
+
+Si un nombre contiene comas o parentesis (ej: "O'Brien, James"), la query se rompe o produce resultados incorrectos. No es un riesgo de inyeccion SQL real (Supabase parametriza internamente), pero los resultados seran incorrectos.
+
+**Solucion:** Usar dos queries separadas en lugar de interpolar strings:
+
+```text
+const { data: byEmail } = await supabase.from("contacts").select("email").in("email", emails);
+const { data: byName } = await supabase.from("contacts").select("full_name").in("full_name", names);
+```
+
+---
+
+### BUG 4 (Bajo): Doble renderizado de barra de progreso en ApiCredits
+
+En `ApiCredits.tsx` lineas 81-84, se renderiza el componente `<Progress>` de shadcn Y ademas un `<div>` manual encima con `position: absolute`. Esto produce una barra duplicada visualmente.
+
+**Solucion:** Eliminar el `<div>` manual y usar solo el componente `<Progress>` con la clase de color aplicada via CSS custom property o className.
+
+---
+
+### BUG 5 (Bajo): Limite de 2000 contactos sin aviso
+
+En `Contacts.tsx` linea 84, la query tiene `.limit(2000)`. Si hay mas contactos, se pierden sin aviso.
+
+**Solucion:** Despues de la query, comprobar si `data.length === 2000` y mostrar un `toast.warning("Mostrando los primeros 2000 contactos")`.
+
+---
 
 ### Resumen de cambios
 
 | Archivo | Cambio | Prioridad |
 |---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
-
-### Detalle tecnico
-
-**Contacts.tsx - Nuevos estados:**
-```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
-```
-
-**Contacts.tsx - Nueva funcion:**
-```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
-    });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
-};
-```
-
-**Contacts.tsx - Filtro actualizado:**
-```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
-```
-
-**Contacts.tsx - Bulk enrich corregido:**
-```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
-```
+| `supabase/config.toml` | Registrar 5 edge functions faltantes | Critico |
+| `supabase/functions/get-api-usage/index.ts` | Reemplazar `getClaims` por `getUser` | Critico |
+| `supabase/functions/prospector-search/index.ts` | Reemplazar `getClaims` por `getUser` + corregir query anti-duplicados | Critico |
+| `src/pages/ApiCredits.tsx` | Eliminar div manual de barra de progreso duplicada | Bajo |
+| `src/pages/Contacts.tsx` | Aviso al alcanzar limite de 2000 contactos | Bajo |
 
