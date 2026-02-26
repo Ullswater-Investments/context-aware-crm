@@ -290,7 +290,8 @@ export default function Emails() {
                     }}
                     className={cn(
                       "w-full text-left px-4 py-3 hover:bg-accent/30 transition-colors",
-                      selected?.id === email.id && "bg-accent/50"
+                      selected?.id === email.id && "bg-accent/50",
+                      email.direction === "inbound" && !(email as any).is_read && "bg-primary/5"
                     )}
                   >
                     <div className="flex items-center gap-2 mb-1">
