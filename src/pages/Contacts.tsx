@@ -297,6 +297,11 @@ export default function Contacts() {
               Enriquecer todos
             </Button>
           )}
+          {contacts.some(c => !c.email && (c.work_email || c.personal_email)) && (
+            <Button variant="outline" onClick={bulkFixEmails} disabled={bulkEnriching}>
+              <Mail className="w-4 h-4 mr-2" />Corregir emails
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setImporterOpen(true)}><FileSpreadsheet className="w-4 h-4 mr-2" />Importar</Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
