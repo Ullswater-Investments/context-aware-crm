@@ -91,6 +91,7 @@ export default function ComposeEmail({
   const [fromAccount, setFromAccount] = useState<string>("");
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
 
   const fetchSignatures = async () => {
     if (!user) return;
