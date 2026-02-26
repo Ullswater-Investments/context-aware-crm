@@ -1,57 +1,94 @@
 
-## Plan: Sistema de Plantillas de Email Inteligentes
+
+## Plan: Editor de Email Profesional con Estilos Avanzados y BubbleMenu de Imagenes
 
 ### Resumen
-Crear una tabla `email_templates` en la base de datos, un componente selector de plantillas con busqueda rapida (CommandDialog), e integrarlo en el compositor de email para que al elegir una plantilla se rellene automaticamente el asunto y el cuerpo del mensaje.
+Transformar el editor TipTap actual en una herramienta de edicion profesional con controles de tipografia (fuente, tamano, color), un BubbleMenu para redimensionar y alinear imagenes, y estilos inline compatibles con Outlook/Gmail.
 
-### 1. Base de datos: Migracion SQL
+### 1. Instalar dependencias nuevas
 
-Crear tabla `email_templates` con los siguientes campos:
-- `id` (UUID, PK)
-- `name` (TEXT, NOT NULL) - Nombre de la plantilla
-- `subject` (TEXT) - Asunto predefinido
-- `content_html` (TEXT, NOT NULL) - Cuerpo HTML
-- `category` (TEXT) - Categoria: Ventas, Legal, Seguimiento, etc.
-- `entity` (TEXT) - Filtro por empresa: GDC, NextGen, General
-- `created_by` (UUID) - Vinculado al usuario autenticado
-- `created_at` (TIMESTAMPTZ)
-- `updated_at` (TIMESTAMPTZ)
+Se necesitan estas extensiones de TipTap que no estan instaladas:
+- `@tiptap/extension-text-style` (base para color y font-family)
+- `@tiptap/extension-font-family`
+- `@tiptap/extension-color`
+- `@tiptap/extension-highlight`
 
-Politicas RLS: CRUD completo restringido a `created_by = auth.uid()`.
+No existe una extension oficial de TipTap para font-size, asi que crearemos una extension personalizada.
 
-Insertar 3 plantillas de ejemplo (Propuesta de Inversion, Saludo Inicial GDC, Factura Pendiente).
+### 2. Crear: `src/lib/tiptap-font-size.ts`
 
-### 2. Nuevo componente: `src/components/email/TemplatePicker.tsx`
+Extension personalizada de TipTap que registra un mark `fontSize` con un atributo `size`. Usa `renderHTML` para generar `<span style="font-size: Xpx">` (inline style para compatibilidad email). Expone los comandos `setFontSize(size)` y `unsetFontSize()`.
 
-Un boton "Plantillas" que abre un `CommandDialog` (ya disponible en el proyecto) con:
-- Buscador de texto (CommandInput)
-- Plantillas agrupadas por categoria (CommandGroup)
-- Cada item muestra nombre y asunto
-- Al seleccionar, dispara callback `onSelect(template)` con subject y content_html
-- Carga plantillas desde la base de datos al abrirse
-- Filtrado opcional por `entity`
+### 3. Crear: `src/components/email/ImageBubbleMenu.tsx`
 
-### 3. Modificar: `src/components/email/ComposeEmail.tsx`
+Componente con `BubbleMenu` de `@tiptap/react` que se muestra solo cuando una imagen esta seleccionada:
+- Botones de tamano: 25%, 50%, 100%, Original
+- Separador vertical
+- Botones de alineacion: AlignLeft, AlignCenter, AlignRight (iconos Lucide)
+- Estado activo visual en el boton correspondiente
+- Usa `editor.chain().focus().updateAttributes('image', { width, align }).run()`
 
-- Importar `TemplatePicker`
-- Anadir boton de plantillas en el footer (lado izquierdo, junto a los controles existentes)
-- Al seleccionar una plantilla:
-  - `setSubject(template.subject)` si la plantilla tiene asunto
-  - `setBody(template.content_html)` para reemplazar el contenido del editor
-- Sustitucion basica de variables: si el `defaultTo` coincide con un contacto, reemplazar `{{nombre}}` por el nombre del contacto (busqueda simple en la tabla contacts por email)
+### 4. Modificar: `src/components/email/RichTextEditor.tsx`
+
+**Cambios principales:**
+
+**A. Imports y extensiones (lineas 1-73):**
+- Importar TextStyle, FontFamily, Color, Highlight, la extension FontSize personalizada, y BubbleMenu
+- Importar Select, SelectContent, SelectItem, SelectTrigger, SelectValue de shadcn
+- Importar Separator de shadcn
+- Importar iconos adicionales: AlignLeft, AlignCenter, AlignRight, Type, Palette, Highlighter
+- Importar ImageBubbleMenu
+
+**B. Extension Image extendida (linea 70):**
+Reemplazar `Image.configure({ inline: false, allowBase64: false })` por una version extendida con dos atributos personalizados:
+
+- `width`: default `'100%'`, renderiza en el atributo `style`
+- `align`: default `'center'`, renderiza como:
+  - center: `display: block; margin-left: auto; margin-right: auto;`
+  - left: `float: left; margin-right: 1rem; margin-bottom: 1rem;`
+  - right: `float: right; margin-left: 1rem; margin-bottom: 1rem;`
+
+Ambos atributos se combinan en un unico `style` en `renderHTML`.
+
+**C. Nuevas extensiones en el array:**
+Anadir TextStyle, FontFamily, Color, Highlight.configure({ multicolor: true }), y la extension FontSize personalizada.
+
+**D. Barra de herramientas mejorada (lineas 181-270):**
+Reemplazar la barra actual por una version premium con:
+
+Fila 1 (selectores):
+- Select de tipo de letra (Arial, Times New Roman, Georgia, Verdana, Courier New) - w-[140px]
+- Select de tamano (12px, 14px, 16px, 18px, 20px, 24px, 32px) - w-[75px]
+- Separador vertical
+- Input type="color" nativo para color de texto (w-7 h-7)
+- Boton Highlight (resaltador)
+- Separador vertical
+- Botones existentes: Bold, Italic, Link, BulletList, OrderedList, HorizontalRule
+- Separador vertical
+- Boton ImagePlus (existente)
+
+**E. BubbleMenu de imagenes (despues de linea 273):**
+Renderizar `<ImageBubbleMenu editor={editor} />` justo despues de `<EditorContent />`.
 
 ### Archivos afectados
 
 | Archivo | Accion |
 |---|---|
-| Migracion SQL | Crear tabla `email_templates` + RLS + datos ejemplo |
-| `src/components/email/TemplatePicker.tsx` | Crear - selector con CommandDialog |
-| `src/components/email/ComposeEmail.tsx` | Modificar - integrar TemplatePicker en el footer |
+| `src/lib/tiptap-font-size.ts` | Crear - extension personalizada fontSize |
+| `src/components/email/ImageBubbleMenu.tsx` | Crear - BubbleMenu con controles de tamano y alineacion |
+| `src/components/email/RichTextEditor.tsx` | Modificar - extensiones avanzadas + barra premium + BubbleMenu |
 
-### Flujo de usuario
-1. Abre el compositor de email
-2. Pulsa el boton "Plantillas" en el footer
-3. Busca o navega por las plantillas disponibles
-4. Selecciona una plantilla
-5. El asunto y el cuerpo se rellenan automaticamente
-6. El usuario edita lo que necesite y envia
+### Dependencias a instalar
+- `@tiptap/extension-text-style`
+- `@tiptap/extension-font-family`
+- `@tiptap/extension-color`
+- `@tiptap/extension-highlight`
+
+### Compatibilidad email
+- Todos los estilos de texto se renderizan como inline styles en spans: `<span style="font-family: Arial; font-size: 18px; color: #ff0000;">`
+- Los estilos de imagen usan float/margin para alineacion lateral y display:block/margin:auto para centrado
+- No se usan clases CSS que los clientes de email ignoran
+
+### Sin cambios en base de datos
+No se requieren migraciones SQL ni cambios en edge functions.
+
