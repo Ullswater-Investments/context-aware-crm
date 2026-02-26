@@ -2,7 +2,7 @@ import { BubbleMenu } from "@tiptap/react/menus";
 import type { Editor } from "@tiptap/react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { AlignLeft, AlignCenter, AlignRight, Trash2 } from "lucide-react";
 
 interface ImageBubbleMenuProps {
   editor: Editor;
