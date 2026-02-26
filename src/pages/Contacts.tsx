@@ -573,6 +573,7 @@ export default function Contacts() {
       <ContactImporter open={importerOpen} onOpenChange={setImporterOpen} onComplete={load} />
       <HunterSearch open={hunterOpen} onOpenChange={setHunterOpen} />
       {emailContact && <ComposeEmail open={!!emailContact} onOpenChange={(o) => { if (!o) setEmailContact(null); }} defaultTo={emailContact.email} contactId={emailContact.id} />}
+      {whatsappContact && <WhatsAppChat contact={whatsappContact} open={!!whatsappContact} onOpenChange={(o) => { if (!o) setWhatsappContact(null); }} />}
     </div>
   );
 }
