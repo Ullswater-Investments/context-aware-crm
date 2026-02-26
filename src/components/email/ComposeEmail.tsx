@@ -282,7 +282,7 @@ export default function ComposeEmail({
     }
   };
 
-  const selectedSig = signatures.find((s) => s.id === selectedSignatureId);
+
 
   const handleTemplateSelect = async (template: EmailTemplate) => {
     let html = template.content_html;
