@@ -17,7 +17,7 @@ import {
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Save,
+  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Save, XCircle,
 } from "lucide-react";
 import RichTextEditor from "./RichTextEditor";
 import SignatureManager, { type Signature } from "./SignatureManager";
