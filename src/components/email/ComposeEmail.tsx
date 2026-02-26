@@ -124,8 +124,6 @@ export default function ComposeEmail({
       setBody(defaultBody);
       setAttachments([]);
       setShowCcBcc(!!defaultCc);
-      fetchSignatures();
-      fetchEmailAccounts();
       onOpenChange(true);
     } else if (hasDraft) {
       setShowDiscardDialog(true);
