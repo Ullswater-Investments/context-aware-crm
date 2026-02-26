@@ -178,9 +178,9 @@ export default function TemplateManager({ open, onOpenChange }: TemplateManagerP
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Ninguna</SelectItem>
-                    <SelectItem value="general">General</SelectItem>
-                    <SelectItem value="gdc">GDC</SelectItem>
-                    <SelectItem value="nextgen">NextGen</SelectItem>
+                    <SelectItem value="General">General</SelectItem>
+                    <SelectItem value="GDC">GDC</SelectItem>
+                    <SelectItem value="NextGen">NextGen</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
