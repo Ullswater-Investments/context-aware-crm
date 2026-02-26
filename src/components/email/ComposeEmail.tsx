@@ -109,7 +109,11 @@ export default function ComposeEmail({
     }
   };
 
-  const hasDraft = subject.trim() !== "" || body.replace(/<[^>]+>/g, "").trim() !== "" || attachments.length > 0;
+  const hasDraft =
+    (to.trim() !== "" && to !== defaultTo) ||
+    (subject.trim() !== "" && subject !== defaultSubject) ||
+    (body.replace(/<[^>]+>/g, "").trim() !== "" && body !== defaultBody) ||
+    attachments.length > 0;
 
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen) {
