@@ -557,17 +557,10 @@ export default function Contacts() {
         </div>
       )}
 
-      <HunterSearch open={hunterOpen} onOpenChange={setHunterOpen} onImported={load} />
+      <ContactProfile contact={selectedContact} open={profileOpen} onOpenChange={setProfileOpen} onUpdate={() => { load(); if (selectedContact) { supabase.from("contacts").select("*, organizations(name)").eq("id", selectedContact.id).single().then(({ data }) => { if (data) setSelectedContact(data as Contact); }); } }} />
       <ContactImporter open={importerOpen} onOpenChange={setImporterOpen} onComplete={load} />
-
-      {emailContact && (
-        <ComposeEmail open={!!emailContact} onOpenChange={(open) => { if (!open) setEmailContact(null); }} defaultTo={emailContact.email} contactId={emailContact.id} onSent={load} />
-      )}
-
-      <ContactProfile
-        contact={selectedContact} open={profileOpen} onOpenChange={setProfileOpen}
-        onUpdate={() => { load(); if (selectedContact) { supabase.from("contacts").select("*, organizations(name)").eq("id", selectedContact.id).single().then(({ data }) => { if (data) setSelectedContact(data as Contact); }); } }}
-      />
+      <HunterSearch open={hunterOpen} onOpenChange={setHunterOpen} />
+      {emailContact && <ComposeEmail open={!!emailContact} onOpenChange={(o) => { if (!o) setEmailContact(null); }} defaultTo={emailContact.email} contactId={emailContact.id} />}
     </div>
   );
 }
