@@ -584,6 +584,23 @@ export default function ComposeEmail({
         onOpenChange={setSigManagerOpen}
         onSignaturesChange={fetchSignatures}
       />
+
+      <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Descartar borrador?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tienes un borrador sin enviar. Si cierras, se perderá el contenido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDiscard} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
