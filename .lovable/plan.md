@@ -1,38 +1,31 @@
 
 
-## Plan: Eliminar Bandeja Unificada y Dejar Solo Carpetas por Cuenta
+## Plan: Corregir la carga de cuentas de email en el compositor
 
-### Objetivo
+### Problema detectado
 
-Eliminar la seccion "Vistas Globales" y la "Bandeja Unificada" del sidebar, dejando unicamente las secciones por cuenta (Global Data Care / Next Generation) con sus carpetas Inbox y Enviados independientes.
+Cuando abres el compositor de email pulsando "Redactar", las cuentas de email no se cargan en el desplegable "De". Esto ocurre porque `fetchEmailAccounts()` solo se llama dentro de `handleOpenChange`, que es un callback del Sheet que no se ejecuta cuando el compositor se abre programaticamente (via `composeOpen = true`).
 
----
+El `useEffect` existente (linea 131-133) solo llama a `fetchSignatures()` pero **no llama a `fetchEmailAccounts()`**.
 
-### Cambios en `src/components/email/EmailSidebar.tsx`
+### Solucion
 
-- Eliminar el bloque "Vistas Globales" (lineas 108-126): quitar la seccion completa con el boton "Bandeja Unificada"
-- Eliminar `unifiedCount` de las props (ya no se necesita)
-- Eliminar la variable `isUnified`
-- Eliminar el import de `LayoutGrid` (ya no se usa)
+Modificar el `useEffect` en `src/components/email/ComposeEmail.tsx` (linea 131-133) para que tambien llame a `fetchEmailAccounts()` cuando el compositor se abre:
 
-### Cambios en `src/pages/Emails.tsx`
+```typescript
+useEffect(() => {
+  if (open) {
+    fetchSignatures();
+    fetchEmailAccounts();
+  }
+}, [open, user]);
+```
 
-- Cambiar el estado inicial de `selectedAccountId` de `"all"` a seleccionar la primera cuenta disponible automaticamente (via `useEffect` cuando se cargan las cuentas)
-- Eliminar el estado `unifiedCount` y su calculo
-- Eliminar la prop `unifiedCount` del componente `EmailSidebar`
-- En `fetchEmails`: eliminar el bloque `if (selectedAccountId === "all")` — si no hay cuenta seleccionada, simplemente no cargar nada
-- En la lista de emails: eliminar la logica del badge de cuenta en vista unificada (lineas 303-313)
-- Mobile: eliminar el boton "Unificada" (lineas 224-232) y el import de `LayoutGrid`
-- Eliminar `getMobileFolderLabel` si no se usa en otro sitio
+### Archivo a modificar
 
-### Comportamiento por defecto
-
-Al entrar en `/emails`, el sistema seleccionara automaticamente la primera cuenta disponible y mostrara su Inbox. Si no hay cuentas configuradas, mostrara un mensaje invitando a configurar una.
-
-### Archivos a modificar
-
-| Archivo | Cambios |
+| Archivo | Cambio |
 |---|---|
-| `src/components/email/EmailSidebar.tsx` | Eliminar seccion "Vistas Globales", limpiar props |
-| `src/pages/Emails.tsx` | Eliminar logica unificada, auto-seleccionar primera cuenta, limpiar badges |
+| `src/components/email/ComposeEmail.tsx` | Anadir `fetchEmailAccounts()` al `useEffect` de la linea 131 |
+
+Este cambio de una sola linea hara que el desplegable "De" muestre `emilio.mulet@globaldatacare.es` cada vez que se abra el compositor.
 
