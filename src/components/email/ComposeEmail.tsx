@@ -81,7 +81,11 @@ export default function ComposeEmail({
   const [selectedSignatureId, setSelectedSignatureId] = useState<string>("none");
   const [sigManagerOpen, setSigManagerOpen] = useState(false);
   const [showCcBcc, setShowCcBcc] = useState(false);
-  const [includeSignature, setIncludeSignature] = useState(true);
+  const [includeSignature, setIncludeSignature] = useState(false);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [templateCategory, setTemplateCategory] = useState("");
+  const [templateEntity, setTemplateEntity] = useState("");
   const [suggestingReply, setSuggestingReply] = useState(false);
   const [fromAccount, setFromAccount] = useState<string>("");
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
