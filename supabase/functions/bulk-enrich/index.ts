@@ -14,6 +14,7 @@ interface EnrichResult {
   hunter: string;
   apollo: string;
   lusha: string;
+  findymail: string;
 }
 
 async function enrichWithHunter(
