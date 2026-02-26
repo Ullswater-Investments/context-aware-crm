@@ -466,8 +466,8 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                   {(contact.phone || contact.mobile_phone || contact.work_phone) ? (
                     <div className="flex items-center gap-2 text-sm">
                       <Phone className="w-4 h-4 text-muted-foreground" />{contact.phone || contact.mobile_phone || contact.work_phone}
-                      <button onClick={() => setWhatsappOpen(true)} className="ml-1 p-1 rounded hover:bg-[#25d366]/10 text-[#25d366] transition-colors" title="Abrir WhatsApp">
-                        <MessageCircle className="w-4 h-4" />
+                      <button onClick={() => setWhatsappOpen(true)} className="ml-2 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#25d366] hover:bg-[#25d366]/90 text-white text-xs font-medium transition-colors" title="Abrir WhatsApp">
+                        <MessageSquare className="w-3.5 h-3.5" />WhatsApp
                       </button>
                     </div>
                   ) : (

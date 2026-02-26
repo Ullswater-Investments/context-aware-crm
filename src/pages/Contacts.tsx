@@ -560,6 +560,12 @@ export default function Contacts() {
                         {enrichingFindymailId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}Findymail
                       </button>
                     )}
+                    {(c.phone || c.mobile_phone || c.work_phone) && (
+                      <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }}
+                        className="text-xs px-2 py-0.5 rounded bg-[#25d366]/15 text-[#25d366] hover:bg-[#25d366]/25 transition-colors flex items-center gap-1 shrink-0">
+                        <MessageSquare className="w-3 h-3" />WhatsApp
+                      </button>
+                    )}
                   </div>
                   {(c.tags || []).length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
