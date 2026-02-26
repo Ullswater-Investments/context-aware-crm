@@ -372,7 +372,15 @@ export default function Contacts() {
                   <div><Label>LinkedIn URL</Label><Input value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." /></div>
                   <div><Label>Dominio empresa</Label><Input value={form.company_domain} onChange={(e) => setForm({ ...form, company_domain: e.target.value })} placeholder="empresa.com" /></div>
                 </div>
-                <div><Label>Dirección postal</Label><Input value={form.postal_address} onChange={(e) => setForm({ ...form, postal_address: e.target.value })} placeholder="C/ Ejemplo, 1, 28001 Madrid" /></div>
+                <div><Label>Dirección postal</Label><Input value={form.postal_address} onChange={(e) => {
+                  const v = e.target.value;
+                  if (v.includes("@") && EMAIL_REGEX.test(v.trim())) {
+                    setForm({ ...form, email: form.email || v.trim(), postal_address: "" });
+                    toast.info("Se detectó un email en Dirección postal. Movido a Email.");
+                  } else {
+                    setForm({ ...form, postal_address: v });
+                  }
+                }} placeholder="C/ Ejemplo, 1, 28001 Madrid" /></div>
                 <Button onClick={create} disabled={!form.full_name} className="w-full">Crear contacto</Button>
               </div>
             </DialogContent>
