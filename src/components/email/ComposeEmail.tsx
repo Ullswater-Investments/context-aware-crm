@@ -305,7 +305,6 @@ export default function ComposeEmail({
   };
 
 
-
   const handleTemplateSelect = async (template: EmailTemplate) => {
     let html = template.content_html;
     // Variable substitution: replace {{nombre}} with contact name if available

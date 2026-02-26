@@ -355,7 +355,31 @@ export default function RichTextEditor({
           onClick={() => editor.chain().focus().toggleItalic().run()}
           title="Cursiva"
         >
-          <Italic className="h-3.5 w-3.5" />
+        <Italic className="h-3.5 w-3.5" />
+        </Button>
+
+        {/* Underline */}
+        <Button
+          type="button"
+          variant={editor.isActive("underline") ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().toggleUnderline().run()}
+          title="Subrayado"
+        >
+          <UnderlineIcon className="h-3.5 w-3.5" />
+        </Button>
+
+        {/* Clear Formatting */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
+          title="Limpiar formato"
+        >
+          <RemoveFormatting className="h-3.5 w-3.5" />
         </Button>
 
         <Separator orientation="vertical" className="h-5 mx-0.5" />
