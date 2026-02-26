@@ -38,6 +38,8 @@ import {
   AlignJustify,
   Undo2,
   Redo2,
+  Underline as UnderlineIcon,
+  RemoveFormatting,
 } from "lucide-react";
 import ImageBubbleMenu from "./ImageBubbleMenu";
 
