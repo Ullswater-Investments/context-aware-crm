@@ -149,6 +149,19 @@ export default function Contacts() {
     }
   };
 
+  const quickFixEmail = async (c: Contact) => {
+    const fallback = c.work_email || c.personal_email;
+    if (!fallback) return;
+    const updates: Record<string, any> = { email: fallback };
+    if (!c.company_domain && fallback.includes("@")) {
+      updates.company_domain = fallback.split("@")[1];
+    }
+    const { error } = await supabase.from("contacts").update(updates).eq("id", c.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Email corregido: ${fallback}`);
+    load();
+  };
+
   const enrichWithFindymailFromCard = async (c: Contact) => {
     if (!c.company_domain) return;
     setEnrichingFindymailId(c.id);
@@ -175,10 +188,12 @@ export default function Contacts() {
   };
 
   const create = async () => {
+    const emailValue = form.email || form.work_email || form.personal_email || null;
+    const domainValue = form.company_domain || (emailValue && emailValue.includes("@") ? emailValue.split("@")[1] : null);
     const insert: any = {
-      full_name: form.full_name, email: form.email || null, phone: form.phone || null,
+      full_name: form.full_name, email: emailValue, phone: form.phone || null,
       position: form.position || null, linkedin_url: form.linkedin_url || null,
-      company_domain: form.company_domain || null, postal_address: form.postal_address || null,
+      company_domain: domainValue, postal_address: form.postal_address || null,
       work_email: form.work_email || null, personal_email: form.personal_email || null,
       mobile_phone: form.mobile_phone || null, work_phone: form.work_phone || null,
       created_by: user!.id,
@@ -420,6 +435,11 @@ export default function Contacts() {
                                 className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5 hover:text-primary transition-colors">
                                 <Mail className="w-3 h-3" />{c.email || c.work_email || c.personal_email}
                               </button>
+                            ) : (c.work_email || c.personal_email) ? (
+                              <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
+                                className="text-xs text-amber-600 truncate flex items-center gap-1 mt-0.5 hover:text-amber-700 transition-colors">
+                                <Zap className="w-3 h-3" />Corregir email ({c.work_email || c.personal_email})
+                              </button>
                             ) : (
                               <p className="text-xs text-muted-foreground/50 truncate flex items-center gap-1 mt-0.5"><Mail className="w-3 h-3" />Sin email</p>
                             )}
@@ -516,6 +536,11 @@ export default function Contacts() {
                     <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: (c.email || c.work_email || c.personal_email)! }); }}
                       className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
                       <Mail className="w-3.5 h-3.5" />{c.email || c.work_email || c.personal_email}
+                    </button>
+                  ) : (c.work_email || c.personal_email) ? (
+                    <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
+                      className="flex items-center gap-2 text-sm text-amber-600 hover:text-amber-700 transition-colors">
+                      <Zap className="w-3.5 h-3.5" />Corregir email ({c.work_email || c.personal_email})
                     </button>
                   ) : (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground/50"><Mail className="w-3.5 h-3.5" />Sin email</div>

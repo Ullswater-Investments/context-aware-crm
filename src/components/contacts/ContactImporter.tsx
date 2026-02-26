@@ -162,10 +162,40 @@ function mapColumns(headers: string[]): Record<string, string> {
   return mapping;
 }
 
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
 function val(row: Record<string, any>, key: string | undefined): string | undefined {
   if (!key) return undefined;
   const v = (row[key] || "").toString().trim();
   return v || undefined;
+}
+
+function sanitizeEmailFields(row: ParsedRow): ParsedRow {
+  // If company_domain contains @, it's an email misplaced
+  if (row.company_domain && row.company_domain.includes("@")) {
+    const misplacedEmail = row.company_domain;
+    if (EMAIL_REGEX.test(misplacedEmail)) {
+      if (!row.email) row.email = misplacedEmail;
+      row.company_domain = misplacedEmail.split("@")[1];
+    }
+  }
+
+  // Fallback: ensure email is populated from work_email or personal_email
+  if (!row.email && row.work_email) row.email = row.work_email;
+  if (!row.email && row.personal_email) row.email = row.personal_email;
+
+  // Auto-extract company_domain from email if missing
+  if (!row.company_domain && row.email && EMAIL_REGEX.test(row.email)) {
+    row.company_domain = row.email.split("@")[1];
+  }
+
+  // Check notes-like fields for misplaced emails (company_description)
+  if (row.company_description && EMAIL_REGEX.test(row.company_description.trim())) {
+    if (!row.email) row.email = row.company_description.trim();
+    row.company_description = undefined;
+  }
+
+  return row;
 }
 
 function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] {
@@ -238,7 +268,7 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
         if (parts.length > 0) postal_address = parts.join(", ");
       }
 
-      return {
+      const parsed = {
         full_name,
         email: work_email || val(row, mapping["email"]),
         phone: phone2 || val(row, mapping["phone"]),
@@ -259,6 +289,7 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
         _company_size: val(row, mapping["_company_size"]),
         _company_type: val(row, mapping["_company_type"]),
       } as ParsedRow;
+      return sanitizeEmailFields(parsed);
     })
     .filter(Boolean) as ParsedRow[];
 }
@@ -414,7 +445,7 @@ export default function ContactImporter({ open, onOpenChange, onComplete }: Cont
           } else {
             const { error } = await supabase.from("contacts").insert({
               full_name: row.full_name,
-              email: row.email || null,
+              email: row.email || row.work_email || row.personal_email || null,
               phone: row.phone || null,
               position: row.position || null,
               organization_id: orgId,
