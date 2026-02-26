@@ -187,6 +187,13 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       }
     }
 
+    // Auto-fix: if postal_address contains an email, move it
+    if (finalData.postal_address && /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(finalData.postal_address.trim())) {
+      if (!finalData.email) finalData.email = finalData.postal_address.trim();
+      finalData.postal_address = "";
+      toast.info("Se detectó un email en Dirección postal. Movido a Email.");
+    }
+
     // Auto-extract domain from email if company_domain is empty
     if (!finalData.company_domain && finalData.email) {
       const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
