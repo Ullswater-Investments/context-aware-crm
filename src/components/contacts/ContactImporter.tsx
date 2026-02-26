@@ -268,7 +268,7 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
         if (parts.length > 0) postal_address = parts.join(", ");
       }
 
-      return {
+      const parsed = {
         full_name,
         email: work_email || val(row, mapping["email"]),
         phone: phone2 || val(row, mapping["phone"]),
@@ -289,6 +289,7 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
         _company_size: val(row, mapping["_company_size"]),
         _company_type: val(row, mapping["_company_type"]),
       } as ParsedRow;
+      return sanitizeEmailFields(parsed);
     })
     .filter(Boolean) as ParsedRow[];
 }
