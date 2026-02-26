@@ -219,8 +219,9 @@ Deno.serve(async (req) => {
     const hunterKey = Deno.env.get("HUNTER_API_KEY") || "";
     const apolloKey = Deno.env.get("APOLLO_API_KEY") || "";
     const lushaKey = Deno.env.get("LUSHA_API_KEY") || "";
+    const findymailKey = Deno.env.get("FINDYMAIL_API_KEY") || "";
 
-    const { last_id = "", services = ["hunter", "apollo", "lusha"] } = await req.json();
+    const { last_id = "", services = ["hunter", "apollo", "lusha", "findymail"] } = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
