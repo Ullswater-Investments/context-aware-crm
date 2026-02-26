@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.bulk-enrich]
 verify_jwt = false
+
+[functions.enrich-findymail-contact]
+verify_jwt = false

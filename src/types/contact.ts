@@ -18,6 +18,7 @@ export interface Contact {
   lusha_status?: string | null;
   hunter_status?: string | null;
   apollo_status?: string | null;
+  findymail_status?: string | null;
   last_enriched_at?: string | null;
   postal_address?: string | null;
 }
