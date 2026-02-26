@@ -129,7 +129,10 @@ export default function ComposeEmail({
   };
 
   useEffect(() => {
-    if (open) fetchSignatures();
+    if (open) {
+      fetchSignatures();
+      fetchEmailAccounts();
+    }
   }, [open, user]);
 
   const handleAttachFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
