@@ -111,14 +111,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Split name
-    const nameParts = full_name.trim().split(/\s+/);
-    const firstName = nameParts[0] || "";
-    const lastName = nameParts.slice(1).join(" ") || "";
+    console.log(`Findymail request: name="${full_name}" domain="${normalizedDomain}"`);
 
-    console.log(`Findymail request: first_name="${firstName}" last_name="${lastName}" domain="${normalizedDomain}"`);
-
-    // Call Findymail API
+    // Call Findymail API — uses "name" (full name) per official docs
     const findymailRes = await fetch("https://app.findymail.com/api/search/name", {
       method: "POST",
       headers: {
@@ -126,8 +121,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        first_name: firstName,
-        last_name: lastName,
+        name: full_name.trim(),
         domain: normalizedDomain,
       }),
     });
