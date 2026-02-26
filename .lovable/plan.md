@@ -1,73 +1,57 @@
 
-
-## Integrar Findymail como 4to servicio de enriquecimiento
+## Plan: Sistema de Plantillas de Email Inteligentes
 
 ### Resumen
-Anadir Findymail como un nuevo proveedor de enriquecimiento de contactos, siguiendo exactamente el mismo patron que ya existe para Hunter.io, Apollo.io y Lusha. Incluye: secreto API, Edge Function, boton en el perfil de contacto, campo de estado en la base de datos, e integracion en el enriquecimiento masivo (bulk).
+Crear una tabla `email_templates` en la base de datos, un componente selector de plantillas con busqueda rapida (CommandDialog), e integrarlo en el compositor de email para que al elegir una plantilla se rellene automaticamente el asunto y el cuerpo del mensaje.
 
-### 1. Guardar el API Key como secreto
+### 1. Base de datos: Migracion SQL
 
-Solicitar al usuario que introduzca su `FINDYMAIL_API_KEY` usando la herramienta de secretos. El token ya no estara expuesto en el codigo.
+Crear tabla `email_templates` con los siguientes campos:
+- `id` (UUID, PK)
+- `name` (TEXT, NOT NULL) - Nombre de la plantilla
+- `subject` (TEXT) - Asunto predefinido
+- `content_html` (TEXT, NOT NULL) - Cuerpo HTML
+- `category` (TEXT) - Categoria: Ventas, Legal, Seguimiento, etc.
+- `entity` (TEXT) - Filtro por empresa: GDC, NextGen, General
+- `created_by` (UUID) - Vinculado al usuario autenticado
+- `created_at` (TIMESTAMPTZ)
+- `updated_at` (TIMESTAMPTZ)
 
-### 2. Migracion de base de datos
+Politicas RLS: CRUD completo restringido a `created_by = auth.uid()`.
 
-Anadir columna `findymail_status` a la tabla `contacts` con valor por defecto `'pending'`, igual que las otras tres columnas de estado:
+Insertar 3 plantillas de ejemplo (Propuesta de Inversion, Saludo Inicial GDC, Factura Pendiente).
 
-```sql
-ALTER TABLE contacts ADD COLUMN findymail_status text NOT NULL DEFAULT 'pending';
-```
+### 2. Nuevo componente: `src/components/email/TemplatePicker.tsx`
 
-### 3. Edge Function: `supabase/functions/enrich-findymail-contact/index.ts`
+Un boton "Plantillas" que abre un `CommandDialog` (ya disponible en el proyecto) con:
+- Buscador de texto (CommandInput)
+- Plantillas agrupadas por categoria (CommandGroup)
+- Cada item muestra nombre y asunto
+- Al seleccionar, dispara callback `onSelect(template)` con subject y content_html
+- Carga plantillas desde la base de datos al abrirse
+- Filtrado opcional por `entity`
 
-Crear una nueva Edge Function siguiendo el patron de `enrich-hunter-contact`:
+### 3. Modificar: `src/components/email/ComposeEmail.tsx`
 
-- Validar JWT con `getUser()`
-- Verificar que el contacto pertenece al usuario autenticado
-- Recibir `contact_id`, `full_name`, `domain` (y opcionalmente `linkedin_url`)
-- Llamar a `POST https://api.findymail.com/v1/find_email` con `first_name`, `last_name`, `domain`
-- Si encuentra email: actualizar `work_email` (si vacio), marcar `findymail_status = 'enriched'`
-- Si no encuentra: marcar `findymail_status = 'not_found'`
-- Actualizar `last_enriched_at`
-
-Registrar en `supabase/config.toml`:
-```toml
-[functions.enrich-findymail-contact]
-verify_jwt = false
-```
-
-### 4. Modificar `src/components/contacts/ContactProfile.tsx`
-
-- Anadir estado `enrichingFindymail` (useState)
-- Anadir funcion `enrichWithFindymail()` que invoque la Edge Function
-- Anadir Badge de estado Findymail en el header (junto a los de Lusha, Hunter, Apollo)
-- Anadir boton "Enriquecer con Findymail" debajo de los existentes, visible cuando `findymail_status` es `pending` o `not_found` y el contacto tiene `full_name` + `company_domain`
-
-### 5. Modificar `src/types/contact.ts`
-
-Anadir `findymail_status?: string | null` a la interfaz Contact.
-
-### 6. Integrar en Bulk Enrich (`supabase/functions/bulk-enrich/index.ts`)
-
-Anadir Findymail como 4to servicio en el flujo de enriquecimiento masivo:
-- Incluir `findymail_status` en la query de seleccion
-- Anadir logica `enrichWithFindymail()` similar a las existentes
-- Permitir `"findymail"` en el array de servicios
+- Importar `TemplatePicker`
+- Anadir boton de plantillas en el footer (lado izquierdo, junto a los controles existentes)
+- Al seleccionar una plantilla:
+  - `setSubject(template.subject)` si la plantilla tiene asunto
+  - `setBody(template.content_html)` para reemplazar el contenido del editor
+- Sustitucion basica de variables: si el `defaultTo` coincide con un contacto, reemplazar `{{nombre}}` por el nombre del contacto (busqueda simple en la tabla contacts por email)
 
 ### Archivos afectados
 
 | Archivo | Accion |
 |---|---|
-| Migracion SQL | Anadir columna `findymail_status` |
-| `supabase/config.toml` | Registrar nueva Edge Function |
-| `supabase/functions/enrich-findymail-contact/index.ts` | Crear - llamada a API Findymail |
-| `supabase/functions/bulk-enrich/index.ts` | Modificar - anadir Findymail como 4to servicio |
-| `src/types/contact.ts` | Modificar - anadir campo `findymail_status` |
-| `src/components/contacts/ContactProfile.tsx` | Modificar - boton + badge + logica |
+| Migracion SQL | Crear tabla `email_templates` + RLS + datos ejemplo |
+| `src/components/email/TemplatePicker.tsx` | Crear - selector con CommandDialog |
+| `src/components/email/ComposeEmail.tsx` | Modificar - integrar TemplatePicker en el footer |
 
 ### Flujo de usuario
-1. Abre un contacto con nombre y dominio de empresa pero sin email
-2. Pulsa "Enriquecer con Findymail"
-3. La Edge Function llama a la API con nombre + dominio
-4. Si encuentra email verificado, se rellena automaticamente en `work_email`
-5. Toast de exito: "Email encontrado y verificado con Findymail!"
-
+1. Abre el compositor de email
+2. Pulsa el boton "Plantillas" en el footer
+3. Busca o navega por las plantillas disponibles
+4. Selecciona una plantilla
+5. El asunto y el cuerpo se rellenan automaticamente
+6. El usuario edita lo que necesite y envia

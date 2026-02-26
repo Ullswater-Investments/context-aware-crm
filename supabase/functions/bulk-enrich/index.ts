@@ -14,6 +14,7 @@ interface EnrichResult {
   hunter: string;
   apollo: string;
   lusha: string;
+  findymail: string;
 }
 
 async function enrichWithHunter(
@@ -187,6 +188,56 @@ async function enrichWithLusha(
   }
 }
 
+async function enrichWithFindymail(
+  contact: any,
+  findymailKey: string,
+  supabase: any
+): Promise<string> {
+  if (!contact.company_domain) return "skipped";
+
+  try {
+    const nameParts = contact.full_name.trim().split(/\s+/);
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+    const domain = contact.company_domain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+
+    const res = await fetch("https://app.findymail.com/api/search/name", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${findymailKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ first_name: firstName, last_name: lastName, domain }),
+    });
+
+    if (!res.ok) {
+      console.error(`Findymail error for ${contact.full_name}: HTTP ${res.status}`);
+      return "error";
+    }
+
+    const data = await res.json();
+    const foundEmail = data?.email || null;
+
+    if (!foundEmail) {
+      await supabase.from("contacts").update({ findymail_status: "not_found", last_enriched_at: new Date().toISOString() }).eq("id", contact.id);
+      return "not_found";
+    }
+
+    // Re-read contact to get latest data
+    const { data: fresh } = await supabase.from("contacts").select("work_email").eq("id", contact.id).single();
+    const c = fresh || contact;
+
+    const updates: Record<string, any> = { findymail_status: "enriched", last_enriched_at: new Date().toISOString() };
+    if (foundEmail && !c.work_email) updates.work_email = foundEmail;
+
+    await supabase.from("contacts").update(updates).eq("id", contact.id);
+    return "enriched";
+  } catch (e) {
+    console.error(`Findymail exception for ${contact.full_name}:`, e.message);
+    return "error";
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -218,8 +269,9 @@ Deno.serve(async (req) => {
     const hunterKey = Deno.env.get("HUNTER_API_KEY") || "";
     const apolloKey = Deno.env.get("APOLLO_API_KEY") || "";
     const lushaKey = Deno.env.get("LUSHA_API_KEY") || "";
+    const findymailKey = Deno.env.get("FINDYMAIL_API_KEY") || "";
 
-    const { last_id = "", services = ["hunter", "apollo", "lusha"] } = await req.json();
+    const { last_id = "", services = ["hunter", "apollo", "lusha", "findymail"] } = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -230,7 +282,7 @@ Deno.serve(async (req) => {
     // Only get contacts missing ALL email AND ALL phone, and not fully processed by all 3 services
     let query = supabase
       .from("contacts")
-      .select("id, full_name, company_domain, email, phone, work_email, personal_email, mobile_phone, work_phone, position, linkedin_url, organization_id, hunter_status, apollo_status, lusha_status")
+      .select("id, full_name, company_domain, email, phone, work_email, personal_email, mobile_phone, work_phone, position, linkedin_url, organization_id, hunter_status, apollo_status, lusha_status, findymail_status")
       .eq("created_by", userId)
       .or("email.is.null,email.eq.")
       .or("work_email.is.null,work_email.eq.")
@@ -291,6 +343,7 @@ Deno.serve(async (req) => {
         hunter: "skipped",
         apollo: "skipped",
         lusha: "skipped",
+        findymail: "skipped",
       };
 
       // Hunter (needs domain, skip if already processed)
@@ -312,9 +365,15 @@ Deno.serve(async (req) => {
         await new Promise((r) => setTimeout(r, 500));
       }
 
+      // Findymail (skip if already processed)
+      if (services.includes("findymail") && findymailKey && contact.company_domain && contact.findymail_status === "pending") {
+        result.findymail = await enrichWithFindymail(contact, findymailKey, supabase);
+        await new Promise((r) => setTimeout(r, 500));
+      }
+
       lastProcessedId = contact.id;
       results.push(result);
-      console.log(`Enriched ${contact.full_name}: H=${result.hunter} A=${result.apollo} L=${result.lusha}`);
+      console.log(`Enriched ${contact.full_name}: H=${result.hunter} A=${result.apollo} L=${result.lusha} F=${result.findymail}`);
     }
 
     return new Response(
