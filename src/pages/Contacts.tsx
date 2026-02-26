@@ -162,6 +162,23 @@ export default function Contacts() {
     load();
   };
 
+  const bulkFixEmails = async () => {
+    const fixable = contacts.filter(c => !c.email && (c.work_email || c.personal_email));
+    if (fixable.length === 0) return;
+    let fixed = 0;
+    for (const c of fixable) {
+      const fallback = c.work_email || c.personal_email;
+      const updates: Record<string, any> = { email: fallback };
+      if (!c.company_domain && fallback && fallback.includes("@")) {
+        updates.company_domain = fallback.split("@")[1];
+      }
+      const { error } = await supabase.from("contacts").update(updates).eq("id", c.id);
+      if (!error) fixed++;
+    }
+    toast.success(`${fixed} emails corregidos de ${fixable.length}`);
+    load();
+  };
+
   const enrichWithFindymailFromCard = async (c: Contact) => {
     if (!c.company_domain) return;
     setEnrichingFindymailId(c.id);
@@ -187,7 +204,13 @@ export default function Contacts() {
     }
   };
 
+  const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
   const create = async () => {
+    if (form.email && !EMAIL_REGEX.test(form.email)) {
+      toast.error("El formato del email principal no es válido");
+      return;
+    }
     const emailValue = form.email || form.work_email || form.personal_email || null;
     const domainValue = form.company_domain || (emailValue && emailValue.includes("@") ? emailValue.split("@")[1] : null);
     const insert: any = {
@@ -295,6 +318,11 @@ export default function Contacts() {
             <Button variant="outline" onClick={bulkEnrichAll} disabled={bulkEnriching}>
               {bulkEnriching ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2" />}
               Enriquecer todos
+            </Button>
+          )}
+          {contacts.some(c => !c.email && (c.work_email || c.personal_email)) && (
+            <Button variant="outline" onClick={bulkFixEmails} disabled={bulkEnriching}>
+              <Mail className="w-4 h-4 mr-2" />Corregir emails
             </Button>
           )}
           <Button variant="outline" onClick={() => setImporterOpen(true)}><FileSpreadsheet className="w-4 h-4 mr-2" />Importar</Button>
@@ -430,10 +458,10 @@ export default function Contacts() {
                             </div>
                             {c.organizations?.name && <p className="text-xs text-muted-foreground truncate">{c.organizations.name}</p>}
                             {c.position && <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5"><Briefcase className="w-3 h-3" />{c.position}</p>}
-                            {(c.email || c.work_email || c.personal_email) ? (
-                              <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: (c.email || c.work_email || c.personal_email)! }); }}
+                            {c.email ? (
+                              <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
                                 className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5 hover:text-primary transition-colors">
-                                <Mail className="w-3 h-3" />{c.email || c.work_email || c.personal_email}
+                                <Mail className="w-3 h-3" />{c.email}
                               </button>
                             ) : (c.work_email || c.personal_email) ? (
                               <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
@@ -532,10 +560,10 @@ export default function Contacts() {
                 </CardHeader>
                 <CardContent className="space-y-1.5">
                   {c.position && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Briefcase className="w-3.5 h-3.5" />{c.position}</div>}
-                  {(c.email || c.work_email || c.personal_email) ? (
-                    <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: (c.email || c.work_email || c.personal_email)! }); }}
+                  {c.email ? (
+                    <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
                       className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
-                      <Mail className="w-3.5 h-3.5" />{c.email || c.work_email || c.personal_email}
+                      <Mail className="w-3.5 h-3.5" />{c.email}
                     </button>
                   ) : (c.work_email || c.personal_email) ? (
                     <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
