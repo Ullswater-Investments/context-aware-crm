@@ -532,10 +532,10 @@ export default function Contacts() {
                 </CardHeader>
                 <CardContent className="space-y-1.5">
                   {c.position && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Briefcase className="w-3.5 h-3.5" />{c.position}</div>}
-                  {(c.email || c.work_email || c.personal_email) ? (
-                    <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: (c.email || c.work_email || c.personal_email)! }); }}
+                  {c.email ? (
+                    <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
                       className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
-                      <Mail className="w-3.5 h-3.5" />{c.email || c.work_email || c.personal_email}
+                      <Mail className="w-3.5 h-3.5" />{c.email}
                     </button>
                   ) : (c.work_email || c.personal_email) ? (
                     <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
