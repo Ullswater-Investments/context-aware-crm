@@ -10,11 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2, MapPin, Zap } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2, MapPin, Zap, MessageCircle } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
 import HunterSearch from "@/components/contacts/HunterSearch";
 import ComposeEmail from "@/components/email/ComposeEmail";
+import WhatsAppChat from "@/components/whatsapp/WhatsAppChat";
 import { Progress } from "@/components/ui/progress";
 import { Contact } from "@/types/contact";
 
@@ -71,6 +72,7 @@ export default function Contacts() {
   const [enrichingLushaId, setEnrichingLushaId] = useState<string | null>(null);
   const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
   const [emailContact, setEmailContact] = useState<{ id: string; email: string } | null>(null);
+  const [whatsappContact, setWhatsappContact] = useState<Contact | null>(null);
   const [bulkEnriching, setBulkEnriching] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ processed: 0, total: 0 });
 
@@ -415,7 +417,12 @@ export default function Contacts() {
                               <p className="text-xs text-muted-foreground/50 truncate flex items-center gap-1 mt-0.5"><Mail className="w-3 h-3" />Sin email</p>
                             )}
                             {(c.phone || c.mobile_phone || c.work_phone) ? (
-                              <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5"><Phone className="w-3 h-3" />{c.phone || c.mobile_phone || c.work_phone}</p>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <p className="text-xs text-muted-foreground truncate flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone || c.mobile_phone || c.work_phone}</p>
+                                <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }} className="p-0.5 rounded hover:bg-[#25d366]/10 text-[#25d366] transition-colors" title="WhatsApp">
+                                  <MessageCircle className="w-3 h-3" />
+                                </button>
+                              </div>
                             ) : (
                               <p className="text-xs text-muted-foreground/50 truncate flex items-center gap-1 mt-0.5"><Phone className="w-3 h-3" />Sin teléfono</p>
                             )}
@@ -501,7 +508,12 @@ export default function Contacts() {
                     <div className="flex items-center gap-2 text-sm text-muted-foreground/50"><Mail className="w-3.5 h-3.5" />Sin email</div>
                   )}
                   {(c.phone || c.mobile_phone || c.work_phone) ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground"><Phone className="w-3.5 h-3.5" />{c.phone || c.mobile_phone || c.work_phone}</div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Phone className="w-3.5 h-3.5" />{c.phone || c.mobile_phone || c.work_phone}
+                      <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }} className="p-0.5 rounded hover:bg-[#25d366]/10 text-[#25d366] transition-colors" title="WhatsApp">
+                        <MessageCircle className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   ) : (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground/50"><Phone className="w-3.5 h-3.5" />Sin teléfono</div>
                   )}
@@ -561,6 +573,7 @@ export default function Contacts() {
       <ContactImporter open={importerOpen} onOpenChange={setImporterOpen} onComplete={load} />
       <HunterSearch open={hunterOpen} onOpenChange={setHunterOpen} />
       {emailContact && <ComposeEmail open={!!emailContact} onOpenChange={(o) => { if (!o) setEmailContact(null); }} defaultTo={emailContact.email} contactId={emailContact.id} />}
+      {whatsappContact && <WhatsAppChat contact={whatsappContact} open={!!whatsappContact} onOpenChange={(o) => { if (!o) setWhatsappContact(null); }} />}
     </div>
   );
 }

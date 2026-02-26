@@ -10,8 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe, MapPin, FileText, Download, Upload } from "lucide-react";
+import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe, MapPin, FileText, Download, Upload, MessageCircle } from "lucide-react";
 import ComposeEmail from "@/components/email/ComposeEmail";
+import WhatsAppChat from "@/components/whatsapp/WhatsAppChat";
 import { Contact } from "@/types/contact";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -73,6 +74,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const [enrichingHunter, setEnrichingHunter] = useState(false);
   const [enrichingApollo, setEnrichingApollo] = useState(false);
   const [enrichingFindymail, setEnrichingFindymail] = useState(false);
+  const [whatsappOpen, setWhatsappOpen] = useState(false);
 
   const loadNotes = async (contactId: string) => {
     setLoadingNotes(true);
@@ -452,7 +454,12 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                     <div className="flex items-center gap-2 text-sm text-muted-foreground/50"><Mail className="w-4 h-4" />No disponible</div>
                   )}
                   {(contact.phone || contact.mobile_phone || contact.work_phone) ? (
-                    <div className="flex items-center gap-2 text-sm"><Phone className="w-4 h-4 text-muted-foreground" />{contact.phone || contact.mobile_phone || contact.work_phone}</div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Phone className="w-4 h-4 text-muted-foreground" />{contact.phone || contact.mobile_phone || contact.work_phone}
+                      <button onClick={() => setWhatsappOpen(true)} className="ml-1 p-1 rounded hover:bg-[#25d366]/10 text-[#25d366] transition-colors" title="Abrir WhatsApp">
+                        <MessageCircle className="w-4 h-4" />
+                      </button>
+                    </div>
                   ) : (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground/50"><Phone className="w-4 h-4" />No disponible</div>
                   )}
@@ -642,6 +649,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       </Dialog>
 
       <ComposeEmail open={composeOpen} onOpenChange={setComposeOpen} defaultTo={contact.email || contact.work_email || contact.personal_email || ""} contactId={contact.id} organizationId={contact.organization_id || undefined} />
+      <WhatsAppChat contact={contact} open={whatsappOpen} onOpenChange={setWhatsappOpen} />
 
       {/* Delete Contact Confirmation */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
