@@ -361,10 +361,20 @@ export default function ComposeEmail({
     }
     try {
       let htmlToSave = body;
-      const contactName = await getContactName();
-      if (contactName) {
-        const escapedName = contactName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        htmlToSave = htmlToSave.replace(new RegExp(escapedName, "gi"), "{{nombre}}");
+      const info = await getContactInfo();
+      if (info) {
+        const replaceInHtml = (value: string | null, variable: string) => {
+          if (!value) return;
+          const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          htmlToSave = htmlToSave.replace(new RegExp(escaped, "gi"), variable);
+        };
+        replaceInHtml(info.full_name, "{{nombre}}");
+        replaceInHtml(info.email, "{{email}}");
+        replaceInHtml(info.position, "{{cargo}}");
+        if (info.organization_id) {
+          const { data: org } = await supabase.from("organizations").select("name").eq("id", info.organization_id).maybeSingle();
+          replaceInHtml(org?.name || null, "{{empresa}}");
+        }
       }
 
       const { error } = await supabase.from("email_templates").insert({
@@ -372,7 +382,7 @@ export default function ComposeEmail({
         subject: subject || null,
         content_html: htmlToSave,
         category: templateCategory.trim() || null,
-        entity: templateEntity || null,
+        entity: templateEntity === "none" ? null : templateEntity,
         created_by: user.id,
       });
       if (error) throw error;
@@ -380,7 +390,7 @@ export default function ComposeEmail({
       setSaveTemplateOpen(false);
       setTemplateName("");
       setTemplateCategory("");
-      setTemplateEntity("");
+      setTemplateEntity("none");
     } catch (e: any) {
       toast.error(e.message || "Error al guardar la plantilla");
     }
