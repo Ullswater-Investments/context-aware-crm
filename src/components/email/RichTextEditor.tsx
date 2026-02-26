@@ -8,6 +8,7 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import FontFamily from "@tiptap/extension-font-family";
 import Color from "@tiptap/extension-color";
 import Highlight from "@tiptap/extension-highlight";
+import TextAlign from "@tiptap/extension-text-align";
 import { FontSize } from "@/lib/tiptap-font-size";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -30,6 +31,12 @@ import {
   Minus,
   Loader2,
   Highlighter,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import ImageBubbleMenu from "./ImageBubbleMenu";
 
@@ -87,6 +94,8 @@ export default function RichTextEditor({
 }: RichTextEditorProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [currentFont, setCurrentFont] = useState<string>("");
+  const [currentSize, setCurrentSize] = useState<string>("");
 
   const uploadImage = useCallback(
     async (file: File): Promise<string | null> => {
@@ -124,6 +133,7 @@ export default function RichTextEditor({
       Color,
       Highlight.configure({ multicolor: true }),
       FontSize,
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -180,12 +190,28 @@ export default function RichTextEditor({
     },
   });
 
-  // Sync external content changes (e.g. form reset)
+  // Sync external content changes (e.g. form reset, template selection)
   useEffect(() => {
-    if (editor && content !== editor.getHTML() && content === "") {
+    if (editor && content !== editor.getHTML()) {
       editor.commands.setContent(content);
     }
   }, [content, editor]);
+
+  // Track current font/size from selection
+  useEffect(() => {
+    if (!editor) return;
+    const updateAttrs = () => {
+      const attrs = editor.getAttributes("textStyle");
+      setCurrentFont(attrs.fontFamily || "");
+      setCurrentSize(attrs.fontSize || "");
+    };
+    editor.on("selectionUpdate", updateAttrs);
+    editor.on("transaction", updateAttrs);
+    return () => {
+      editor.off("selectionUpdate", updateAttrs);
+      editor.off("transaction", updateAttrs);
+    };
+  }, [editor]);
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -220,8 +246,35 @@ export default function RichTextEditor({
     <div className="border border-input rounded-md bg-background overflow-hidden">
       {/* Premium Toolbar */}
       <div className="flex items-center gap-0.5 border-b border-border px-1 py-1 bg-muted/30 flex-wrap">
+        {/* Undo / Redo */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().undo().run()}
+          disabled={!editor.can().undo()}
+          title="Deshacer"
+        >
+          <Undo2 className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().redo().run()}
+          disabled={!editor.can().redo()}
+          title="Rehacer"
+        >
+          <Redo2 className="h-3.5 w-3.5" />
+        </Button>
+
+        <Separator orientation="vertical" className="h-5 mx-0.5" />
+
         {/* Font Family */}
         <Select
+          value={currentFont || undefined}
           onValueChange={(v) => editor.chain().focus().setFontFamily(v).run()}
         >
           <SelectTrigger className="w-[130px] h-7 text-xs">
@@ -238,6 +291,7 @@ export default function RichTextEditor({
 
         {/* Font Size */}
         <Select
+          value={currentSize || undefined}
           onValueChange={(v) => editor.chain().focus().setFontSize(v).run()}
         >
           <SelectTrigger className="w-[72px] h-7 text-xs">
@@ -299,6 +353,52 @@ export default function RichTextEditor({
         >
           <Italic className="h-3.5 w-3.5" />
         </Button>
+
+        <Separator orientation="vertical" className="h-5 mx-0.5" />
+
+        {/* Text Alignment */}
+        <Button
+          type="button"
+          variant={editor.isActive({ textAlign: "left" }) ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().setTextAlign("left").run()}
+          title="Alinear izquierda"
+        >
+          <AlignLeft className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant={editor.isActive({ textAlign: "center" }) ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().setTextAlign("center").run()}
+          title="Centrar"
+        >
+          <AlignCenter className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant={editor.isActive({ textAlign: "right" }) ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().setTextAlign("right").run()}
+          title="Alinear derecha"
+        >
+          <AlignRight className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant={editor.isActive({ textAlign: "justify" }) ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => editor.chain().focus().setTextAlign("justify").run()}
+          title="Justificar"
+        >
+          <AlignJustify className="h-3.5 w-3.5" />
+        </Button>
+
+        <Separator orientation="vertical" className="h-5 mx-0.5" />
 
         {/* Link */}
         <Button
