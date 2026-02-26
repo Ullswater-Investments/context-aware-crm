@@ -15,8 +15,9 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2,
+  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Save,
 } from "lucide-react";
 import RichTextEditor from "./RichTextEditor";
 import SignatureManager, { type Signature } from "./SignatureManager";
