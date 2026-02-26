@@ -1,99 +1,83 @@
 
 
-## Integracion de WhatsApp en el CRM
+## Revision: Errores y Mejoras pendientes tras integracion Findymail
 
-### Resumen
-Integrar un sistema completo de mensajeria WhatsApp en el CRM usando la API de Whapi.cloud, permitiendo enviar y recibir mensajes desde la ficha de cada contacto, con soporte para variables de personalizacion y actualizaciones en tiempo real.
+### BUG 1: Bulk Enrich no incluye Findymail (Alta)
 
-### Fase 1: Base de datos
+**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
 
-**Nueva tabla `whatsapp_messages`:**
-- `id` (uuid, PK)
-- `contact_id` (uuid, FK a contacts)
-- `phone_number` (text) - numero del destinatario/remitente
-- `direction` (text) - "inbound" o "outbound"
-- `content` (text) - cuerpo del mensaje
-- `status` (text) - "pending", "sent", "delivered", "read", "failed"
-- `whapi_message_id` (text, nullable) - ID del mensaje en Whapi
-- `created_by` (uuid)
-- `created_at` (timestamptz)
+**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
 
-RLS: Solo el creador puede ver/crear sus mensajes. Para inbound (webhook), se usara service_role.
+### BUG 2: `findymail_status` accedido con cast `as any` (Media)
 
-Activar Realtime: `ALTER PUBLICATION supabase_realtime ADD TABLE public.whatsapp_messages;`
+**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
 
-### Fase 2: Edge Function de envio (`send-whatsapp`)
+**Solucion:** Cambiar a `contact.findymail_status` sin cast.
 
-- Recibe: `contact_id`, `phone`, `message`
-- Valida JWT del usuario con `getClaims()`
-- Soporta variables `{{first_name}}`, `{{last_name}}`, `{{company}}` reemplazandolas con datos del contacto
-- Limpia el numero de telefono (elimina espacios, guiones, anade prefijo +34 si falta)
-- Llama a la API de Whapi.cloud: `POST https://gate.whapi.cloud/messages/text` con header `Authorization: Bearer {WHAPI_API_TOKEN}`
-- Inserta el mensaje en `whatsapp_messages` con direction "outbound"
-- Requiere secret: `WHAPI_API_TOKEN`
+### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
 
-### Fase 3: Edge Function webhook (`whatsapp-webhook`)
+**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
 
-- Funcion publica (sin JWT) que recibe POSTs de Whapi.cloud
-- Extrae numero del remitente y contenido del mensaje
-- Busca contacto en `contacts` por `phone`, `mobile_phone` o `work_phone`
-- Si no existe, crea contacto "Desconocido" con el numero
-- Inserta en `whatsapp_messages` con direction "inbound" usando service_role
-- Valida la estructura del payload para evitar inyecciones
-- Config en `supabase/config.toml`: `verify_jwt = false`
+**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
 
-### Fase 4: Componente de chat (`WhatsAppChat.tsx`)
+### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
 
-- Panel lateral (Sheet) que se abre desde la ficha del contacto
-- Diseno tipo chat: burbujas verdes (outbound) y blancas (inbound)
-- ScrollArea con historial de mensajes ordenado por fecha
-- Campo de texto inferior con boton de envio (icono WhatsApp verde)
-- Selector de variables rapidas (`{{first_name}}`, etc.)
-- Suscripcion a Supabase Realtime para mensajes entrantes en tiempo real
-- Indicador de estado del mensaje (enviado/entregado/leido con checks)
+**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
 
-### Fase 5: Integracion en la UI existente
+**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
 
-**ContactProfile.tsx:**
-- Anadir boton "WhatsApp" junto a los botones existentes de email
-- Solo visible cuando el contacto tiene numero de telefono
-- Abre el panel WhatsAppChat
+### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
 
-**Contacts.tsx (Kanban/Lista):**
-- Anadir icono WhatsApp en las tarjetas de contacto (junto a los iconos de email)
-- Click directo abre el chat de WhatsApp para ese contacto
+**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
 
-### Fase 6: Ruta de pagina dedicada (opcional)
+**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
 
-- Nueva pagina `/whatsapp` con vista de todas las conversaciones
-- Lista de chats a la izquierda, conversacion seleccionada a la derecha
-- Similar al diseno de la pagina de Emails existente
+### Resumen de cambios
 
-### Archivos a crear/modificar
+| Archivo | Cambio | Prioridad |
+|---|---|---|
+| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
+| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
+| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
+| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
 
-| Archivo | Accion |
-|---|---|
-| `supabase/migrations/xxx_whatsapp.sql` | Crear tabla + RLS + realtime |
-| `supabase/functions/send-whatsapp/index.ts` | Crear (envio via Whapi) |
-| `supabase/functions/whatsapp-webhook/index.ts` | Crear (recepcion webhook) |
-| `supabase/config.toml` | Registrar ambas funciones |
-| `src/components/whatsapp/WhatsAppChat.tsx` | Crear (componente de chat) |
-| `src/components/contacts/ContactProfile.tsx` | Anadir boton WhatsApp |
-| `src/pages/Contacts.tsx` | Anadir icono WhatsApp en tarjetas |
+### Detalle tecnico
 
-### Prerequisito: API Token de Whapi.cloud
+**Contacts.tsx - Nuevos estados:**
+```typescript
+const [findymailFilter, setFindymailFilter] = useState("");
+const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+```
 
-Antes de implementar, necesitaremos que configures tu token de Whapi.cloud como secret (`WHAPI_API_TOKEN`). Para obtenerlo:
-1. Registrate en whapi.cloud
-2. Conecta tu numero de WhatsApp escaneando el QR
-3. Copia el API Token desde el dashboard
-4. Lo guardaremos de forma segura en los secrets del proyecto
+**Contacts.tsx - Nueva funcion:**
+```typescript
+const enrichWithFindymailFromCard = async (c: Contact) => {
+  if (!c.company_domain) return;
+  setEnrichingFindymailId(c.id);
+  try {
+    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+    });
+    if (error) throw error;
+    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
+    else toast.info("Findymail no encontro datos");
+    load();
+  } catch (err: any) {
+    toast.error(err.message || "Error con Findymail");
+  } finally {
+    setEnrichingFindymailId(null);
+  }
+};
+```
 
-### Seguridad
+**Contacts.tsx - Filtro actualizado:**
+```typescript
+const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
+return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+```
 
-- El token de Whapi nunca se expone al frontend
-- Los mensajes salientes requieren autenticacion JWT
-- El webhook valida la estructura del payload
-- RLS asegura que cada usuario solo ve sus mensajes
-- Numeros de telefono se validan y sanitizan antes de enviar
+**Contacts.tsx - Bulk enrich corregido:**
+```typescript
+body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+```
 
