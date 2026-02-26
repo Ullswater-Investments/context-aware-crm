@@ -10,8 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe, MapPin, FileText, Download, Upload } from "lucide-react";
+import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe, MapPin, FileText, Download, Upload, MessageCircle } from "lucide-react";
 import ComposeEmail from "@/components/email/ComposeEmail";
+import WhatsAppChat from "@/components/whatsapp/WhatsAppChat";
 import { Contact } from "@/types/contact";
 
 const STATUS_LABELS: Record<string, string> = {
