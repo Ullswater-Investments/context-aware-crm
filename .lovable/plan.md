@@ -1,31 +1,57 @@
 
+## Plan: Sistema de Plantillas de Email Inteligentes
 
-## Plan: Corregir la carga de cuentas de email en el compositor
+### Resumen
+Crear una tabla `email_templates` en la base de datos, un componente selector de plantillas con busqueda rapida (CommandDialog), e integrarlo en el compositor de email para que al elegir una plantilla se rellene automaticamente el asunto y el cuerpo del mensaje.
 
-### Problema detectado
+### 1. Base de datos: Migracion SQL
 
-Cuando abres el compositor de email pulsando "Redactar", las cuentas de email no se cargan en el desplegable "De". Esto ocurre porque `fetchEmailAccounts()` solo se llama dentro de `handleOpenChange`, que es un callback del Sheet que no se ejecuta cuando el compositor se abre programaticamente (via `composeOpen = true`).
+Crear tabla `email_templates` con los siguientes campos:
+- `id` (UUID, PK)
+- `name` (TEXT, NOT NULL) - Nombre de la plantilla
+- `subject` (TEXT) - Asunto predefinido
+- `content_html` (TEXT, NOT NULL) - Cuerpo HTML
+- `category` (TEXT) - Categoria: Ventas, Legal, Seguimiento, etc.
+- `entity` (TEXT) - Filtro por empresa: GDC, NextGen, General
+- `created_by` (UUID) - Vinculado al usuario autenticado
+- `created_at` (TIMESTAMPTZ)
+- `updated_at` (TIMESTAMPTZ)
 
-El `useEffect` existente (linea 131-133) solo llama a `fetchSignatures()` pero **no llama a `fetchEmailAccounts()`**.
+Politicas RLS: CRUD completo restringido a `created_by = auth.uid()`.
 
-### Solucion
+Insertar 3 plantillas de ejemplo (Propuesta de Inversion, Saludo Inicial GDC, Factura Pendiente).
 
-Modificar el `useEffect` en `src/components/email/ComposeEmail.tsx` (linea 131-133) para que tambien llame a `fetchEmailAccounts()` cuando el compositor se abre:
+### 2. Nuevo componente: `src/components/email/TemplatePicker.tsx`
 
-```typescript
-useEffect(() => {
-  if (open) {
-    fetchSignatures();
-    fetchEmailAccounts();
-  }
-}, [open, user]);
-```
+Un boton "Plantillas" que abre un `CommandDialog` (ya disponible en el proyecto) con:
+- Buscador de texto (CommandInput)
+- Plantillas agrupadas por categoria (CommandGroup)
+- Cada item muestra nombre y asunto
+- Al seleccionar, dispara callback `onSelect(template)` con subject y content_html
+- Carga plantillas desde la base de datos al abrirse
+- Filtrado opcional por `entity`
 
-### Archivo a modificar
+### 3. Modificar: `src/components/email/ComposeEmail.tsx`
 
-| Archivo | Cambio |
+- Importar `TemplatePicker`
+- Anadir boton de plantillas en el footer (lado izquierdo, junto a los controles existentes)
+- Al seleccionar una plantilla:
+  - `setSubject(template.subject)` si la plantilla tiene asunto
+  - `setBody(template.content_html)` para reemplazar el contenido del editor
+- Sustitucion basica de variables: si el `defaultTo` coincide con un contacto, reemplazar `{{nombre}}` por el nombre del contacto (busqueda simple en la tabla contacts por email)
+
+### Archivos afectados
+
+| Archivo | Accion |
 |---|---|
-| `src/components/email/ComposeEmail.tsx` | Anadir `fetchEmailAccounts()` al `useEffect` de la linea 131 |
+| Migracion SQL | Crear tabla `email_templates` + RLS + datos ejemplo |
+| `src/components/email/TemplatePicker.tsx` | Crear - selector con CommandDialog |
+| `src/components/email/ComposeEmail.tsx` | Modificar - integrar TemplatePicker en el footer |
 
-Este cambio de una sola linea hara que el desplegable "De" muestre `emilio.mulet@globaldatacare.es` cada vez que se abra el compositor.
-
+### Flujo de usuario
+1. Abre el compositor de email
+2. Pulsa el boton "Plantillas" en el footer
+3. Busca o navega por las plantillas disponibles
+4. Selecciona una plantilla
+5. El asunto y el cuerpo se rellenan automaticamente
+6. El usuario edita lo que necesite y envia
