@@ -1,42 +1,57 @@
 
-## Mejoras en el Compositor de Email: Firma apagada por defecto + Generar Plantilla desde email
+## Plan: Sistema de Plantillas de Email Inteligentes
 
-### 1. Firma apagada por defecto
+### Resumen
+Crear una tabla `email_templates` en la base de datos, un componente selector de plantillas con busqueda rapida (CommandDialog), e integrarlo en el compositor de email para que al elegir una plantilla se rellene automaticamente el asunto y el cuerpo del mensaje.
 
-**Archivo:** `src/components/email/ComposeEmail.tsx`
+### 1. Base de datos: Migracion SQL
 
-Cambiar el estado inicial de `includeSignature` de `true` a `false` (linea 83). Ademas, en `fetchSignatures`, eliminar la linea que fuerza `setIncludeSignature(true)` cuando hay firma por defecto (linea 101). El usuario debera activar manualmente el switch de firma si la quiere.
+Crear tabla `email_templates` con los siguientes campos:
+- `id` (UUID, PK)
+- `name` (TEXT, NOT NULL) - Nombre de la plantilla
+- `subject` (TEXT) - Asunto predefinido
+- `content_html` (TEXT, NOT NULL) - Cuerpo HTML
+- `category` (TEXT) - Categoria: Ventas, Legal, Seguimiento, etc.
+- `entity` (TEXT) - Filtro por empresa: GDC, NextGen, General
+- `created_by` (UUID) - Vinculado al usuario autenticado
+- `created_at` (TIMESTAMPTZ)
+- `updated_at` (TIMESTAMPTZ)
 
-### 2. Boton "Guardar como plantilla" en el footer del compositor
+Politicas RLS: CRUD completo restringido a `created_by = auth.uid()`.
 
-**Archivo:** `src/components/email/ComposeEmail.tsx`
+Insertar 3 plantillas de ejemplo (Propuesta de Inversion, Saludo Inicial GDC, Factura Pendiente).
 
-Anadir un boton "Guardar como plantilla" en el footer (lado derecho, antes del boton IA). Al pulsarlo:
+### 2. Nuevo componente: `src/components/email/TemplatePicker.tsx`
 
-1. Se abre un pequeno dialogo (`Dialog`) pidiendo:
-   - Nombre de la plantilla (obligatorio)
-   - Categoria (opcional, input de texto)
-   - Entidad (opcional, select: GDC / NextGen / General)
-2. El contenido HTML del body se procesa antes de guardar: se buscan ocurrencias del nombre completo del contacto destinatario (obtenido de la tabla `contacts` por email) y se reemplazan por `{{nombre}}`. Asi, cuando se reutilice la plantilla con otro contacto, el sistema sustituira `{{nombre}}` automaticamente.
-3. El asunto actual se guarda como `subject` de la plantilla.
-4. Se inserta en la tabla `email_templates` con `created_by = user.id`.
-5. Se muestra toast de exito.
+Un boton "Plantillas" que abre un `CommandDialog` (ya disponible en el proyecto) con:
+- Buscador de texto (CommandInput)
+- Plantillas agrupadas por categoria (CommandGroup)
+- Cada item muestra nombre y asunto
+- Al seleccionar, dispara callback `onSelect(template)` con subject y content_html
+- Carga plantillas desde la base de datos al abrirse
+- Filtrado opcional por `entity`
 
-### 3. Sustitucion de variables mejorada al aplicar plantilla
+### 3. Modificar: `src/components/email/ComposeEmail.tsx`
 
-**Archivo:** `src/components/email/ComposeEmail.tsx` (funcion `handleTemplateSelect`)
+- Importar `TemplatePicker`
+- Anadir boton de plantillas en el footer (lado izquierdo, junto a los controles existentes)
+- Al seleccionar una plantilla:
+  - `setSubject(template.subject)` si la plantilla tiene asunto
+  - `setBody(template.content_html)` para reemplazar el contenido del editor
+- Sustitucion basica de variables: si el `defaultTo` coincide con un contacto, reemplazar `{{nombre}}` por el nombre del contacto (busqueda simple en la tabla contacts por email)
 
-Actualmente solo sustituye `{{nombre}}` buscando por email. Mejorar para:
-- Buscar el contacto tambien por `contactId` (prop) si esta disponible, no solo por email.
-- Sustituir `{{nombre}}` por `full_name` del contacto encontrado.
+### Archivos afectados
 
-### Resumen tecnico de cambios
-
-| Archivo | Cambio |
+| Archivo | Accion |
 |---|---|
-| `src/components/email/ComposeEmail.tsx` | `includeSignature` default `false`, eliminar auto-activacion en `fetchSignatures` |
-| `src/components/email/ComposeEmail.tsx` | Nuevo boton "Guardar como plantilla" + Dialog con formulario nombre/categoria/entidad |
-| `src/components/email/ComposeEmail.tsx` | Logica de sustitucion inversa: reemplazar nombre del contacto por `{{nombre}}` al guardar |
-| `src/components/email/ComposeEmail.tsx` | Mejorar `handleTemplateSelect` para buscar contacto por `contactId` ademas de por email |
+| Migracion SQL | Crear tabla `email_templates` + RLS + datos ejemplo |
+| `src/components/email/TemplatePicker.tsx` | Crear - selector con CommandDialog |
+| `src/components/email/ComposeEmail.tsx` | Modificar - integrar TemplatePicker en el footer |
 
-No se requieren cambios en base de datos (la tabla `email_templates` ya existe con las columnas necesarias) ni en edge functions.
+### Flujo de usuario
+1. Abre el compositor de email
+2. Pulsa el boton "Plantillas" en el footer
+3. Busca o navega por las plantillas disponibles
+4. Selecciona una plantilla
+5. El asunto y el cuerpo se rellenan automaticamente
+6. El usuario edita lo que necesite y envia

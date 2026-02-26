@@ -15,8 +15,9 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2,
+  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Save,
 } from "lucide-react";
 import RichTextEditor from "./RichTextEditor";
 import SignatureManager, { type Signature } from "./SignatureManager";
@@ -80,7 +81,11 @@ export default function ComposeEmail({
   const [selectedSignatureId, setSelectedSignatureId] = useState<string>("none");
   const [sigManagerOpen, setSigManagerOpen] = useState(false);
   const [showCcBcc, setShowCcBcc] = useState(false);
-  const [includeSignature, setIncludeSignature] = useState(true);
+  const [includeSignature, setIncludeSignature] = useState(false);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [templateCategory, setTemplateCategory] = useState("");
+  const [templateEntity, setTemplateEntity] = useState("");
   const [suggestingReply, setSuggestingReply] = useState(false);
   const [fromAccount, setFromAccount] = useState<string>("");
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
@@ -98,7 +103,6 @@ export default function ComposeEmail({
       const def = sigs.find((s) => s.is_default);
       if (def) {
         setSelectedSignatureId(def.id);
-        setIncludeSignature(true);
       }
     }
   };
@@ -305,23 +309,70 @@ export default function ComposeEmail({
   };
 
 
-  const handleTemplateSelect = async (template: EmailTemplate) => {
-    let html = template.content_html;
-    // Variable substitution: replace {{nombre}} with contact name if available
-    if (to && html.includes("{{nombre}}")) {
-      const { data: contact } = await supabase
+  const getContactName = async (): Promise<string | null> => {
+    if (contactId) {
+      const { data } = await supabase
+        .from("contacts")
+        .select("full_name")
+        .eq("id", contactId)
+        .maybeSingle();
+      if (data?.full_name) return data.full_name;
+    }
+    if (to) {
+      const { data } = await supabase
         .from("contacts")
         .select("full_name")
         .eq("email", to)
         .maybeSingle();
-      if (contact?.full_name) {
-        html = html.replace(/\{\{nombre\}\}/g, contact.full_name);
+      if (data?.full_name) return data.full_name;
+    }
+    return null;
+  };
+
+  const handleTemplateSelect = async (template: EmailTemplate) => {
+    let html = template.content_html;
+    if (html.includes("{{nombre}}")) {
+      const name = await getContactName();
+      if (name) {
+        html = html.replace(/\{\{nombre\}\}/g, name);
       }
     }
     if (template.subject) {
       setSubject(template.subject);
     }
     setBody(html);
+  };
+
+  const handleSaveAsTemplate = async () => {
+    if (!templateName.trim() || !user) {
+      toast.error("El nombre de la plantilla es obligatorio");
+      return;
+    }
+    try {
+      let htmlToSave = body;
+      const contactName = await getContactName();
+      if (contactName) {
+        const escapedName = contactName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        htmlToSave = htmlToSave.replace(new RegExp(escapedName, "gi"), "{{nombre}}");
+      }
+
+      const { error } = await supabase.from("email_templates").insert({
+        name: templateName.trim(),
+        subject: subject || null,
+        content_html: htmlToSave,
+        category: templateCategory.trim() || null,
+        entity: templateEntity || null,
+        created_by: user.id,
+      });
+      if (error) throw error;
+      toast.success("Plantilla guardada correctamente");
+      setSaveTemplateOpen(false);
+      setTemplateName("");
+      setTemplateCategory("");
+      setTemplateEntity("");
+    } catch (e: any) {
+      toast.error(e.message || "Error al guardar la plantilla");
+    }
   };
 
   return (
@@ -517,8 +568,21 @@ export default function ComposeEmail({
                 </button>
               </div>
 
-              {/* Lado derecho: Vista Previa + IA + Enviar */}
+              {/* Lado derecho: Guardar plantilla + Vista Previa + IA + Enviar */}
               <div className="flex items-center gap-2">
+                {/* Guardar como plantilla */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={!body.replace(/<[^>]+>/g, "").trim()}
+                  onClick={() => setSaveTemplateOpen(true)}
+                  title="Guardar como plantilla"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span className="ml-1 hidden sm:inline">Plantilla</span>
+                </Button>
+
                 {/* Vista Previa */}
                 <EmailPreviewModal
                   subject={subject}
@@ -577,6 +641,58 @@ export default function ComposeEmail({
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Dialog para guardar como plantilla */}
+      <Dialog open={saveTemplateOpen} onOpenChange={setSaveTemplateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Guardar como plantilla</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="text-sm">Nombre *</Label>
+              <Input
+                placeholder="Ej: Propuesta comercial GDC"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-sm">Categoría</Label>
+              <Input
+                placeholder="Ej: Ventas, Seguimiento..."
+                value={templateCategory}
+                onChange={(e) => setTemplateCategory(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-sm">Entidad</Label>
+              <Select value={templateEntity} onValueChange={setTemplateEntity}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Seleccionar entidad" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">General</SelectItem>
+                  <SelectItem value="gdc">GDC</SelectItem>
+                  <SelectItem value="nextgen">NextGen</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Si el email contiene el nombre del contacto, se reemplazará por {"{{nombre}}"} para reutilizar con otros contactos.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveTemplateOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveAsTemplate} disabled={!templateName.trim()}>
+              <Save className="w-4 h-4 mr-1" />
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <SignatureManager
         open={sigManagerOpen}
