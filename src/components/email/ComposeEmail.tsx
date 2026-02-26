@@ -390,7 +390,18 @@ export default function ComposeEmail({
         created_by: user.id,
       });
       if (error) throw error;
-      toast.success("Plantilla guardada correctamente");
+      // Detect which variables were substituted
+      const detectedVars: string[] = [];
+      if (htmlToSave.includes("{{nombre}}")) detectedVars.push("{{nombre}}");
+      if (htmlToSave.includes("{{email}}")) detectedVars.push("{{email}}");
+      if (htmlToSave.includes("{{empresa}}")) detectedVars.push("{{empresa}}");
+      if (htmlToSave.includes("{{cargo}}")) detectedVars.push("{{cargo}}");
+      
+      if (detectedVars.length > 0) {
+        toast.success(`Plantilla guardada. Variables detectadas: ${detectedVars.join(", ")}`);
+      } else {
+        toast.success("Plantilla guardada correctamente");
+      }
       setSaveTemplateOpen(false);
       setTemplateName("");
       setTemplateCategory("");

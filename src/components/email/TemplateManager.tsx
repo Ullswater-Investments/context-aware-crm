@@ -186,13 +186,15 @@ export default function TemplateManager({ open, onOpenChange }: TemplateManagerP
               </div>
             </div>
             <div>
-              <Label className="text-xs">Contenido HTML</Label>
-              <Textarea
-                value={contentHtml}
-                onChange={(e) => setContentHtml(e.target.value)}
-                placeholder="<p>Contenido de la plantilla...</p>"
-                className="mt-1 text-xs font-mono min-h-[80px]"
-              />
+              <Label className="text-xs">Contenido</Label>
+              <div className="mt-1">
+                <RichTextEditor
+                  content={contentHtml}
+                  onChange={setContentHtml}
+                  userId={user?.id || ""}
+                  placeholder="Contenido de la plantilla..."
+                />
+              </div>
             </div>
             <p className="text-[10px] text-muted-foreground">
               Variables: {"{{nombre}}"}, {"{{email}}"}, {"{{empresa}}"}, {"{{cargo}}"}
