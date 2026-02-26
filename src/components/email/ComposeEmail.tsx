@@ -298,7 +298,8 @@ export default function ComposeEmail({
       }
 
       toast.success("Email enviado correctamente");
-      handleOpenChange(false);
+      setTo(""); setCc(""); setBcc(""); setSubject(""); setBody(""); setAttachments([]);
+      onOpenChange(false);
       onSent?.();
     } catch (e: any) {
       console.error("Send email error:", e);
