@@ -9,6 +9,7 @@ import FontFamily from "@tiptap/extension-font-family";
 import Color from "@tiptap/extension-color";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
+import Underline from "@tiptap/extension-underline";
 import { FontSize } from "@/lib/tiptap-font-size";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -37,6 +38,8 @@ import {
   AlignJustify,
   Undo2,
   Redo2,
+  Underline as UnderlineIcon,
+  RemoveFormatting,
 } from "lucide-react";
 import ImageBubbleMenu from "./ImageBubbleMenu";
 
@@ -134,6 +137,7 @@ export default function RichTextEditor({
       Highlight.configure({ multicolor: true }),
       FontSize,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Underline,
     ],
     content,
     onUpdate: ({ editor }) => {
