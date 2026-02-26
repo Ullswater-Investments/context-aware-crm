@@ -1,83 +1,111 @@
 
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+## Prospector Pro + Centro de Creditos y APIs
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+Este plan implementa dos nuevas secciones en el CRM: un **Dashboard de Creditos** para monitorizar el estado de las APIs, y un **Prospector Inteligente** para buscar y cualificar leads directamente desde el CRM.
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+---
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
+### Fase 1: Edge Function `get-api-usage`
 
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
+Crear `supabase/functions/get-api-usage/index.ts` que consulte los balances de creditos de las 4 APIs usando los Secrets ya configurados:
 
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
+- **Hunter**: `GET https://api.hunter.io/v2/account?api_key=...` -- extraer `requests.searches.available`, `requests.searches.used`, `requests.verifications.available`
+- **Apollo**: `GET https://api.apollo.io/v1/auth/health` con header `x-api-key` -- extraer estado de suscripcion y limites
+- **Findymail**: `GET https://app.findymail.com/api/credits` con `Authorization: Bearer ...` -- extraer creditos totales
+- **Lusha**: `GET https://api.lusha.com/account/usage` con header `api_key` -- extraer `remaining`, `used`, `total`
 
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
+La funcion consultara las 4 APIs en paralelo (`Promise.allSettled`) y devolvera un objeto unificado con el estado de cada proveedor. Si una API falla, devolvera `status: "error"` para ese proveedor sin afectar a los demas.
 
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
+Incluir autenticacion JWT y CORS headers estandar.
 
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
+Anadir `[functions.get-api-usage] verify_jwt = false` en `supabase/config.toml`.
 
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
+### Fase 2: Pagina Centro de Creditos (`src/pages/ApiCredits.tsx`)
 
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
+Nueva pagina en la ruta `/api-credits` con:
 
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
+- **Cuadricula de 4 tarjetas** (Card de shadcn/ui), una por proveedor
+- Cada tarjeta muestra:
+  - Icono y nombre del servicio
+  - Badge de estado: "Conectado" (verde), "Error" (rojo)
+  - Barra de progreso (Progress) con creditos usados vs total
+  - Colores adaptativos: azul (normal), naranja (menos del 20%), rojo (menos del 5%)
+  - Fecha de ultima consulta
+- **Boton "Refrescar todo"** en la parte superior
+- **React Query** (`useQuery`) para cachear los datos con `staleTime: 5min`
 
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
+### Fase 3: Edge Function `prospector-search`
 
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
+Crear `supabase/functions/prospector-search/index.ts` que actue como hub de busqueda unificado:
 
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
+- Recibe `{ provider, filters }` donde filters puede incluir: `job_title`, `company`, `domain`, `location`, `industry`, `company_size`
+- Segun el provider seleccionado:
+  - **Apollo**: `POST https://api.apollo.io/api/v1/mixed_people/search` con filtros mapeados a `person_titles`, `organization_domains`, `person_locations`, `organization_industry_tag_ids`
+  - **Hunter**: `GET https://api.hunter.io/v2/domain-search?domain=...` (reutiliza la logica existente de `hunter-domain-search`)
+  - **Lusha**: `GET https://api.lusha.com/v2/person?...` con los parametros de busqueda
+- Devuelve resultados normalizados con formato unificado: `{ name, position, company, domain, email, confidence, source }`
+- Incluye deteccion anti-duplicados: consulta la tabla `contacts` del usuario para marcar resultados que ya existen en el CRM
 
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
+Anadir `[functions.prospector-search] verify_jwt = false` en `supabase/config.toml`.
 
-### Resumen de cambios
+### Fase 4: Pagina Prospector (`src/pages/Prospector.tsx`)
 
-| Archivo | Cambio | Prioridad |
-|---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
+Nueva pagina en la ruta `/prospector` con layout de dos paneles:
 
-### Detalle tecnico
+**Panel izquierdo (filtros):**
+- Inputs: Cargo, Empresa, Dominio, Ubicacion, Industria, Tamano de empresa
+- Selector de fuente: grupo de botones (Apollo / Hunter / Lusha)
+- Boton "Buscar"
 
-**Contacts.tsx - Nuevos estados:**
-```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+**Panel derecho (resultados):**
+- Tabla con columnas: Nombre, Cargo, Empresa, Email, Confianza, Estado (nuevo/duplicado)
+- Badge "Ya en CRM" si el contacto ya existe (detectado por email o nombre+empresa)
+- Checkbox de seleccion multiple
+- Boton "Importar seleccionados al CRM" que:
+  1. Crea los contactos en la tabla `contacts` con `created_by = user.id`
+  2. Opcionalmente lanza verificacion con Findymail para los emails importados
+  3. Muestra toast con resumen: "X contactos importados, Y duplicados omitidos"
+
+### Fase 5: Navegacion
+
+Anadir dos entradas al sidebar en `AppLayout.tsx`:
+
+```text
+{ to: "/prospector", icon: Search, label: "Prospector" },
+{ to: "/api-credits", icon: Activity, label: "Creditos APIs" },
 ```
 
-**Contacts.tsx - Nueva funcion:**
-```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
-    });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
-};
+Registrar las rutas en `App.tsx`:
+
+```text
+<Route path="/prospector" element={<Prospector />} />
+<Route path="/api-credits" element={<ApiCredits />} />
 ```
 
-**Contacts.tsx - Filtro actualizado:**
-```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
-```
+---
 
-**Contacts.tsx - Bulk enrich corregido:**
-```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
-```
+### Archivos a crear
+
+| Archivo | Descripcion |
+|---|---|
+| `supabase/functions/get-api-usage/index.ts` | Edge Function para consultar balances de creditos |
+| `supabase/functions/prospector-search/index.ts` | Edge Function hub de busqueda unificada |
+| `src/pages/ApiCredits.tsx` | Pagina del Centro de Creditos |
+| `src/pages/Prospector.tsx` | Pagina del Prospector Inteligente |
+
+### Archivos a modificar
+
+| Archivo | Cambio |
+|---|---|
+| `src/components/layout/AppLayout.tsx` | Anadir 2 entradas al sidebar |
+| `src/App.tsx` | Registrar 2 rutas nuevas |
+| `supabase/config.toml` | Anadir configuracion de las 2 nuevas Edge Functions |
+
+### Notas tecnicas
+
+- Los Secrets necesarios (`HUNTER_API_KEY`, `APOLLO_API_KEY`, `LUSHA_API_KEY`, `FINDYMAIL_API_KEY`) ya estan configurados
+- La deteccion anti-duplicados usara email como clave primaria y nombre+empresa como fallback
+- El diseno sera extensible para anadir Crunchbase y PhantomBuster en el futuro (estructura de datos generica)
+- Se usara `Promise.allSettled` para tolerancia a fallos en consultas paralelas
 
