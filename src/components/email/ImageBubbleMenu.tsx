@@ -1,4 +1,5 @@
-import { BubbleMenu, type Editor } from "@tiptap/react";
+import { BubbleMenu } from "@tiptap/react/menus";
+import type { Editor } from "@tiptap/react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { AlignLeft, AlignCenter, AlignRight } from "lucide-react";
