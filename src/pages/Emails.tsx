@@ -113,27 +113,6 @@ export default function Emails() {
     fetchCounts();
   }, [fetchCounts]);
 
-  // Realtime: update counts when email_logs changes
-  useEffect(() => {
-    if (!user || accounts.length === 0) return;
-
-    const channel = supabase
-      .channel("email-unread-counts")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "email_logs" },
-        () => {
-          fetchCounts();
-          fetchEmails();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, accounts, fetchCounts, fetchEmails]);
-
   const fetchEmails = useCallback(async () => {
     if (!user || !selectedAccountId) return;
     setLoading(true);
@@ -175,6 +154,27 @@ export default function Emails() {
   useEffect(() => {
     fetchEmails();
   }, [fetchEmails]);
+
+  // Realtime: update counts when email_logs changes
+  useEffect(() => {
+    if (!user || accounts.length === 0) return;
+
+    const channel = supabase
+      .channel("email-unread-counts")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "email_logs" },
+        () => {
+          fetchCounts();
+          fetchEmails();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, accounts, fetchCounts, fetchEmails]);
 
   const handleSync = async (accountId?: string) => {
     setSyncing(true);
