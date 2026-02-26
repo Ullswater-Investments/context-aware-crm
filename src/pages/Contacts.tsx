@@ -162,6 +162,23 @@ export default function Contacts() {
     load();
   };
 
+  const bulkFixEmails = async () => {
+    const fixable = contacts.filter(c => !c.email && (c.work_email || c.personal_email));
+    if (fixable.length === 0) return;
+    let fixed = 0;
+    for (const c of fixable) {
+      const fallback = c.work_email || c.personal_email;
+      const updates: Record<string, any> = { email: fallback };
+      if (!c.company_domain && fallback && fallback.includes("@")) {
+        updates.company_domain = fallback.split("@")[1];
+      }
+      const { error } = await supabase.from("contacts").update(updates).eq("id", c.id);
+      if (!error) fixed++;
+    }
+    toast.success(`${fixed} emails corregidos de ${fixable.length}`);
+    load();
+  };
+
   const enrichWithFindymailFromCard = async (c: Contact) => {
     if (!c.company_domain) return;
     setEnrichingFindymailId(c.id);
