@@ -47,6 +47,35 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // Find default owner (first admin user) for assigning created_by
+    let defaultOwnerId: string | null = null;
+    const { data: adminRoles } = await supabase
+      .from("user_roles")
+      .select("user_id")
+      .eq("role", "admin")
+      .limit(1);
+
+    if (adminRoles && adminRoles.length > 0) {
+      defaultOwnerId = adminRoles[0].user_id;
+    } else {
+      // Fallback: get any user from profiles
+      const { data: anyProfile } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .limit(1);
+      if (anyProfile && anyProfile.length > 0) {
+        defaultOwnerId = anyProfile[0].user_id;
+      }
+    }
+
+    if (!defaultOwnerId) {
+      console.error("whatsapp-webhook: No users found to assign as contact owner");
+      return new Response(JSON.stringify({ error: "No users configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     for (const msg of messages) {
       // Only process incoming text messages
       if (msg.from_me || msg.type !== "text") continue;
@@ -66,9 +95,11 @@ Deno.serve(async (req) => {
 
       // Find contact by phone
       let contactId: string | null = null;
+      let contactOwnerId: string | null = null;
+
       const { data: contacts } = await supabase
         .from("contacts")
-        .select("id")
+        .select("id, created_by")
         .or(
           phoneVariants
             .flatMap((p) => [
@@ -82,21 +113,24 @@ Deno.serve(async (req) => {
 
       if (contacts && contacts.length > 0) {
         contactId = contacts[0].id;
+        contactOwnerId = contacts[0].created_by;
       } else {
-        // Create unknown contact
+        // Create unknown contact with owner assigned
         const { data: newContact } = await supabase
           .from("contacts")
           .insert({
             full_name: `Desconocido (${senderPhone})`,
             phone: senderPhone,
             status: "new_lead",
+            created_by: defaultOwnerId,
           })
           .select("id")
           .single();
         contactId = newContact?.id || null;
+        contactOwnerId = defaultOwnerId;
       }
 
-      // Insert message
+      // Insert message with created_by so RLS allows visibility
       await supabase.from("whatsapp_messages").insert({
         contact_id: contactId,
         phone_number: senderPhone,
@@ -104,6 +138,7 @@ Deno.serve(async (req) => {
         content,
         status: "delivered",
         whapi_message_id: whapiMsgId,
+        created_by: contactOwnerId || defaultOwnerId,
       });
     }
 

@@ -110,9 +110,21 @@ export default function Connectors() {
     }
   };
 
+  const pollingStartRef = useRef<number>(0);
+  const QR_POLLING_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
   const startPolling = useCallback(() => {
     stopPolling();
+    pollingStartRef.current = Date.now();
     pollingRef.current = setInterval(async () => {
+      // Check timeout
+      if (Date.now() - pollingStartRef.current > QR_POLLING_TIMEOUT_MS) {
+        stopPolling();
+        setChannelStatus("timeout");
+        toast.warning("Tiempo de espera agotado. Pulsa 'Refrescar QR' para reintentar.");
+        return;
+      }
+
       const health = await checkWhatsAppHealth();
       if (!health) return;
       setChannelStatus(health.status_text);
@@ -295,6 +307,11 @@ export default function Connectors() {
                 <>
                   <CheckCircle2 className="w-4 h-4 text-green-500" />
                   <span className="text-green-600 font-medium">¡Conectado!</span>
+                </>
+              ) : channelStatus === "timeout" ? (
+                <>
+                  <QrCode className="w-4 h-4 text-yellow-500" />
+                  <span className="text-yellow-600 font-medium">Tiempo agotado. Refresca el QR.</span>
                 </>
               ) : (
                 <>
