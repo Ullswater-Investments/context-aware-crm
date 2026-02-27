@@ -308,6 +308,11 @@ export default function Connectors() {
                   <CheckCircle2 className="w-4 h-4 text-green-500" />
                   <span className="text-green-600 font-medium">¡Conectado!</span>
                 </>
+              ) : channelStatus === "timeout" ? (
+                <>
+                  <QrCode className="w-4 h-4 text-yellow-500" />
+                  <span className="text-yellow-600 font-medium">Tiempo agotado. Refresca el QR.</span>
+                </>
               ) : (
                 <>
                   <QrCode className="w-4 h-4 text-muted-foreground" />
