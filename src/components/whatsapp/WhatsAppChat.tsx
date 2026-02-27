@@ -128,10 +128,12 @@ export default function WhatsAppChat({ contact, open, onOpenChange }: WhatsAppCh
         },
       });
       if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if (data?.error) {
+        const detail = data.details?.error?.message || data.details?.message || "";
+        throw new Error(detail ? `${data.error} — ${detail}` : data.error);
+      }
       setNewMessage("");
       toast.success("Mensaje enviado por WhatsApp");
-      // Reload to catch the new message if realtime doesn't fire immediately
       loadMessages();
     } catch (err: any) {
       toast.error(err.message || "Error al enviar mensaje");
