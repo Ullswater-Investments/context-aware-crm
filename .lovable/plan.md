@@ -1,94 +1,83 @@
 
 
-## QR de WhatsApp en la seccion Conectores
+## Revision: Errores y Mejoras pendientes tras integracion Findymail
 
-Integrar el codigo QR de Whapi directamente en la tarjeta de WhatsApp dentro de la pagina `/connectors`, para que puedas validar y autorizar tu numero de WhatsApp sin salir del CRM.
+### BUG 1: Bulk Enrich no incluye Findymail (Alta)
 
----
+**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
 
-### Como funcionara
+**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
 
-Cuando pulses "Probar conexion" en la tarjeta de WhatsApp:
+### BUG 2: `findymail_status` accedido con cast `as any` (Media)
 
-1. El sistema consulta el estado del canal via `GET /health`
-2. Si el canal esta en estado **QR** (necesita autorizacion) o **no autorizado**, se muestra automaticamente el codigo QR dentro de un dialogo modal
-3. Escaneas el QR con tu telefono (como en WhatsApp Web)
-4. El sistema refresca el estado cada 5 segundos hasta detectar que la conexion esta activa
-5. Cuando se autoriza, el modal se cierra y la tarjeta muestra "Conectado" en verde
+**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
 
-Si el canal ya esta autorizado, simplemente muestra el badge verde sin QR.
+**Solucion:** Cambiar a `contact.findymail_status` sin cast.
 
----
+### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
 
-### Cambios tecnicos
+**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
 
-#### 1. Nueva Edge Function: `whatsapp-qr`
+**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
 
-Archivo: `supabase/functions/whatsapp-qr/index.ts`
+### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
 
-Esta funcion tiene dos acciones:
+**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
 
-- **action: "health"** - Llama a `GET https://gate.whapi.cloud/health` y devuelve el estado del canal (codigo numerico + texto: INIT, LAUNCH, QR, AUTH, etc.)
-- **action: "qr"** - Llama a `GET https://gate.whapi.cloud/users/login` y devuelve la imagen QR en formato base64
+**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
 
-Ambas usan el Secret `WHAPI_API_TOKEN` como Bearer token.
+### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
 
-#### 2. Modificar `src/pages/Connectors.tsx`
+**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
 
-Cambios en la pagina de conectores:
+**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
 
-- Importar el componente `Dialog` de shadcn/ui
-- Anadir estado para controlar el modal QR (`showQrModal`, `qrBase64`, `channelStatus`)
-- Cuando se pulsa "Probar conexion" en WhatsApp:
-  1. Primero llama a la Edge Function con `action: "health"`
-  2. Si el estado es "QR" o no autorizado, llama con `action: "qr"` para obtener el QR base64
-  3. Abre el modal mostrando la imagen QR
-  4. Inicia un intervalo de 5 segundos que consulta `/health` para detectar cuando el usuario escanea
-  5. Al detectar estado "AUTH" (autorizado), cierra el modal y actualiza el badge a "Conectado"
-- Si el estado ya es "AUTH", no muestra QR y directamente marca como conectado
+### Resumen de cambios
 
-Elementos del modal:
-- Titulo: "Conectar WhatsApp"
-- Instrucciones: "Escanea este codigo QR con tu telefono"
-- Imagen QR centrada (renderizada desde base64)
-- Indicador de estado en tiempo real (esperando escaneo / conectando / conectado)
-- Boton "Refrescar QR" por si el codigo expira
-- Boton "Cerrar"
+| Archivo | Cambio | Prioridad |
+|---|---|---|
+| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
+| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
+| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
+| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
 
----
+### Detalle tecnico
 
-### Archivos a crear
-
-| Archivo | Descripcion |
-|---|---|
-| `supabase/functions/whatsapp-qr/index.ts` | Edge Function para obtener health y QR de Whapi |
-
-### Archivos a modificar
-
-| Archivo | Cambio |
-|---|---|
-| `src/pages/Connectors.tsx` | Anadir modal QR con polling de estado para WhatsApp |
-
-### Flujo visual
-
-```text
-[Tarjeta WhatsApp] --> Click "Probar conexion"
-       |
-       v
-  [Edge Function: health]
-       |
-   Estado = QR? ----SI----> [Edge Function: qr] --> Mostrar modal con QR
-       |                                                    |
-   Estado = AUTH?                              Polling cada 5s /health
-       |                                                    |
-      SI                                          Detecta AUTH?
-       |                                                    |
-   Badge "Conectado"  <------------------------------------|
+**Contacts.tsx - Nuevos estados:**
+```typescript
+const [findymailFilter, setFindymailFilter] = useState("");
+const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
 ```
 
-### Notas
+**Contacts.tsx - Nueva funcion:**
+```typescript
+const enrichWithFindymailFromCard = async (c: Contact) => {
+  if (!c.company_domain) return;
+  setEnrichingFindymailId(c.id);
+  try {
+    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+    });
+    if (error) throw error;
+    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
+    else toast.info("Findymail no encontro datos");
+    load();
+  } catch (err: any) {
+    toast.error(err.message || "Error con Findymail");
+  } finally {
+    setEnrichingFindymailId(null);
+  }
+};
+```
 
-- El QR de Whapi expira tras ~60 segundos; el boton "Refrescar QR" permite obtener uno nuevo
-- El polling se detiene automaticamente al cerrar el modal o al detectar conexion
-- No se necesitan cambios en la base de datos
-- El Secret `WHAPI_API_TOKEN` ya esta configurado
+**Contacts.tsx - Filtro actualizado:**
+```typescript
+const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
+return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+```
+
+**Contacts.tsx - Bulk enrich corregido:**
+```typescript
+body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+```
+
