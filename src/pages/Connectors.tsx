@@ -49,6 +49,15 @@ export default function Connectors() {
     }
   }, []);
 
+  // Auto-test all connectors on mount
+  const hasTestedRef = useRef(false);
+  useEffect(() => {
+    if (!hasTestedRef.current) {
+      hasTestedRef.current = true;
+      testAll();
+    }
+  }, []);
+
   useEffect(() => {
     return () => stopPolling();
   }, [stopPolling]);
