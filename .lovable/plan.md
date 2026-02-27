@@ -1,83 +1,96 @@
 
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+## Auditoria Completa: Errores y Mejoras
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+### BUG 1 (Critico): `getClaims()` sigue roto en 5 Edge Functions
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+El metodo `supabase.auth.getClaims(token)` **no existe** en el cliente Supabase JS v2. Esto bloquea completamente las siguientes funciones:
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
+| Funcion | Linea | Impacto |
+|---|---|---|
+| `enrich-hunter-contact` | 31 | Enriquecimiento Hunter no funciona |
+| `hunter-domain-search` | 31 | Busqueda de dominio Hunter no funciona |
+| `prospector-search` | 118 | Prospector no funciona |
+| `get-api-usage` | 105 | Pagina de creditos API no funciona |
+| `chat` | 517 | Chat IA no funciona |
 
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
+**Solucion:** En cada una, reemplazar:
+```text
+const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+if (claimsError || !claimsData?.claims) { ... }
+const userId = claimsData.claims.sub;
+```
+Por:
+```text
+const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+if (userError || !user) { ... }
+const userId = user.id;
+```
 
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
+---
 
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
+### BUG 2 (Medio): `send-whatsapp` usa `err.message` sin tipo seguro
 
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
+En `send-whatsapp/index.ts` linea 137, el catch usa `err.message` sin verificar el tipo:
+```text
+JSON.stringify({ error: err.message })
+```
 
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
+**Solucion:** Cambiar a:
+```text
+const message = err instanceof Error ? err.message : "Unknown error";
+JSON.stringify({ error: message })
+```
 
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
+---
 
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
+### BUG 3 (Medio): `whatsapp-webhook` usa `err.message` sin tipo seguro
 
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
+Mismo problema en `whatsapp-webhook/index.ts` linea 117.
 
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
+**Solucion:** Igual que BUG 2.
 
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
+---
 
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
+### BUG 4 (Bajo): `whatsapp-webhook` tiene CORS headers incompletos
 
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
+En `whatsapp-webhook/index.ts` linea 4, los CORS headers no incluyen los headers de plataforma Supabase:
+```text
+"authorization, x-client-info, apikey, content-type"
+```
+
+Aunque es un webhook publico, por consistencia y para evitar problemas si se llama desde el frontend:
+
+**Solucion:** Actualizar a los headers completos estandar.
+
+---
+
+### MEJORA 1: Auto-test de conectores al cargar la pagina
+
+Actualmente la pagina de Conectores muestra "Sin probar" para todos hasta que el usuario pulsa manualmente. Seria mas util ejecutar un test automatico al cargar la pagina.
+
+**Solucion:** Anadir un `useEffect` que llame a `testAll()` al montar el componente.
+
+---
+
+### MEJORA 2: Indicador visual del numero conectado en WhatsApp
+
+Cuando WhatsApp esta conectado, la tarjeta solo muestra "Conectado" pero no indica que numero esta vinculado. El endpoint `test-connector` ya devuelve `phone` y `name` en los detalles.
+
+**Solucion:** Mostrar el numero/nombre del detalle debajo del badge cuando el estado es "connected", lo cual ya funciona con `getDetailText()` - solo falta que WhatsApp use el mismo flujo de `test-connector` para obtener los detalles iniciales tras conectar por QR.
+
+---
 
 ### Resumen de cambios
 
 | Archivo | Cambio | Prioridad |
 |---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
-
-### Detalle tecnico
-
-**Contacts.tsx - Nuevos estados:**
-```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
-```
-
-**Contacts.tsx - Nueva funcion:**
-```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
-    });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
-};
-```
-
-**Contacts.tsx - Filtro actualizado:**
-```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
-```
-
-**Contacts.tsx - Bulk enrich corregido:**
-```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
-```
+| `supabase/functions/enrich-hunter-contact/index.ts` | Reemplazar `getClaims` por `getUser` | Critico |
+| `supabase/functions/hunter-domain-search/index.ts` | Reemplazar `getClaims` por `getUser` | Critico |
+| `supabase/functions/prospector-search/index.ts` | Reemplazar `getClaims` por `getUser` | Critico |
+| `supabase/functions/get-api-usage/index.ts` | Reemplazar `getClaims` por `getUser` | Critico |
+| `supabase/functions/chat/index.ts` | Reemplazar `getClaims` por `getUser` | Critico |
+| `supabase/functions/send-whatsapp/index.ts` | Tipo seguro en catch | Medio |
+| `supabase/functions/whatsapp-webhook/index.ts` | Tipo seguro en catch + CORS headers completos | Medio |
+| `src/pages/Connectors.tsx` | Auto-test al cargar + detalles WhatsApp tras QR | Mejora |
 
