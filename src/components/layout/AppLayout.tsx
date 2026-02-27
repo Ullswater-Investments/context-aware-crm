@@ -20,6 +20,7 @@ const navItems = [
 { to: "/tasks", icon: CheckSquare, label: "Tareas" },
 { to: "/emails", icon: Mail, label: "Emails" },
 { to: "/prospector", icon: Search, label: "Prospector" },
+{ to: "/connectors", icon: Plug, label: "Conectores" },
 { to: "/api-credits", icon: Activity, label: "Créditos APIs" },
 { to: "/email-settings", icon: Settings2, label: "Ajustes Email" }];
 

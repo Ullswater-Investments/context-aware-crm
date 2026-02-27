@@ -43,6 +43,7 @@ function AppRoutes() {
                 <Route path="/emails" element={<Emails />} />
                 <Route path="/prospector" element={<Prospector />} />
                 <Route path="/api-credits" element={<ApiCredits />} />
+                <Route path="/connectors" element={<Connectors />} />
                 <Route path="/email-settings" element={<EmailSettings />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
