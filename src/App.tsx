@@ -17,6 +17,7 @@ import Tasks from "./pages/Tasks";
 import Emails from "./pages/Emails";
 import Prospector from "./pages/Prospector";
 import ApiCredits from "./pages/ApiCredits";
+import Connectors from "./pages/Connectors";
 import EmailSettings from "./pages/EmailSettings";
 import NotFound from "./pages/NotFound";
 
