@@ -1,83 +1,97 @@
 
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+## Corrección de WhatsApp + Nueva Sección "Conectores"
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+### Problema principal: WhatsApp no funciona
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+La función `send-whatsapp` usa `supabase.auth.getClaims(token)` en la línea 41, que **no es un método válido** del cliente Supabase. Esto provoca un error en tiempo de ejecución que bloquea completamente el envío de mensajes. Hay que reemplazarlo por `supabase.auth.getUser(token)`.
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
+---
 
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
+### Fase 1: Corregir la Edge Function `send-whatsapp`
 
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
+Reemplazar `getClaims` por `getUser` para que la autenticación funcione:
 
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
+```text
+// ANTES (roto):
+const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+const userId = claimsData.claims.sub;
 
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
-
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
-
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
-
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
-
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
-
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
-
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
-
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
-
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
-
-### Resumen de cambios
-
-| Archivo | Cambio | Prioridad |
-|---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
-
-### Detalle tecnico
-
-**Contacts.tsx - Nuevos estados:**
-```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+// DESPUÉS (correcto):
+const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+if (userError || !user) return 401;
+const userId = user.id;
 ```
 
-**Contacts.tsx - Nueva funcion:**
-```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
-    });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
-};
+### Fase 2: Nueva página "Conectores" (`/connectors`)
+
+Crear una sección centralizada para gestionar todas las conexiones externas del CRM. La página mostrará tarjetas para cada servicio con:
+
+- **Estado de conexión** (verde/rojo) verificado contra los Secrets configurados
+- **Configuración rápida** para cada servicio
+- **Test de conexión** en vivo
+
+**Conectores a incluir:**
+
+| Conector | Icono | Verificación | Datos mostrados |
+|---|---|---|---|
+| WhatsApp (Whapi) | MessageCircle | Verificar `WHAPI_API_TOKEN` haciendo ping a la API | Número conectado, estado |
+| Hunter.io | Globe | Verificar `HUNTER_API_KEY` | Estado de API Key |
+| Apollo.io | Search | Verificar `APOLLO_API_KEY` | Estado de API Key |
+| Findymail | Mail | Verificar `FINDYMAIL_API_KEY` | Estado de API Key |
+| Lusha | Sparkles | Verificar `LUSHA_API_KEY` | Estado de API Key |
+| Email SMTP | Mail | Redirigir a `/email-settings` | Cuentas conectadas |
+
+**Diseño de cada tarjeta:**
+- Icono + nombre del servicio
+- Badge de estado (Conectado / Error / No configurado)
+- Descripción corta del servicio
+- Botón "Probar conexión" que llama a una Edge Function para verificar las credenciales
+- Enlace a documentación o configuración
+
+### Fase 3: Edge Function `test-connector`
+
+Crear una Edge Function que reciba `{ connector: "whatsapp" | "hunter" | ... }` y haga un ping de verificación a la API correspondiente:
+
+- **WhatsApp**: `GET https://gate.whapi.cloud/settings` con el token de Whapi
+- **Hunter**: `GET https://api.hunter.io/v2/account?api_key=...`
+- **Apollo**: `GET https://api.apollo.io/v1/auth/health`
+- **Findymail**: `GET https://app.findymail.com/api/credits`
+- **Lusha**: `GET https://api.lusha.com/account/usage`
+
+Devuelve `{ status: "connected" | "error", details: {...} }` para cada conector.
+
+### Fase 4: Navegación
+
+Añadir "Conectores" al sidebar con icono `Plug` o `Cable`, posicionado antes de "Créditos APIs":
+
+```text
+{ to: "/connectors", icon: Plug, label: "Conectores" },
 ```
 
-**Contacts.tsx - Filtro actualizado:**
-```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
-```
+Registrar la ruta `/connectors` en `App.tsx`.
 
-**Contacts.tsx - Bulk enrich corregido:**
-```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
-```
+---
+
+### Archivos a crear
+
+| Archivo | Descripción |
+|---|---|
+| `src/pages/Connectors.tsx` | Página de gestión de conectores |
+| `supabase/functions/test-connector/index.ts` | Edge Function para verificar estado de cada API |
+
+### Archivos a modificar
+
+| Archivo | Cambio |
+|---|---|
+| `supabase/functions/send-whatsapp/index.ts` | Reemplazar `getClaims` por `getUser` (fix crítico) |
+| `src/components/layout/AppLayout.tsx` | Añadir entrada "Conectores" al sidebar |
+| `src/App.tsx` | Registrar ruta `/connectors` |
+
+### Resultado esperado
+
+- WhatsApp vuelve a funcionar inmediatamente tras el fix de `getClaims`
+- Nueva sección "Conectores" centraliza el estado de todas las integraciones externas
+- El usuario puede verificar de un vistazo qué servicios están operativos
+- Preparado para añadir más conectores en el futuro (Crunchbase, PhantomBuster, etc.)
 
