@@ -104,11 +104,13 @@ Deno.serve(async (req) => {
     });
 
     const whapiData = await whapiRes.json();
+    console.log("Whapi response status:", whapiRes.status, "body:", JSON.stringify(whapiData));
 
     if (!whapiRes.ok) {
+      const errorMsg = whapiData?.error?.message || whapiData?.message || JSON.stringify(whapiData);
       return new Response(
-        JSON.stringify({ error: "Whapi error", details: whapiData }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: `Whapi: ${errorMsg}`, details: whapiData }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

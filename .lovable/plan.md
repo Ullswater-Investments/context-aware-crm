@@ -1,39 +1,83 @@
 
 
-## Mejorar visibilidad de errores en WhatsApp Chat
+## Revision: Errores y Mejoras pendientes tras integracion Findymail
 
-### Problema actual
+### BUG 1: Bulk Enrich no incluye Findymail (Alta)
 
-La funcion `send-whatsapp` **funciona correctamente** (verificado con una prueba real que envio un mensaje exitosamente). El error que viste fue anterior a la actualizacion del token.
+**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
 
-Sin embargo, cuando hay un error de Whapi, el frontend muestra solo "Edge Function returned a non-2xx status code" porque `supabase.functions.invoke()` no expone el cuerpo de la respuesta cuando el status no es 2xx.
+**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
 
-### Solucion: Devolver siempre HTTP 200 con el error dentro del JSON
+### BUG 2: `findymail_status` accedido con cast `as any` (Media)
 
-Cambiar la Edge Function para que siempre devuelva HTTP 200, pero incluya el error de Whapi en el cuerpo JSON. Asi el frontend puede leerlo y mostrar un mensaje util.
+**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
 
-### Cambios
+**Solucion:** Cambiar a `contact.findymail_status` sin cast.
 
-**Archivo 1: `supabase/functions/send-whatsapp/index.ts`**
+### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
 
-- Cuando Whapi devuelve error (lineas 108-112), en lugar de devolver HTTP 502, devolver HTTP 200 con `{ error: "...", details: whapiData }`
-- Anadir logging del status y cuerpo de respuesta de Whapi para depuracion
-- Esto permite que el frontend lea el error real
+**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
 
-**Archivo 2: `src/components/whatsapp/WhatsAppChat.tsx`**
+**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
 
-- Mejorar el catch en `sendMessage()` (linea 136) para mostrar detalles del error de Whapi si estan disponibles
-- Si `data.details` tiene informacion, incluirla en el toast de error
-- Ejemplo: "Error Whapi: Invalid token" en vez de "Edge Function returned a non-2xx status code"
+### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
 
-### Nota sobre WHAPI_CHANNEL_ID
+**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
 
-No es necesario configurar un secreto `WHAPI_CHANNEL_ID`. La API de Whapi identifica el canal automaticamente por el Bearer token. El Channel ID (`DRAXTH-K7P5G`) es solo un identificador visual del panel, no se usa en las llamadas API.
+**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
 
-### Resumen
+### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
 
-| Archivo | Cambio |
-|---|---|
-| `supabase/functions/send-whatsapp/index.ts` | Devolver siempre 200, incluir error Whapi en JSON |
-| `src/components/whatsapp/WhatsAppChat.tsx` | Mostrar detalles del error Whapi en el toast |
+**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
+
+**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
+
+### Resumen de cambios
+
+| Archivo | Cambio | Prioridad |
+|---|---|---|
+| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
+| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
+| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
+| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
+
+### Detalle tecnico
+
+**Contacts.tsx - Nuevos estados:**
+```typescript
+const [findymailFilter, setFindymailFilter] = useState("");
+const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+```
+
+**Contacts.tsx - Nueva funcion:**
+```typescript
+const enrichWithFindymailFromCard = async (c: Contact) => {
+  if (!c.company_domain) return;
+  setEnrichingFindymailId(c.id);
+  try {
+    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+    });
+    if (error) throw error;
+    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
+    else toast.info("Findymail no encontro datos");
+    load();
+  } catch (err: any) {
+    toast.error(err.message || "Error con Findymail");
+  } finally {
+    setEnrichingFindymailId(null);
+  }
+};
+```
+
+**Contacts.tsx - Filtro actualizado:**
+```typescript
+const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
+return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+```
+
+**Contacts.tsx - Bulk enrich corregido:**
+```typescript
+body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+```
 
