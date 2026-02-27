@@ -81,12 +81,27 @@ export default function Connectors() {
         body: { action: "qr" },
       });
       if (error) throw error;
-      // Whapi returns { qr: "base64string" } or { image: "base64string" }
-      const qr = data?.qr || data?.image || null;
+
+      // Already authenticated — no QR needed
+      if (data?.already_authenticated) {
+        setStatuses((prev) => ({ ...prev, whatsapp: "connected" }));
+        toast.success("WhatsApp ya está conectado");
+        stopPolling();
+        setTimeout(() => setShowQrModal(false), 1000);
+        return;
+      }
+
+      // Specific error codes from the edge function
+      if (data?.error_code === "channel_not_found") {
+        toast.error("Token de Whapi inválido. Actualiza WHAPI_API_TOKEN con un token válido.");
+        return;
+      }
+
+      const qr = data?.qr || null;
       if (qr) {
         setQrBase64(qr);
       } else {
-        toast.error("No se pudo obtener el código QR");
+        toast.error("No se pudo obtener el código QR. Revisa los logs del backend.");
       }
     } catch (err: unknown) {
       toast.error(`Error obteniendo QR: ${err instanceof Error ? err.message : "desconocido"}`);
