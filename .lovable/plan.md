@@ -1,83 +1,47 @@
 
+## Fix WhatsApp QR: Actualizar Token y Mejorar Funcion
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+### Problema raiz
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+La API de Whapi devuelve `"Channel not found"` al llamar a `/health` y `/users/login`. Esto ocurre porque el secreto `WHAPI_API_TOKEN` almacenado no corresponde al canal DRAXTH-K7P5G o esta expirado.
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+**Importante**: El Channel ID (`DRAXTH-K7P5G`) NO se usa en las URLs de la API de Whapi. La API identifica el canal automaticamente por el Bearer token. Por tanto, no necesitamos guardar el Channel ID -- solo necesitamos el API Token correcto de ese canal.
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
+---
 
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
+### Paso 1: Actualizar el secreto WHAPI_API_TOKEN (accion del usuario)
 
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
+1. Ir a [panel.whapi.cloud](https://panel.whapi.cloud/)
+2. Abrir el canal DRAXTH-K7P5G
+3. Copiar el **API Token** del canal (no el Channel ID)
+4. Lovable pedira que introduzcas el nuevo valor del secreto
 
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
+### Paso 2: Mejorar la Edge Function `whatsapp-qr`
 
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
+Cambios en `supabase/functions/whatsapp-qr/index.ts`:
 
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
+- **Endpoint QR mejorado**: Usar `GET /users/login/image` como fallback, que devuelve la imagen QR directamente como binario (mas fiable que el base64 de `/users/login`)
+- **Mejor manejo de errores**: Si la API devuelve 404 ("Channel not found"), informar claramente que el token es invalido
+- **Manejo de 409**: Si devuelve "Already authenticated", indicar al frontend que el canal ya esta conectado sin necesidad de QR
+- **Logging mejorado**: Registrar el status HTTP y cuerpo de respuesta para facilitar depuracion
 
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
+### Paso 3: Mejorar el frontend (Connectors.tsx)
 
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
+Cambios en `src/pages/Connectors.tsx`:
 
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
+- Manejar el caso de "already authenticated" (409) cerrando el modal y marcando como conectado
+- Mostrar mensajes de error especificos segun el tipo de fallo (token invalido vs canal no encontrado vs error de red)
+- Mejorar la deteccion de formato QR: soportar tanto base64 como URL directa
 
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
+---
 
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
+### Archivos a modificar
 
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
+| Archivo | Cambio |
+|---|---|
+| `supabase/functions/whatsapp-qr/index.ts` | Fallback a /login/image, manejo de 404 y 409, logging |
+| `src/pages/Connectors.tsx` | Manejo de errores especificos, soporte 409 |
 
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
+### Prerequisito
 
-### Resumen de cambios
-
-| Archivo | Cambio | Prioridad |
-|---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
-
-### Detalle tecnico
-
-**Contacts.tsx - Nuevos estados:**
-```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
-```
-
-**Contacts.tsx - Nueva funcion:**
-```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
-    });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
-};
-```
-
-**Contacts.tsx - Filtro actualizado:**
-```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
-```
-
-**Contacts.tsx - Bulk enrich corregido:**
-```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
-```
-
+El usuario debe actualizar el secreto `WHAPI_API_TOKEN` con el token correcto del canal DRAXTH-K7P5G antes de que los cambios de codigo tengan efecto.
