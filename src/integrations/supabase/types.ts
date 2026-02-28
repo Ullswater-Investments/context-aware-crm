@@ -528,6 +528,41 @@ export type Database = {
         }
         Relationships: []
       }
+      invalid_emails: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          detected_from_email_id: string | null
+          email_address: string
+          id: string
+          reason: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          detected_from_email_id?: string | null
+          email_address: string
+          id?: string
+          reason?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          detected_from_email_id?: string | null
+          email_address?: string
+          id?: string
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invalid_emails_detected_from_email_id_fkey"
+            columns: ["detected_from_email_id"]
+            isOneToOne: false
+            referencedRelation: "email_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_items: {
         Row: {
           ai_summary: string | null
