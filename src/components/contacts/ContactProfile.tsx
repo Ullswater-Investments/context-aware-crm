@@ -76,27 +76,15 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const [enrichingApollo, setEnrichingApollo] = useState(false);
   const [enrichingFindymail, setEnrichingFindymail] = useState(false);
   const [whatsappOpen, setWhatsappOpen] = useState(false);
-  const [invalidEmails, setInvalidEmails] = useState<Set<string>>(new Set());
+  const { loadInvalidEmails, isEmailInvalid, reactivateEmail } = useInvalidEmails();
 
-  const loadInvalidEmails = async () => {
-    const { data } = await supabase.from("invalid_emails").select("email_address").limit(5000);
-    if (data) setInvalidEmails(new Set(data.map((d: any) => d.email_address.toLowerCase())));
-  };
-
-  const isContactEmailInvalid = (): string | null => {
+  const getInvalidContactEmail = (): string | null => {
     if (!contact) return null;
     const emails = [contact.email, contact.work_email, contact.personal_email].filter(Boolean);
     for (const e of emails) {
-      if (invalidEmails.has(e!.toLowerCase())) return e!;
+      if (isEmailInvalid(e)) return e!;
     }
     return null;
-  };
-
-  const reactivateEmail = async (email: string) => {
-    const { error } = await supabase.from("invalid_emails").delete().eq("email_address", email.toLowerCase());
-    if (error) { toast.error(error.message); return; }
-    toast.success(`Email ${email} reactivado`);
-    loadInvalidEmails();
   };
 
   const loadNotes = async (contactId: string) => {
