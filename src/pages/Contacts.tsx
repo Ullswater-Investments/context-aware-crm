@@ -125,7 +125,7 @@ export default function Contacts() {
 
   // --- Trash functions ---
   const moveToTrash = async (contactId: string) => {
-    const { error } = await supabase.from("contacts").update({ status: "trash" as any, trashed_at: new Date().toISOString() } as any).eq("id", contactId);
+    const { error } = await supabase.from("contacts").update({ status: "trash", trashed_at: new Date().toISOString() }).eq("id", contactId);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto movido a la papelera");
     load();
