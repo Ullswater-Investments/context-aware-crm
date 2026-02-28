@@ -226,7 +226,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       personal_email: finalData.personal_email || null,
       mobile_phone: finalData.mobile_phone || null,
       work_phone: finalData.work_phone || null,
-    } as any).eq("id", contact.id);
+    }).eq("id", contact.id);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto actualizado");
     setEditing(false);
