@@ -124,8 +124,9 @@ export default function Contacts() {
 
   useEffect(() => {
     load();
+    loadInvalidEmails();
     supabase.from("organizations").select("id, name").order("name").then(({ data }) => { if (data) setOrgs(data); });
-  }, [load]);
+  }, [load, loadInvalidEmails]);
 
   // --- Trash functions ---
   const moveToTrash = async (contactId: string) => {
