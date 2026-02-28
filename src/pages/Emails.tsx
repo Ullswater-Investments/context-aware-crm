@@ -369,7 +369,7 @@ export default function Emails() {
                     onClick={async () => {
                       setSelected(email);
                       if (email.direction === "inbound" && !email.is_read) {
-                        await supabase.from("email_logs").update({ is_read: true } as any).eq("id", email.id);
+                        await supabase.from("email_logs").update({ is_read: true }).eq("id", email.id);
                       }
                     }}
                     className="flex-1 text-left px-4 py-3 min-w-0"
