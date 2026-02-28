@@ -207,7 +207,7 @@ export default function Emails() {
   const restoreFromTrash = async (emailId: string) => {
     const { error } = await supabase
       .from("email_logs")
-      .update({ is_trashed: false, trashed_at: null } as any)
+      .update({ is_trashed: false, trashed_at: null })
       .eq("id", emailId);
     if (error) { toast.error("Error al restaurar"); return; }
     toast.success("Email restaurado");
