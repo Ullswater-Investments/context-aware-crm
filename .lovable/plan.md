@@ -1,83 +1,105 @@
 
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+## Sistema de Deteccion de Emails Invalidos (Bounce Detection)
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+### Resumen
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+Crear un sistema automatico que detecta emails rebotados ("Mail Delivery System") en la bandeja de entrada, extrae las direcciones fallidas, las almacena en una tabla de base de datos, y muestra alertas visuales en las tarjetas de contacto.
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
+---
 
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
+### Paso 1: Migracion de base de datos
 
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
+Crear tabla `invalid_emails` para almacenar emails detectados como invalidos:
 
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
+```text
+CREATE TABLE public.invalid_emails (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email_address text NOT NULL,
+  reason text NOT NULL DEFAULT 'bounce',
+  detected_from_email_id uuid REFERENCES public.email_logs(id) ON DELETE SET NULL,
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
+-- Indice unico por email+usuario para evitar duplicados
+CREATE UNIQUE INDEX idx_invalid_emails_unique ON public.invalid_emails(email_address, created_by);
 
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
-
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
-
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
-
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
-
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
-
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
-
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
-
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
-
-### Resumen de cambios
-
-| Archivo | Cambio | Prioridad |
-|---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
-
-### Detalle tecnico
-
-**Contacts.tsx - Nuevos estados:**
-```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+-- RLS
+ALTER TABLE public.invalid_emails ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own invalid_emails" ON public.invalid_emails FOR SELECT USING (created_by = auth.uid());
+CREATE POLICY "Users can create own invalid_emails" ON public.invalid_emails FOR INSERT WITH CHECK (created_by = auth.uid());
+CREATE POLICY "Users can delete own invalid_emails" ON public.invalid_emails FOR DELETE USING (created_by = auth.uid());
 ```
 
-**Contacts.tsx - Nueva funcion:**
-```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
-    });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
-};
-```
+### Paso 2: Edge Function `detect-bounces`
 
-**Contacts.tsx - Filtro actualizado:**
-```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
-```
+Crear una nueva edge function `supabase/functions/detect-bounces/index.ts` que:
 
-**Contacts.tsx - Bulk enrich corregido:**
-```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+1. Recibe la peticion autenticada del usuario
+2. Consulta `email_logs` buscando emails inbound con subject que contenga "Undelivered", "Mail Delivery", "Delivery Status", "failure", "returned" o "mailer-daemon" en from_email
+3. Para cada email de bounce encontrado, analiza el `body_text` o `body_html` buscando direcciones email con regex
+4. Filtra las direcciones que NO son del propio usuario (excluye las cuentas del usuario)
+5. Inserta las direcciones encontradas en `invalid_emails` (con ON CONFLICT DO NOTHING para evitar duplicados)
+6. Devuelve la lista de emails invalidos detectados
+
+### Paso 3: Modificar `src/pages/Contacts.tsx`
+
+**Nuevo estado:**
+- `invalidEmails: Set<string>` - conjunto de emails invalidos cargados de la DB
+
+**Nuevo efecto:**
+- Al cargar contactos, tambien cargar `invalid_emails` y construir el Set
+
+**Funcion `removeInvalidEmail(email)`:**
+- DELETE de `invalid_emails` donde `email_address = email` (reactivar email)
+
+**UI - Alerta visual en tarjetas Kanban:**
+- Junto al email del contacto, si `invalidEmails.has(c.email)` o `invalidEmails.has(c.work_email)`, mostrar icono `AlertCircle` en rojo con tooltip "Email invalido - Bounce detectado"
+- Aplicar estilo visual: texto del email en rojo tachado
+
+**UI - Boton "Detectar bounces":**
+- Nuevo boton en la barra de herramientas (junto a "Enriquecer todos") que invoca la edge function
+- Muestra toast con el numero de emails invalidos detectados
+
+### Paso 4: Modificar `src/pages/Contacts.tsx` - Vista Lista
+
+- Mismo patron de alerta visual en la vista lista
+- Columna o indicador de "Email invalido" si aplica
+
+### Paso 5: Modificar `src/components/contacts/ContactProfile.tsx`
+
+- Cargar `invalid_emails` al abrir perfil
+- Mostrar alerta destacada si alguno de los emails del contacto esta en la lista
+- Boton "Reactivar email" para quitarlo de la lista de invalidos
+
+### Paso 6: Indicador en `ComposeEmail`
+
+- Al escribir un destinatario, verificar contra `invalid_emails`
+- Si coincide, mostrar advertencia amarilla: "Este email fue detectado como invalido (bounce previo)"
+
+---
+
+### Archivos a crear/modificar
+
+| Archivo | Cambios |
+|---|---|
+| Migracion SQL | Crear tabla `invalid_emails` con RLS |
+| `supabase/functions/detect-bounces/index.ts` | Edge function para analizar bounces |
+| `supabase/config.toml` | Registrar nueva funcion |
+| `src/pages/Contacts.tsx` | Cargar invalidos, alerta visual en tarjetas, boton detectar |
+| `src/components/contacts/ContactProfile.tsx` | Alerta en perfil, boton reactivar |
+| `src/components/email/ComposeEmail.tsx` | Advertencia al escribir destinatario invalido |
+
+### Flujo del sistema
+
+```text
+Email bounce llega a Inbox --> Usuario pulsa "Detectar bounces"
+  --> Edge function analiza body de emails de "Mail Delivery System"
+  --> Extrae direcciones email fallidas
+  --> Inserta en tabla invalid_emails
+  --> Contactos muestran icono AlertCircle rojo junto al email
+  --> Al componer email, se advierte si el destinatario esta en la lista
+  --> Usuario puede "Reactivar" un email desde ContactProfile
 ```
 
