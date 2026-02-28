@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  Plus, Inbox, Send, RefreshCw, Loader2,
+  Plus, Inbox, Send, RefreshCw, Loader2, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -10,6 +10,10 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export type EmailAccount = {
   id: string;
@@ -18,7 +22,7 @@ export type EmailAccount = {
 };
 
 type FolderCounts = {
-  [accountId: string]: { inbox: number; sent: number };
+  [accountId: string]: { inbox: number; sent: number; trash: number };
 };
 
 type UnreadCounts = {
@@ -35,6 +39,7 @@ interface EmailSidebarProps {
   onFolderSelect: (accountId: string, folder: string) => void;
   onCompose: () => void;
   onSync: (accountId?: string) => void;
+  onEmptyTrash?: (accountId: string) => void;
 }
 
 const ACCOUNT_COLORS = [
@@ -71,6 +76,7 @@ export default function EmailSidebar({
   onFolderSelect,
   onCompose,
   onSync,
+  onEmptyTrash,
 }: EmailSidebarProps) {
   return (
     <div className="w-56 shrink-0 border-r border-border p-4 space-y-4 hidden md:flex flex-col">
@@ -115,7 +121,7 @@ export default function EmailSidebar({
           className="space-y-0"
         >
           {accounts.map((acc, idx) => {
-            const counts = folderCounts[acc.id] || { inbox: 0, sent: 0 };
+            const counts = folderCounts[acc.id] || { inbox: 0, sent: 0, trash: 0 };
             const unread = unreadCounts[acc.id] || 0;
             const colorDot = ACCOUNT_COLORS[idx % ACCOUNT_COLORS.length];
 
@@ -162,6 +168,50 @@ export default function EmailSidebar({
                       Enviados
                       <span className="ml-auto text-xs opacity-70">{counts.sent}</span>
                     </button>
+                    <button
+                      onClick={() => onFolderSelect(acc.id, "trash")}
+                      className={cn(
+                        "flex items-center gap-2 w-full px-3 py-1.5 rounded-md text-sm transition-colors",
+                        selectedAccountId === acc.id && selectedFolder === "trash"
+                          ? "bg-accent text-accent-foreground font-medium"
+                          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                      )}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Papelera
+                      {counts.trash > 0 && (
+                        <span className="ml-auto text-xs opacity-70">{counts.trash}</span>
+                      )}
+                    </button>
+
+                    {/* Empty trash button */}
+                    {selectedAccountId === acc.id && selectedFolder === "trash" && counts.trash > 0 && onEmptyTrash && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button className="flex items-center gap-2 w-full px-3 py-1.5 rounded-md text-xs text-destructive hover:bg-destructive/10 transition-colors mt-1">
+                            <Trash2 className="w-3 h-3" />
+                            Vaciar papelera
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>¿Vaciar papelera?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Se eliminarán permanentemente {counts.trash} email(s) de esta cuenta. Esta acción no se puede deshacer.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              onClick={() => onEmptyTrash(acc.id)}
+                            >
+                              Eliminar todo
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
                   </div>
                 </AccordionContent>
               </AccordionItem>

@@ -382,6 +382,7 @@ export type Database = {
           id: string
           imap_uid: string | null
           is_read: boolean
+          is_trashed: boolean
           message_id: string | null
           organization_id: string | null
           project_id: string | null
@@ -389,6 +390,7 @@ export type Database = {
           status: string
           subject: string
           to_email: string
+          trashed_at: string | null
         }
         Insert: {
           body_html?: string | null
@@ -403,6 +405,7 @@ export type Database = {
           id?: string
           imap_uid?: string | null
           is_read?: boolean
+          is_trashed?: boolean
           message_id?: string | null
           organization_id?: string | null
           project_id?: string | null
@@ -410,6 +413,7 @@ export type Database = {
           status?: string
           subject: string
           to_email: string
+          trashed_at?: string | null
         }
         Update: {
           body_html?: string | null
@@ -424,6 +428,7 @@ export type Database = {
           id?: string
           imap_uid?: string | null
           is_read?: boolean
+          is_trashed?: boolean
           message_id?: string | null
           organization_id?: string | null
           project_id?: string | null
@@ -431,6 +436,7 @@ export type Database = {
           status?: string
           subject?: string
           to_email?: string
+          trashed_at?: string | null
         }
         Relationships: [
           {

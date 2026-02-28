@@ -1,73 +1,83 @@
 
 
-## Papelera de Emails - Plan de Implementacion
+## Revision: Errores y Mejoras pendientes tras integracion Findymail
 
-### Resumen
+### BUG 1: Bulk Enrich no incluye Findymail (Alta)
 
-Implementar una papelera completa para el sistema de email del CRM con borrado logico (soft delete), restauracion y borrado permanente.
+**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
 
----
+**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
 
-### Paso 1: Migracion de base de datos
+### BUG 2: `findymail_status` accedido con cast `as any` (Media)
 
-Anadir columna `is_trashed` a la tabla `email_logs`:
+**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
 
-```text
-ALTER TABLE email_logs ADD COLUMN is_trashed boolean NOT NULL DEFAULT false;
-ALTER TABLE email_logs ADD COLUMN trashed_at timestamptz;
+**Solucion:** Cambiar a `contact.findymail_status` sin cast.
+
+### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
+
+**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
+
+**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
+
+### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
+
+**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
+
+**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
+
+### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
+
+**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
+
+**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
+
+### Resumen de cambios
+
+| Archivo | Cambio | Prioridad |
+|---|---|---|
+| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
+| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
+| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
+| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
+
+### Detalle tecnico
+
+**Contacts.tsx - Nuevos estados:**
+```typescript
+const [findymailFilter, setFindymailFilter] = useState("");
+const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
 ```
 
-Todas las queries existentes de inbox/sent filtraran automaticamente por `is_trashed = false`.
+**Contacts.tsx - Nueva funcion:**
+```typescript
+const enrichWithFindymailFromCard = async (c: Contact) => {
+  if (!c.company_domain) return;
+  setEnrichingFindymailId(c.id);
+  try {
+    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+    });
+    if (error) throw error;
+    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
+    else toast.info("Findymail no encontro datos");
+    load();
+  } catch (err: any) {
+    toast.error(err.message || "Error con Findymail");
+  } finally {
+    setEnrichingFindymailId(null);
+  }
+};
+```
 
-### Paso 2: Actualizar queries en `Emails.tsx`
+**Contacts.tsx - Filtro actualizado:**
+```typescript
+const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
+return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+```
 
-- **fetchCounts**: Anadir `.eq("is_trashed", false)` a las queries de inbox y sent. Anadir nueva query para contar emails en papelera por cuenta.
-- **fetchEmails**: Cuando `selectedFolder === "trash"`, filtrar por `is_trashed = true` en vez de por direction. Para inbox/sent, anadir `.eq("is_trashed", false)`.
-- **Nuevo estado**: `trashCounts` por cuenta.
-- **Nuevas funciones**:
-  - `moveToTrash(emailId)`: UPDATE `is_trashed = true, trashed_at = now()`
-  - `restoreFromTrash(emailId)`: UPDATE `is_trashed = false, trashed_at = null`
-  - `permanentDelete(emailId)`: DELETE real del registro
-  - `emptyTrash(accountId)`: DELETE todos los emails con `is_trashed = true` de esa cuenta
-
-### Paso 3: Actualizar `EmailSidebar.tsx`
-
-- Actualizar tipo `FolderCounts` para incluir `trash: number`
-- Anadir carpeta "Papelera" con icono `Trash2` debajo de "Enviados" en cada cuenta
-- Mostrar contador de emails en papelera
-- Anadir boton "Vaciar papelera" visible solo cuando la carpeta seleccionada es "trash"
-
-### Paso 4: UI en la lista de emails
-
-- **Hover action**: Anadir boton de papelera (`Trash2`) que aparece al hacer hover en cada fila de email (usando `group` + `group-hover:opacity-100`)
-- **Vista papelera**: Cuando `selectedFolder === "trash"`, mostrar botones de Restaurar (`RotateCcw`) y Borrar definitivo (`XCircle`) en lugar del boton de papelera
-- **Barra superior en papelera**: Mostrar boton "Vaciar papelera" con confirmacion (AlertDialog)
-
-### Paso 5: UI en el panel de detalle
-
-- Anadir boton "Borrar" (`Trash2`) en la barra de acciones del email seleccionado (junto a Responder y Reenviar)
-- Si el email esta en papelera, mostrar "Restaurar" y "Borrar definitivo" en su lugar
-
-### Paso 6: Mobile
-
-- Anadir "Papelera" a los controles mobile (botones de folder en la parte superior)
-
----
-
-### Archivos a modificar
-
-| Archivo | Cambios |
-|---|---|
-| Migracion SQL | Anadir `is_trashed` y `trashed_at` a `email_logs` |
-| `src/pages/Emails.tsx` | Filtros de query, funciones moveToTrash/restore/delete, UI hover buttons, barra papelera, detalle |
-| `src/components/email/EmailSidebar.tsx` | Carpeta Papelera en sidebar, tipo FolderCounts ampliado, boton vaciar |
-
-### Flujo de usuario
-
-```text
-Email en Inbox/Sent --> [Borrar] --> Papelera (is_trashed=true)
-Papelera --> [Restaurar] --> Vuelve a Inbox/Sent (is_trashed=false)
-Papelera --> [Borrar definitivo] --> DELETE real
-Papelera --> [Vaciar papelera] --> DELETE todos con confirmacion
+**Contacts.tsx - Bulk enrich corregido:**
+```typescript
+body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
 ```
 
