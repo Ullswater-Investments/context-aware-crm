@@ -464,7 +464,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
             <div className="space-y-6">
               {/* Invalid email alert */}
               {(() => {
-                const invalidEmail = isContactEmailInvalid();
+                const invalidEmail = getInvalidContactEmail();
                 return invalidEmail ? (
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />

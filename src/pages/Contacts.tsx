@@ -748,7 +748,7 @@ export default function Contacts() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((c) => {
             const missing = hasMissingData(c);
-            const emailBounced = isEmailInvalid(c);
+            const emailBounced = isContactEmailInvalid(c);
             return (
               <Card key={c.id} className={`group relative hover:shadow-md transition-shadow cursor-pointer ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""}`} onClick={() => openProfile(c)}>
                 <TrashCardButton contactId={c.id} className="absolute top-3 right-3 z-10" />
