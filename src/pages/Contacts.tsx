@@ -457,6 +457,10 @@ export default function Contacts() {
                   <Mail className="w-4 h-4 mr-2" />Corregir emails
                 </Button>
               )}
+              <Button variant="outline" onClick={detectBounces} disabled={detectingBounces}>
+                {detectingBounces ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ShieldAlert className="w-4 h-4 mr-2" />}
+                Detectar bounces
+              </Button>
               <Button variant="outline" onClick={() => setImporterOpen(true)}><FileSpreadsheet className="w-4 h-4 mr-2" />Importar</Button>
               <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
