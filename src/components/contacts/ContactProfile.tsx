@@ -473,6 +473,21 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
           </DialogHeader>
           <ScrollArea className="max-h-[70vh] pr-4">
             <div className="space-y-6">
+              {/* Invalid email alert */}
+              {(() => {
+                const invalidEmail = isContactEmailInvalid();
+                return invalidEmail ? (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="flex items-center justify-between">
+                      <span>El email <strong>{invalidEmail}</strong> fue detectado como inválido (bounce previo)</span>
+                      <Button variant="outline" size="sm" onClick={() => reactivateEmail(invalidEmail)} className="ml-2 shrink-0">
+                        <RotateCcw className="w-3 h-3 mr-1" />Reactivar
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ) : null;
+              })()}
               {/* Contact Info - Editable */}
               {editing ? (
                 <div className="space-y-3">
