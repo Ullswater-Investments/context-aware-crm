@@ -77,17 +77,12 @@ export default function Contacts() {
   const [bulkEnriching, setBulkEnriching] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ processed: 0, total: 0 });
   const [showTrash, setShowTrash] = useState(false);
-  const [invalidEmails, setInvalidEmails] = useState<Set<string>>(new Set());
+  const { invalidEmails, loadInvalidEmails, isEmailInvalid } = useInvalidEmails();
   const [detectingBounces, setDetectingBounces] = useState(false);
 
-  const loadInvalidEmails = useCallback(async () => {
-    const { data } = await supabase.from("invalid_emails").select("email_address").limit(5000);
-    if (data) setInvalidEmails(new Set(data.map((d: any) => d.email_address.toLowerCase())));
-  }, []);
-
-  const isEmailInvalid = (contact: Contact): boolean => {
-    const emails = [contact.email, contact.work_email, contact.personal_email].filter(Boolean).map(e => e!.toLowerCase());
-    return emails.some(e => invalidEmails.has(e));
+  const isContactEmailInvalid = (contact: Contact): boolean => {
+    const emails = [contact.email, contact.work_email, contact.personal_email].filter(Boolean);
+    return emails.some(e => isEmailInvalid(e));
   };
 
   const detectBounces = async () => {
