@@ -752,6 +752,7 @@ export default function Contacts() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((c) => {
             const missing = hasMissingData(c);
+            const emailBounced = isEmailInvalid(c);
             return (
               <Card key={c.id} className={`group relative hover:shadow-md transition-shadow cursor-pointer ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""}`} onClick={() => openProfile(c)}>
                 <TrashCardButton contactId={c.id} className="absolute top-3 right-3 z-10" />
@@ -761,6 +762,9 @@ export default function Contacts() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <CardTitle className="text-base truncate">{c.full_name}</CardTitle>
+                        {emailBounced && (
+                          <TooltipProvider><Tooltip><TooltipTrigger asChild><AlertCircle className="w-4 h-4 text-destructive shrink-0" /></TooltipTrigger><TooltipContent><p>Email inválido - Bounce detectado</p></TooltipContent></Tooltip></TooltipProvider>
+                        )}
                         {missing && <MissingDataAlert />}
                       </div>
                       {c.organizations?.name && <p className="text-sm text-muted-foreground">{c.organizations.name}</p>}
@@ -771,8 +775,9 @@ export default function Contacts() {
                   {c.position && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Briefcase className="w-3.5 h-3.5" />{c.position}</div>}
                   {c.email ? (
                     <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
-                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+                      className={`flex items-center gap-2 text-sm transition-colors ${emailBounced ? "text-destructive line-through" : "text-muted-foreground hover:text-primary"}`}>
                       <Mail className="w-3.5 h-3.5" />{c.email}
+                      {emailBounced && <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
                     </button>
                   ) : (c.work_email || c.personal_email || (c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()))) ? (
                     <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
