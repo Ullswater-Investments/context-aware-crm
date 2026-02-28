@@ -658,6 +658,9 @@ export default function Contacts() {
                               {c.apollo_status === "not_found" && <Sparkles className="w-3 h-3 text-orange-500 shrink-0" />}
                               {c.findymail_status === "enriched" && <Mail className="w-3 h-3 text-green-500 shrink-0" />}
                               {c.findymail_status === "not_found" && <Mail className="w-3 h-3 text-orange-500 shrink-0" />}
+                              {emailBounced && (
+                                <TooltipProvider><Tooltip><TooltipTrigger asChild><AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0" /></TooltipTrigger><TooltipContent><p>Email inválido - Bounce detectado</p></TooltipContent></Tooltip></TooltipProvider>
+                              )}
                               {missing && <MissingDataAlert />}
                             </div>
                             {c.organizations?.name && <p className="text-xs text-muted-foreground truncate">{c.organizations.name}</p>}
