@@ -123,7 +123,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
         file_size: file.size,
         contact_id: contact.id,
         created_by: user.id,
-      } as any);
+      });
       if (insertError) throw insertError;
       toast.success("Documento subido");
       loadDocuments(contact.id);
