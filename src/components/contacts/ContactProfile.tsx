@@ -168,6 +168,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       setEditing(false);
       loadNotes(contact.id);
       loadDocuments(contact.id);
+      loadInvalidEmails();
     }
     onOpenChange(isOpen);
   };
