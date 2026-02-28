@@ -132,7 +132,7 @@ export default function Contacts() {
   };
 
   const restoreFromTrash = async (contactId: string) => {
-    const { error } = await supabase.from("contacts").update({ status: "new_lead" as any, trashed_at: null } as any).eq("id", contactId);
+    const { error } = await supabase.from("contacts").update({ status: "new_lead", trashed_at: null }).eq("id", contactId);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto restaurado");
     load();
