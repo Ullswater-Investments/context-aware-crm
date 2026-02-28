@@ -77,6 +77,36 @@ export default function Contacts() {
   const [bulkEnriching, setBulkEnriching] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ processed: 0, total: 0 });
   const [showTrash, setShowTrash] = useState(false);
+  const [invalidEmails, setInvalidEmails] = useState<Set<string>>(new Set());
+  const [detectingBounces, setDetectingBounces] = useState(false);
+
+  const loadInvalidEmails = useCallback(async () => {
+    const { data } = await supabase.from("invalid_emails").select("email_address").limit(5000);
+    if (data) setInvalidEmails(new Set(data.map((d: any) => d.email_address.toLowerCase())));
+  }, []);
+
+  const isEmailInvalid = (contact: Contact): boolean => {
+    const emails = [contact.email, contact.work_email, contact.personal_email].filter(Boolean).map(e => e!.toLowerCase());
+    return emails.some(e => invalidEmails.has(e));
+  };
+
+  const detectBounces = async () => {
+    setDetectingBounces(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("detect-bounces");
+      if (error) throw error;
+      if (data?.inserted > 0) {
+        toast.success(`${data.inserted} emails inválidos detectados`);
+        loadInvalidEmails();
+      } else {
+        toast.info("No se detectaron nuevos emails inválidos");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Error al detectar bounces");
+    } finally {
+      setDetectingBounces(false);
+    }
+  };
 
   const load = useCallback(async () => {
     const { data } = await supabase
