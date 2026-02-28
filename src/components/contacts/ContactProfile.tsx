@@ -249,7 +249,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
     setStatus(newStatus);
     const { error } = await supabase
       .from("contacts")
-      .update({ status: newStatus } as any)
+      .update({ status: newStatus as any })
       .eq("id", contact.id);
     if (error) toast.error(error.message);
     else onUpdate();
