@@ -32,3 +32,24 @@ verify_jwt = false
 
 [functions.whatsapp-qr]
 verify_jwt = false
+
+[functions.detect-bounces]
+verify_jwt = false
+
+[functions.sync-emails]
+verify_jwt = false
+
+[functions.test-connector]
+verify_jwt = false
+
+[functions.test-email-connection]
+verify_jwt = false
+
+[functions.prospector-search]
+verify_jwt = false
+
+[functions.get-api-usage]
+verify_jwt = false
+
+[functions.suggest-reply]
+verify_jwt = false

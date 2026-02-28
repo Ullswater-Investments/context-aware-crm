@@ -497,8 +497,8 @@ export default function Emails() {
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant={selected.status === "sent" ? "default" : "destructive"}>
-                  {selected.status === "sent" ? "Enviado" : "Fallido"}
+                <Badge variant={selected.status === "sent" ? "default" : selected.status === "received" ? "secondary" : "destructive"}>
+                  {selected.status === "sent" ? "Enviado" : selected.status === "received" ? "Recibido" : "Fallido"}
                 </Badge>
 
                 {selected.is_trashed ? (

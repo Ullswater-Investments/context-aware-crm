@@ -307,7 +307,7 @@ export default function Contacts() {
   };
 
   const updateStatus = async (contactId: string, newStatus: string) => {
-    const { error } = await supabase.from("contacts").update({ status: newStatus } as any).eq("id", contactId);
+    const { error } = await supabase.from("contacts").update({ status: newStatus as any }).eq("id", contactId);
     if (error) toast.error(error.message);
     else load();
   };

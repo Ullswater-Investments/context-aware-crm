@@ -93,15 +93,9 @@ export default function ComposeEmail({
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
-  const [invalidEmails, setInvalidEmails] = useState<Set<string>>(new Set());
+  const { loadInvalidEmails: fetchInvalidEmails, isEmailInvalid } = useInvalidEmails();
 
-  const fetchInvalidEmails = async () => {
-    if (!user) return;
-    const { data } = await supabase.from("invalid_emails").select("email_address").limit(5000);
-    if (data) setInvalidEmails(new Set(data.map((d: any) => d.email_address.toLowerCase())));
-  };
-
-  const isToInvalid = to.trim().toLowerCase() && invalidEmails.has(to.trim().toLowerCase());
+  const isToInvalid = to.trim() !== "" && isEmailInvalid(to.trim());
   const fetchSignatures = async () => {
     if (!user) return;
     const { data } = await supabase

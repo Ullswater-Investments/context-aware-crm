@@ -279,7 +279,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       contact_id: contact.id,
       content: newNote.trim(),
       created_by: user!.id,
-    } as any);
+    });
     if (error) toast.error(error.message);
     else { setNewNote(""); loadNotes(contact.id); toast.success("Nota guardada"); }
   };
