@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   Plus, Search, Mail, Loader2, ChevronLeft, ChevronRight, Forward,
-  RefreshCw, ArrowDownLeft, ArrowUpRight, Inbox, Send,
+  RefreshCw, ArrowDownLeft, ArrowUpRight, Inbox, Send, Trash2, RotateCcw, XCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -18,6 +18,10 @@ import EmailSidebar, {
   getAccountColor,
   getAccountLabel,
 } from "@/components/email/EmailSidebar";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 type EmailLog = {
   id: string;
@@ -35,6 +39,8 @@ type EmailLog = {
   organization_id: string | null;
   project_id: string | null;
   direction?: string;
+  is_trashed?: boolean;
+  is_read?: boolean;
 };
 
 const PAGE_SIZE = 20;
@@ -53,7 +59,7 @@ export default function Emails() {
   const [totalCount, setTotalCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
-  const [folderCounts, setFolderCounts] = useState<Record<string, { inbox: number; sent: number }>>({});
+  const [folderCounts, setFolderCounts] = useState<Record<string, { inbox: number; sent: number; trash: number }>>({});
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   // Fetch accounts
@@ -66,7 +72,6 @@ export default function Emails() {
       .then(({ data }) => {
         if (data) {
           setAccounts(data as EmailAccount[]);
-          // Auto-select first account if none selected
           if (!selectedAccountId && data.length > 0) {
             setSelectedAccountId(data[0].id);
           }
@@ -77,30 +82,42 @@ export default function Emails() {
   const fetchCounts = useCallback(async () => {
     if (!user || accounts.length === 0) return;
 
-    const newCounts: Record<string, { inbox: number; sent: number }> = {};
+    const newCounts: Record<string, { inbox: number; sent: number; trash: number }> = {};
     const newUnread: Record<string, number> = {};
 
     await Promise.all(
       accounts.map(async (acc) => {
-        const [inboxRes, sentRes, unreadRes] = await Promise.all([
+        const [inboxRes, sentRes, unreadRes, trashRes] = await Promise.all([
           supabase
             .from("email_logs")
             .select("*", { count: "exact", head: true })
             .eq("direction", "inbound")
+            .eq("is_trashed", false)
             .ilike("to_email", `%${acc.email_address}%`),
           supabase
             .from("email_logs")
             .select("*", { count: "exact", head: true })
             .eq("direction", "outbound")
+            .eq("is_trashed", false)
             .ilike("from_email", `%${acc.email_address}%`),
           supabase
             .from("email_logs")
             .select("*", { count: "exact", head: true })
             .eq("direction", "inbound")
             .eq("is_read", false)
+            .eq("is_trashed", false)
             .ilike("to_email", `%${acc.email_address}%`),
+          supabase
+            .from("email_logs")
+            .select("*", { count: "exact", head: true })
+            .eq("is_trashed", true)
+            .or(`to_email.ilike.%${acc.email_address}%,from_email.ilike.%${acc.email_address}%`),
         ]);
-        newCounts[acc.id] = { inbox: inboxRes.count ?? 0, sent: sentRes.count ?? 0 };
+        newCounts[acc.id] = {
+          inbox: inboxRes.count ?? 0,
+          sent: sentRes.count ?? 0,
+          trash: trashRes.count ?? 0,
+        };
         newUnread[acc.id] = unreadRes.count ?? 0;
       })
     );
@@ -125,13 +142,19 @@ export default function Emails() {
 
     const acc = accounts.find((a) => a.id === selectedAccountId);
     if (acc) {
-      if (selectedFolder === "inbox") {
+      if (selectedFolder === "trash") {
+        query = query
+          .eq("is_trashed", true)
+          .or(`to_email.ilike.%${acc.email_address}%,from_email.ilike.%${acc.email_address}%`);
+      } else if (selectedFolder === "inbox") {
         query = query
           .eq("direction", "inbound")
+          .eq("is_trashed", false)
           .ilike("to_email", `%${acc.email_address}%`);
       } else {
         query = query
           .eq("direction", "outbound")
+          .eq("is_trashed", false)
           .ilike("from_email", `%${acc.email_address}%`);
       }
     }
@@ -155,26 +178,67 @@ export default function Emails() {
     fetchEmails();
   }, [fetchEmails]);
 
-  // Realtime: update counts when email_logs changes
+  // Realtime
   useEffect(() => {
     if (!user || accounts.length === 0) return;
-
     const channel = supabase
       .channel("email-unread-counts")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "email_logs" },
-        () => {
-          fetchCounts();
-          fetchEmails();
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "email_logs" }, () => {
+        fetchCounts();
+        fetchEmails();
+      })
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [user, accounts, fetchCounts, fetchEmails]);
+
+  // --- Trash actions ---
+  const moveToTrash = async (emailId: string) => {
+    const { error } = await supabase
+      .from("email_logs")
+      .update({ is_trashed: true, trashed_at: new Date().toISOString() } as any)
+      .eq("id", emailId);
+    if (error) { toast.error("Error al mover a papelera"); return; }
+    toast.success("Movido a papelera");
+    if (selected?.id === emailId) setSelected(null);
+    fetchEmails();
+    fetchCounts();
+  };
+
+  const restoreFromTrash = async (emailId: string) => {
+    const { error } = await supabase
+      .from("email_logs")
+      .update({ is_trashed: false, trashed_at: null } as any)
+      .eq("id", emailId);
+    if (error) { toast.error("Error al restaurar"); return; }
+    toast.success("Email restaurado");
+    if (selected?.id === emailId) setSelected(null);
+    fetchEmails();
+    fetchCounts();
+  };
+
+  const permanentDelete = async (emailId: string) => {
+    const { error } = await supabase.from("email_logs").delete().eq("id", emailId);
+    if (error) { toast.error("Error al eliminar"); return; }
+    toast.success("Email eliminado permanentemente");
+    if (selected?.id === emailId) setSelected(null);
+    fetchEmails();
+    fetchCounts();
+  };
+
+  const emptyTrash = async (accountId: string) => {
+    const acc = accounts.find((a) => a.id === accountId);
+    if (!acc) return;
+    const { error } = await supabase
+      .from("email_logs")
+      .delete()
+      .eq("is_trashed", true)
+      .or(`to_email.ilike.%${acc.email_address}%,from_email.ilike.%${acc.email_address}%`);
+    if (error) { toast.error("Error al vaciar papelera"); return; }
+    toast.success("Papelera vaciada");
+    setSelected(null);
+    fetchEmails();
+    fetchCounts();
+  };
 
   const handleSync = async (accountId?: string) => {
     setSyncing(true);
@@ -202,10 +266,10 @@ export default function Emails() {
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const isTrashFolder = selectedFolder === "trash";
 
   return (
     <div className="flex h-full">
-      {/* Sidebar */}
       <EmailSidebar
         accounts={accounts}
         selectedAccountId={selectedAccountId}
@@ -216,6 +280,7 @@ export default function Emails() {
         onFolderSelect={handleFolderSelect}
         onCompose={() => setComposeOpen(true)}
         onSync={handleSync}
+        onEmptyTrash={emptyTrash}
       />
 
       {/* Center - email list */}
@@ -243,13 +308,24 @@ export default function Emails() {
                 <button
                   onClick={() => handleFolderSelect(acc.id, "sent")}
                   className={cn(
-                    "text-xs px-2 py-1 rounded-r-md transition-colors",
+                    "text-xs px-2 py-1 transition-colors",
                     selectedAccountId === acc.id && selectedFolder === "sent"
                       ? "bg-accent text-accent-foreground"
                       : "text-muted-foreground"
                   )}
                 >
                   Sent
+                </button>
+                <button
+                  onClick={() => handleFolderSelect(acc.id, "trash")}
+                  className={cn(
+                    "text-xs px-2 py-1 rounded-r-md transition-colors",
+                    selectedAccountId === acc.id && selectedFolder === "trash"
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  <Trash2 className="w-3 h-3 inline" />
                 </button>
               </div>
             ))}
@@ -274,25 +350,29 @@ export default function Emails() {
           ) : emails.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
               <Mail className="w-10 h-10 mb-3 opacity-40" />
-              <p className="text-sm">No se encontraron emails</p>
+              <p className="text-sm">
+                {isTrashFolder ? "La papelera está vacía" : "No se encontraron emails"}
+              </p>
             </div>
           ) : (
             <div className="divide-y divide-border">
-                {emails.map((email) => {
-                return (
+              {emails.map((email) => (
+                <div
+                  key={email.id}
+                  className={cn(
+                    "group relative flex items-stretch hover:bg-accent/30 transition-colors",
+                    selected?.id === email.id && "bg-accent/50",
+                    !isTrashFolder && email.direction === "inbound" && !email.is_read && "bg-primary/5"
+                  )}
+                >
                   <button
-                    key={email.id}
                     onClick={async () => {
                       setSelected(email);
-                      if (email.direction === "inbound" && !(email as any).is_read) {
+                      if (email.direction === "inbound" && !email.is_read) {
                         await supabase.from("email_logs").update({ is_read: true } as any).eq("id", email.id);
                       }
                     }}
-                    className={cn(
-                      "w-full text-left px-4 py-3 hover:bg-accent/30 transition-colors",
-                      selected?.id === email.id && "bg-accent/50",
-                      email.direction === "inbound" && !(email as any).is_read && "bg-primary/5"
-                    )}
+                    className="flex-1 text-left px-4 py-3 min-w-0"
                   >
                     <div className="flex items-center gap-2 mb-1">
                       {email.direction === "inbound" ? (
@@ -300,7 +380,7 @@ export default function Emails() {
                       ) : (
                         <ArrowUpRight className="w-3.5 h-3.5 text-green-500 shrink-0" />
                       )}
-                      <span className={cn("text-sm truncate flex-1", email.direction === "inbound" && !(email as any).is_read ? "font-semibold" : "font-medium")}>
+                      <span className={cn("text-sm truncate flex-1", email.direction === "inbound" && !email.is_read ? "font-semibold" : "font-medium")}>
                         {email.direction === "inbound" ? email.from_email : email.to_email}
                       </span>
                       <Badge
@@ -315,8 +395,59 @@ export default function Emails() {
                       {format(new Date(email.created_at), "dd MMM yyyy, HH:mm", { locale: es })}
                     </p>
                   </button>
-                );
-              })}
+
+                  {/* Hover actions */}
+                  <div className="flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {isTrashFolder ? (
+                      <>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); restoreFromTrash(email.id); }}
+                          className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                          title="Restaurar"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <button
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                              title="Eliminar definitivamente"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>¿Eliminar permanentemente?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Este email se eliminará de forma permanente. Esta acción no se puede deshacer.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={() => permanentDelete(email.id)}
+                              >
+                                Eliminar
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); moveToTrash(email.id); }}
+                        className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                        title="Mover a papelera"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -369,42 +500,88 @@ export default function Emails() {
                 <Badge variant={selected.status === "sent" ? "default" : "destructive"}>
                   {selected.status === "sent" ? "Enviado" : "Fallido"}
                 </Badge>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const reSubject = selected.subject.startsWith("Re:")
-                      ? selected.subject
-                      : `Re: ${selected.subject}`;
-                    const quotedBody = `<br/><br/><blockquote style="border-left: 2px solid #ccc; padding-left: 12px; color: #666;">${selected.body_html || selected.body_text || ""}</blockquote>`;
-                    setResendData({
-                      to: selected.from_email,
-                      cc: "",
-                      subject: reSubject,
-                      body: quotedBody,
-                    });
-                    setComposeOpen(true);
-                  }}
-                >
-                  <ArrowDownLeft className="w-3.5 h-3.5 mr-1" />
-                  Responder
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setResendData({
-                      to: selected.to_email,
-                      cc: selected.cc_emails || "",
-                      subject: selected.subject,
-                      body: selected.body_html || selected.body_text || "",
-                    });
-                    setComposeOpen(true);
-                  }}
-                >
-                  <Forward className="w-3.5 h-3.5 mr-1" />
-                  Reenviar
-                </Button>
+
+                {selected.is_trashed ? (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => restoreFromTrash(selected.id)}>
+                      <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                      Restaurar
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="outline" size="sm" className="text-destructive border-destructive/50 hover:bg-destructive/10">
+                          <XCircle className="w-3.5 h-3.5 mr-1" />
+                          Eliminar
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar permanentemente?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Este email se eliminará de forma permanente. Esta acción no se puede deshacer.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => permanentDelete(selected.id)}
+                          >
+                            Eliminar
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const reSubject = selected.subject.startsWith("Re:")
+                          ? selected.subject
+                          : `Re: ${selected.subject}`;
+                        const quotedBody = `<br/><br/><blockquote style="border-left: 2px solid #ccc; padding-left: 12px; color: #666;">${selected.body_html || selected.body_text || ""}</blockquote>`;
+                        setResendData({
+                          to: selected.from_email,
+                          cc: "",
+                          subject: reSubject,
+                          body: quotedBody,
+                        });
+                        setComposeOpen(true);
+                      }}
+                    >
+                      <ArrowDownLeft className="w-3.5 h-3.5 mr-1" />
+                      Responder
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setResendData({
+                          to: selected.to_email,
+                          cc: selected.cc_emails || "",
+                          subject: selected.subject,
+                          body: selected.body_html || selected.body_text || "",
+                        });
+                        setComposeOpen(true);
+                      }}
+                    >
+                      <Forward className="w-3.5 h-3.5 mr-1" />
+                      Reenviar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                      onClick={() => moveToTrash(selected.id)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-1" />
+                      Borrar
+                    </Button>
+                  </>
+                )}
               </div>
               {selected.error_message && (
                 <p className="text-xs text-destructive mt-1">{selected.error_message}</p>
