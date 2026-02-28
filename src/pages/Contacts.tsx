@@ -641,6 +641,7 @@ export default function Contacts() {
                 <div className="space-y-2">
                   {columnContacts.map((c) => {
                     const missing = hasMissingData(c);
+                    const emailBounced = isEmailInvalid(c);
                     return (
                       <div key={c.id} draggable onDragStart={(e) => handleDragStart(e, c.id)} onClick={() => openProfile(c)}
                         className={`group relative bg-background rounded-lg border p-3 cursor-pointer hover:shadow-md transition-shadow ${draggedId === c.id ? "opacity-50" : ""} ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""}`}>
