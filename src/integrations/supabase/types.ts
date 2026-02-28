@@ -101,6 +101,7 @@ export type Database = {
           postal_address: string | null
           status: Database["public"]["Enums"]["contact_status"]
           tags: string[] | null
+          trashed_at: string | null
           updated_at: string
           work_email: string | null
           work_phone: string | null
@@ -127,6 +128,7 @@ export type Database = {
           postal_address?: string | null
           status?: Database["public"]["Enums"]["contact_status"]
           tags?: string[] | null
+          trashed_at?: string | null
           updated_at?: string
           work_email?: string | null
           work_phone?: string | null
@@ -153,6 +155,7 @@ export type Database = {
           postal_address?: string | null
           status?: Database["public"]["Enums"]["contact_status"]
           tags?: string[] | null
+          trashed_at?: string | null
           updated_at?: string
           work_email?: string | null
           work_phone?: string | null
@@ -935,6 +938,7 @@ export type Database = {
         | "proposal_sent"
         | "client"
         | "lost"
+        | "trash"
       project_status: "proposal" | "active" | "completed" | "cancelled"
       task_priority: "low" | "medium" | "high" | "urgent"
       task_type:
@@ -1078,6 +1082,7 @@ export const Constants = {
         "proposal_sent",
         "client",
         "lost",
+        "trash",
       ],
       project_status: ["proposal", "active", "completed", "cancelled"],
       task_priority: ["low", "medium", "high", "urgent"],
