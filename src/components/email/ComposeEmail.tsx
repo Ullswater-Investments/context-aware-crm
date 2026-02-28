@@ -17,8 +17,9 @@ import {
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Save, XCircle,
+  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Save, XCircle, AlertCircle,
 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import RichTextEditor from "./RichTextEditor";
 import SignatureManager, { type Signature } from "./SignatureManager";
 import AccountStatusDot from "./AccountStatusDot";
@@ -92,7 +93,15 @@ export default function ComposeEmail({
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
+  const [invalidEmails, setInvalidEmails] = useState<Set<string>>(new Set());
 
+  const fetchInvalidEmails = async () => {
+    if (!user) return;
+    const { data } = await supabase.from("invalid_emails").select("email_address").limit(5000);
+    if (data) setInvalidEmails(new Set(data.map((d: any) => d.email_address.toLowerCase())));
+  };
+
+  const isToInvalid = to.trim().toLowerCase() && invalidEmails.has(to.trim().toLowerCase());
   const fetchSignatures = async () => {
     if (!user) return;
     const { data } = await supabase
@@ -165,6 +174,7 @@ export default function ComposeEmail({
     if (open) {
       fetchSignatures();
       fetchEmailAccounts();
+      fetchInvalidEmails();
     }
   }, [open, user]);
 
@@ -446,6 +456,16 @@ export default function ComposeEmail({
                   </button>
                 )}
               </div>
+
+              {/* Invalid email warning */}
+              {isToInvalid && (
+                <Alert className="py-2 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-xs text-amber-700 dark:text-amber-400">
+                    Este email fue detectado como inválido (bounce previo). Es posible que no llegue.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Enviar desde */}
               <div className="flex items-center gap-2">

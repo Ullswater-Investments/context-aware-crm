@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe, MapPin, FileText, Download, Upload, MessageSquare } from "lucide-react";
+import { Mail, Phone, Briefcase, Building, Plus, Trash2, Send, Tag, X, Pencil, Save, Copy, Loader2, Sparkles, Linkedin, Globe, MapPin, FileText, Download, Upload, MessageSquare, AlertCircle, RotateCcw } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import ComposeEmail from "@/components/email/ComposeEmail";
 import WhatsAppChat from "@/components/whatsapp/WhatsAppChat";
 import { Contact } from "@/types/contact";
@@ -75,6 +76,28 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const [enrichingApollo, setEnrichingApollo] = useState(false);
   const [enrichingFindymail, setEnrichingFindymail] = useState(false);
   const [whatsappOpen, setWhatsappOpen] = useState(false);
+  const [invalidEmails, setInvalidEmails] = useState<Set<string>>(new Set());
+
+  const loadInvalidEmails = async () => {
+    const { data } = await supabase.from("invalid_emails").select("email_address").limit(5000);
+    if (data) setInvalidEmails(new Set(data.map((d: any) => d.email_address.toLowerCase())));
+  };
+
+  const isContactEmailInvalid = (): string | null => {
+    if (!contact) return null;
+    const emails = [contact.email, contact.work_email, contact.personal_email].filter(Boolean);
+    for (const e of emails) {
+      if (invalidEmails.has(e!.toLowerCase())) return e!;
+    }
+    return null;
+  };
+
+  const reactivateEmail = async (email: string) => {
+    const { error } = await supabase.from("invalid_emails").delete().eq("email_address", email.toLowerCase());
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Email ${email} reactivado`);
+    loadInvalidEmails();
+  };
 
   const loadNotes = async (contactId: string) => {
     setLoadingNotes(true);
@@ -145,6 +168,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       setEditing(false);
       loadNotes(contact.id);
       loadDocuments(contact.id);
+      loadInvalidEmails();
     }
     onOpenChange(isOpen);
   };
@@ -449,6 +473,21 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
           </DialogHeader>
           <ScrollArea className="max-h-[70vh] pr-4">
             <div className="space-y-6">
+              {/* Invalid email alert */}
+              {(() => {
+                const invalidEmail = isContactEmailInvalid();
+                return invalidEmail ? (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="flex items-center justify-between">
+                      <span>El email <strong>{invalidEmail}</strong> fue detectado como inválido (bounce previo)</span>
+                      <Button variant="outline" size="sm" onClick={() => reactivateEmail(invalidEmail)} className="ml-2 shrink-0">
+                        <RotateCcw className="w-3 h-3 mr-1" />Reactivar
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ) : null;
+              })()}
               {/* Contact Info - Editable */}
               {editing ? (
                 <div className="space-y-3">

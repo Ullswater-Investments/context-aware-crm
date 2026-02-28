@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2, MapPin, Zap, MessageSquare, Trash2, RotateCcw, XCircle } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2, MapPin, Zap, MessageSquare, Trash2, RotateCcw, XCircle, AlertCircle, ShieldAlert } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
 import HunterSearch from "@/components/contacts/HunterSearch";
@@ -77,6 +77,36 @@ export default function Contacts() {
   const [bulkEnriching, setBulkEnriching] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ processed: 0, total: 0 });
   const [showTrash, setShowTrash] = useState(false);
+  const [invalidEmails, setInvalidEmails] = useState<Set<string>>(new Set());
+  const [detectingBounces, setDetectingBounces] = useState(false);
+
+  const loadInvalidEmails = useCallback(async () => {
+    const { data } = await supabase.from("invalid_emails").select("email_address").limit(5000);
+    if (data) setInvalidEmails(new Set(data.map((d: any) => d.email_address.toLowerCase())));
+  }, []);
+
+  const isEmailInvalid = (contact: Contact): boolean => {
+    const emails = [contact.email, contact.work_email, contact.personal_email].filter(Boolean).map(e => e!.toLowerCase());
+    return emails.some(e => invalidEmails.has(e));
+  };
+
+  const detectBounces = async () => {
+    setDetectingBounces(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("detect-bounces");
+      if (error) throw error;
+      if (data?.inserted > 0) {
+        toast.success(`${data.inserted} emails inválidos detectados`);
+        loadInvalidEmails();
+      } else {
+        toast.info("No se detectaron nuevos emails inválidos");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Error al detectar bounces");
+    } finally {
+      setDetectingBounces(false);
+    }
+  };
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -94,8 +124,9 @@ export default function Contacts() {
 
   useEffect(() => {
     load();
+    loadInvalidEmails();
     supabase.from("organizations").select("id, name").order("name").then(({ data }) => { if (data) setOrgs(data); });
-  }, [load]);
+  }, [load, loadInvalidEmails]);
 
   // --- Trash functions ---
   const moveToTrash = async (contactId: string) => {
@@ -426,6 +457,10 @@ export default function Contacts() {
                   <Mail className="w-4 h-4 mr-2" />Corregir emails
                 </Button>
               )}
+              <Button variant="outline" onClick={detectBounces} disabled={detectingBounces}>
+                {detectingBounces ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ShieldAlert className="w-4 h-4 mr-2" />}
+                Detectar bounces
+              </Button>
               <Button variant="outline" onClick={() => setImporterOpen(true)}><FileSpreadsheet className="w-4 h-4 mr-2" />Importar</Button>
               <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
@@ -606,6 +641,7 @@ export default function Contacts() {
                 <div className="space-y-2">
                   {columnContacts.map((c) => {
                     const missing = hasMissingData(c);
+                    const emailBounced = isEmailInvalid(c);
                     return (
                       <div key={c.id} draggable onDragStart={(e) => handleDragStart(e, c.id)} onClick={() => openProfile(c)}
                         className={`group relative bg-background rounded-lg border p-3 cursor-pointer hover:shadow-md transition-shadow ${draggedId === c.id ? "opacity-50" : ""} ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""}`}>
@@ -622,14 +658,18 @@ export default function Contacts() {
                               {c.apollo_status === "not_found" && <Sparkles className="w-3 h-3 text-orange-500 shrink-0" />}
                               {c.findymail_status === "enriched" && <Mail className="w-3 h-3 text-green-500 shrink-0" />}
                               {c.findymail_status === "not_found" && <Mail className="w-3 h-3 text-orange-500 shrink-0" />}
+                              {emailBounced && (
+                                <TooltipProvider><Tooltip><TooltipTrigger asChild><AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0" /></TooltipTrigger><TooltipContent><p>Email inválido - Bounce detectado</p></TooltipContent></Tooltip></TooltipProvider>
+                              )}
                               {missing && <MissingDataAlert />}
                             </div>
                             {c.organizations?.name && <p className="text-xs text-muted-foreground truncate">{c.organizations.name}</p>}
                             {c.position && <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5"><Briefcase className="w-3 h-3" />{c.position}</p>}
                             {c.email ? (
                               <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
-                                className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5 hover:text-primary transition-colors">
+                                className={`text-xs truncate flex items-center gap-1 mt-0.5 transition-colors ${emailBounced ? "text-destructive line-through" : "text-muted-foreground hover:text-primary"}`}>
                                 <Mail className="w-3 h-3" />{c.email}
+                                {emailBounced && <AlertCircle className="w-3 h-3 shrink-0" />}
                               </button>
                             ) : (c.work_email || c.personal_email || (c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()))) ? (
                               <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
@@ -712,6 +752,7 @@ export default function Contacts() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((c) => {
             const missing = hasMissingData(c);
+            const emailBounced = isEmailInvalid(c);
             return (
               <Card key={c.id} className={`group relative hover:shadow-md transition-shadow cursor-pointer ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""}`} onClick={() => openProfile(c)}>
                 <TrashCardButton contactId={c.id} className="absolute top-3 right-3 z-10" />
@@ -721,6 +762,9 @@ export default function Contacts() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <CardTitle className="text-base truncate">{c.full_name}</CardTitle>
+                        {emailBounced && (
+                          <TooltipProvider><Tooltip><TooltipTrigger asChild><AlertCircle className="w-4 h-4 text-destructive shrink-0" /></TooltipTrigger><TooltipContent><p>Email inválido - Bounce detectado</p></TooltipContent></Tooltip></TooltipProvider>
+                        )}
                         {missing && <MissingDataAlert />}
                       </div>
                       {c.organizations?.name && <p className="text-sm text-muted-foreground">{c.organizations.name}</p>}
@@ -731,8 +775,9 @@ export default function Contacts() {
                   {c.position && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Briefcase className="w-3.5 h-3.5" />{c.position}</div>}
                   {c.email ? (
                     <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
-                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+                      className={`flex items-center gap-2 text-sm transition-colors ${emailBounced ? "text-destructive line-through" : "text-muted-foreground hover:text-primary"}`}>
                       <Mail className="w-3.5 h-3.5" />{c.email}
+                      {emailBounced && <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
                     </button>
                   ) : (c.work_email || c.personal_email || (c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()))) ? (
                     <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
