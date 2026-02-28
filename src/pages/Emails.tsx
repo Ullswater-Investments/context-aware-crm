@@ -195,7 +195,7 @@ export default function Emails() {
   const moveToTrash = async (emailId: string) => {
     const { error } = await supabase
       .from("email_logs")
-      .update({ is_trashed: true, trashed_at: new Date().toISOString() } as any)
+      .update({ is_trashed: true, trashed_at: new Date().toISOString() })
       .eq("id", emailId);
     if (error) { toast.error("Error al mover a papelera"); return; }
     toast.success("Movido a papelera");
