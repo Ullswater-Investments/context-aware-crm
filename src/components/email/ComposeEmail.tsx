@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useInvalidEmails } from "@/hooks/useInvalidEmails";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
