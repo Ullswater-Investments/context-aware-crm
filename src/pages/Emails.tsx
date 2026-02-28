@@ -195,7 +195,7 @@ export default function Emails() {
   const moveToTrash = async (emailId: string) => {
     const { error } = await supabase
       .from("email_logs")
-      .update({ is_trashed: true, trashed_at: new Date().toISOString() } as any)
+      .update({ is_trashed: true, trashed_at: new Date().toISOString() })
       .eq("id", emailId);
     if (error) { toast.error("Error al mover a papelera"); return; }
     toast.success("Movido a papelera");
@@ -207,7 +207,7 @@ export default function Emails() {
   const restoreFromTrash = async (emailId: string) => {
     const { error } = await supabase
       .from("email_logs")
-      .update({ is_trashed: false, trashed_at: null } as any)
+      .update({ is_trashed: false, trashed_at: null })
       .eq("id", emailId);
     if (error) { toast.error("Error al restaurar"); return; }
     toast.success("Email restaurado");
@@ -369,7 +369,7 @@ export default function Emails() {
                     onClick={async () => {
                       setSelected(email);
                       if (email.direction === "inbound" && !email.is_read) {
-                        await supabase.from("email_logs").update({ is_read: true } as any).eq("id", email.id);
+                        await supabase.from("email_logs").update({ is_read: true }).eq("id", email.id);
                       }
                     }}
                     className="flex-1 text-left px-4 py-3 min-w-0"
@@ -497,8 +497,8 @@ export default function Emails() {
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant={selected.status === "sent" ? "default" : "destructive"}>
-                  {selected.status === "sent" ? "Enviado" : "Fallido"}
+                <Badge variant={selected.status === "sent" ? "default" : selected.status === "received" ? "secondary" : "destructive"}>
+                  {selected.status === "sent" ? "Enviado" : selected.status === "received" ? "Recibido" : "Fallido"}
                 </Badge>
 
                 {selected.is_trashed ? (

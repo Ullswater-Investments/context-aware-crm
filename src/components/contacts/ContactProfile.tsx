@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useInvalidEmails } from "@/hooks/useInvalidEmails";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -76,27 +77,15 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const [enrichingApollo, setEnrichingApollo] = useState(false);
   const [enrichingFindymail, setEnrichingFindymail] = useState(false);
   const [whatsappOpen, setWhatsappOpen] = useState(false);
-  const [invalidEmails, setInvalidEmails] = useState<Set<string>>(new Set());
+  const { loadInvalidEmails, isEmailInvalid, reactivateEmail } = useInvalidEmails();
 
-  const loadInvalidEmails = async () => {
-    const { data } = await supabase.from("invalid_emails").select("email_address").limit(5000);
-    if (data) setInvalidEmails(new Set(data.map((d: any) => d.email_address.toLowerCase())));
-  };
-
-  const isContactEmailInvalid = (): string | null => {
+  const getInvalidContactEmail = (): string | null => {
     if (!contact) return null;
     const emails = [contact.email, contact.work_email, contact.personal_email].filter(Boolean);
     for (const e of emails) {
-      if (invalidEmails.has(e!.toLowerCase())) return e!;
+      if (isEmailInvalid(e)) return e!;
     }
     return null;
-  };
-
-  const reactivateEmail = async (email: string) => {
-    const { error } = await supabase.from("invalid_emails").delete().eq("email_address", email.toLowerCase());
-    if (error) { toast.error(error.message); return; }
-    toast.success(`Email ${email} reactivado`);
-    loadInvalidEmails();
   };
 
   const loadNotes = async (contactId: string) => {
@@ -135,7 +124,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
         file_size: file.size,
         contact_id: contact.id,
         created_by: user.id,
-      } as any);
+      });
       if (insertError) throw insertError;
       toast.success("Documento subido");
       loadDocuments(contact.id);
@@ -238,7 +227,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       personal_email: finalData.personal_email || null,
       mobile_phone: finalData.mobile_phone || null,
       work_phone: finalData.work_phone || null,
-    } as any).eq("id", contact.id);
+    }).eq("id", contact.id);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto actualizado");
     setEditing(false);
@@ -261,7 +250,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
     setStatus(newStatus);
     const { error } = await supabase
       .from("contacts")
-      .update({ status: newStatus } as any)
+      .update({ status: newStatus as any })
       .eq("id", contact.id);
     if (error) toast.error(error.message);
     else onUpdate();
@@ -291,7 +280,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
       contact_id: contact.id,
       content: newNote.trim(),
       created_by: user!.id,
-    } as any);
+    });
     if (error) toast.error(error.message);
     else { setNewNote(""); loadNotes(contact.id); toast.success("Nota guardada"); }
   };
@@ -475,7 +464,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
             <div className="space-y-6">
               {/* Invalid email alert */}
               {(() => {
-                const invalidEmail = isContactEmailInvalid();
+                const invalidEmail = getInvalidContactEmail();
                 return invalidEmail ? (
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />

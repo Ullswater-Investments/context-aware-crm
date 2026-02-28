@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useInvalidEmails } from "@/hooks/useInvalidEmails";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -77,17 +78,12 @@ export default function Contacts() {
   const [bulkEnriching, setBulkEnriching] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ processed: 0, total: 0 });
   const [showTrash, setShowTrash] = useState(false);
-  const [invalidEmails, setInvalidEmails] = useState<Set<string>>(new Set());
+  const { invalidEmails, loadInvalidEmails, isEmailInvalid } = useInvalidEmails();
   const [detectingBounces, setDetectingBounces] = useState(false);
 
-  const loadInvalidEmails = useCallback(async () => {
-    const { data } = await supabase.from("invalid_emails").select("email_address").limit(5000);
-    if (data) setInvalidEmails(new Set(data.map((d: any) => d.email_address.toLowerCase())));
-  }, []);
-
-  const isEmailInvalid = (contact: Contact): boolean => {
-    const emails = [contact.email, contact.work_email, contact.personal_email].filter(Boolean).map(e => e!.toLowerCase());
-    return emails.some(e => invalidEmails.has(e));
+  const isContactEmailInvalid = (contact: Contact): boolean => {
+    const emails = [contact.email, contact.work_email, contact.personal_email].filter(Boolean);
+    return emails.some(e => isEmailInvalid(e));
   };
 
   const detectBounces = async () => {
@@ -130,14 +126,14 @@ export default function Contacts() {
 
   // --- Trash functions ---
   const moveToTrash = async (contactId: string) => {
-    const { error } = await supabase.from("contacts").update({ status: "trash" as any, trashed_at: new Date().toISOString() } as any).eq("id", contactId);
+    const { error } = await supabase.from("contacts").update({ status: "trash", trashed_at: new Date().toISOString() }).eq("id", contactId);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto movido a la papelera");
     load();
   };
 
   const restoreFromTrash = async (contactId: string) => {
-    const { error } = await supabase.from("contacts").update({ status: "new_lead" as any, trashed_at: null } as any).eq("id", contactId);
+    const { error } = await supabase.from("contacts").update({ status: "new_lead", trashed_at: null }).eq("id", contactId);
     if (error) { toast.error(error.message); return; }
     toast.success("Contacto restaurado");
     load();
@@ -312,7 +308,7 @@ export default function Contacts() {
   };
 
   const updateStatus = async (contactId: string, newStatus: string) => {
-    const { error } = await supabase.from("contacts").update({ status: newStatus } as any).eq("id", contactId);
+    const { error } = await supabase.from("contacts").update({ status: newStatus as any }).eq("id", contactId);
     if (error) toast.error(error.message);
     else load();
   };
@@ -641,7 +637,7 @@ export default function Contacts() {
                 <div className="space-y-2">
                   {columnContacts.map((c) => {
                     const missing = hasMissingData(c);
-                    const emailBounced = isEmailInvalid(c);
+                     const emailBounced = isContactEmailInvalid(c);
                     return (
                       <div key={c.id} draggable onDragStart={(e) => handleDragStart(e, c.id)} onClick={() => openProfile(c)}
                         className={`group relative bg-background rounded-lg border p-3 cursor-pointer hover:shadow-md transition-shadow ${draggedId === c.id ? "opacity-50" : ""} ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""}`}>
@@ -752,7 +748,7 @@ export default function Contacts() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((c) => {
             const missing = hasMissingData(c);
-            const emailBounced = isEmailInvalid(c);
+            const emailBounced = isContactEmailInvalid(c);
             return (
               <Card key={c.id} className={`group relative hover:shadow-md transition-shadow cursor-pointer ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""}`} onClick={() => openProfile(c)}>
                 <TrashCardButton contactId={c.id} className="absolute top-3 right-3 z-10" />
