@@ -667,8 +667,9 @@ export default function Contacts() {
                             {c.position && <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5"><Briefcase className="w-3 h-3" />{c.position}</p>}
                             {c.email ? (
                               <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
-                                className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5 hover:text-primary transition-colors">
+                                className={`text-xs truncate flex items-center gap-1 mt-0.5 transition-colors ${emailBounced ? "text-destructive line-through" : "text-muted-foreground hover:text-primary"}`}>
                                 <Mail className="w-3 h-3" />{c.email}
+                                {emailBounced && <AlertCircle className="w-3 h-3 shrink-0" />}
                               </button>
                             ) : (c.work_email || c.personal_email || (c.postal_address && EMAIL_REGEX.test(c.postal_address.trim()))) ? (
                               <button onClick={(e) => { e.stopPropagation(); quickFixEmail(c); }}
