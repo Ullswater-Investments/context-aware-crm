@@ -174,6 +174,7 @@ export default function ComposeEmail({
     if (open) {
       fetchSignatures();
       fetchEmailAccounts();
+      fetchInvalidEmails();
     }
   }, [open, user]);
 
