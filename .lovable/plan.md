@@ -1,83 +1,85 @@
 
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+## Implementar Delay entre Envios de Campana
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+### Problema
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+Hostinger aplica un rate limit (`hostinger_out_ratelimit`) que bloquea los emails cuando se envian demasiado rapido. Actualmente el loop de campana envia los 20 emails en rafaga (menos de 1 segundo entre cada uno), lo que dispara este limite y causa que la mayoria fallen.
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
+### Solucion
 
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
+Anadir un delay de 8 segundos entre cada envio dentro del loop de `sendCampaign` en `ComposeEmail.tsx`, con una cuenta atras visual para que el usuario sepa cuanto falta para el siguiente envio.
 
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
+### Cambios en `src/components/email/ComposeEmail.tsx`
 
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
-
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
-
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
-
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
-
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
-
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
-
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
-
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
-
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
-
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
-
-### Resumen de cambios
-
-| Archivo | Cambio | Prioridad |
-|---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
-
-### Detalle tecnico
-
-**Contacts.tsx - Nuevos estados:**
+**1. Nuevo estado para la cuenta atras:**
 ```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+const [campaignCountdown, setCampaignCountdown] = useState<number>(0);
 ```
 
-**Contacts.tsx - Nueva funcion:**
+**2. Funcion de delay con cuenta atras:**
 ```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
-    });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
+const delayWithCountdown = (seconds: number) => {
+  return new Promise<void>((resolve) => {
+    setCampaignCountdown(seconds);
+    let remaining = seconds;
+    const interval = setInterval(() => {
+      remaining--;
+      setCampaignCountdown(remaining);
+      if (remaining <= 0) {
+        clearInterval(interval);
+        resolve();
+      }
+    }, 1000);
+  });
 };
 ```
 
-**Contacts.tsx - Filtro actualizado:**
+**3. Insertar delay en el loop de envio (linea 328, despues de `setCampaignProgress`):**
 ```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+setCampaignProgress({ ...progress });
+
+// Delay entre envios para evitar rate limit (excepto tras el ultimo)
+if (contact !== campaignContacts[campaignContacts.length - 1]) {
+  await delayWithCountdown(8);
+}
 ```
 
-**Contacts.tsx - Bulk enrich corregido:**
+**4. Actualizar la UI de progreso (linea 668-678) para mostrar la cuenta atras:**
 ```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+{campaignProgress && (
+  <div className="space-y-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
+    <div className="flex items-center justify-between text-sm">
+      <span className="font-medium">Enviando campana...</span>
+      <span className="text-muted-foreground">
+        {campaignProgress.sent + campaignProgress.errors}/{campaignProgress.total}
+        {campaignProgress.errors > 0 && (
+          <span className="text-destructive ml-1">({campaignProgress.errors} errores)</span>
+        )}
+      </span>
+    </div>
+    <Progress value={((campaignProgress.sent + campaignProgress.errors) / campaignProgress.total) * 100} />
+    {campaignCountdown > 0 && (
+      <p className="text-xs text-muted-foreground text-center">
+        Siguiente envio en {campaignCountdown}s (evitando rate limit)
+      </p>
+    )}
+  </div>
+)}
 ```
+
+**5. Limpiar countdown al finalizar (junto a las otras limpiezas en linea 337):**
+```typescript
+setCampaignCountdown(0);
+```
+
+### Resumen
+
+| Archivo | Cambio |
+|---|---|
+| `src/components/email/ComposeEmail.tsx` | Anadir delay de 8s entre envios con cuenta atras visual |
+
+### Tiempo estimado de campana
+
+Con el delay de 8 segundos: una campana de 20 contactos tardara aproximadamente 2 minutos y 40 segundos en completarse. El usuario vera el progreso en tiempo real con la cuenta atras entre cada envio.
 
