@@ -1,50 +1,83 @@
 
 
-## Boton "Reenviar" en la lista de mensajes enviados
+## Revision: Errores y Mejoras pendientes tras integracion Findymail
 
-### Contexto
+### BUG 1: Bulk Enrich no incluye Findymail (Alta)
 
-Actualmente el boton "Reenviar" solo aparece en el panel de detalle (derecha) cuando se selecciona un email. El usuario quiere un boton de acceso rapido directamente en cada fila de la lista de emails enviados, visible al pasar el raton (hover), junto al boton de papelera existente.
+**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
 
-### Cambio en `src/pages/Emails.tsx`
+**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
 
-En la seccion de hover actions (lineas 439-447), anadir un boton "Reenviar" que aparezca solo para emails outbound (enviados) no eliminados. Al hacer clic, abre el compositor pre-rellenado con el mismo destinatario, CC, asunto y cuerpo del email original.
+### BUG 2: `findymail_status` accedido con cast `as any` (Media)
 
-**Logica del boton:**
-- Solo visible cuando `email.direction === "outbound"` y no estamos en la carpeta papelera
-- Al hacer clic: configura `resendData` con los datos del email y abre `ComposeEmail`
-- Usa el icono `Forward` ya importado
-- Se posiciona antes del boton de papelera
+**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
 
-**Codigo aproximado a anadir (dentro del bloque de hover actions no-trash):**
+**Solucion:** Cambiar a `contact.findymail_status` sin cast.
+
+### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
+
+**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
+
+**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
+
+### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
+
+**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
+
+**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
+
+### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
+
+**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
+
+**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
+
+### Resumen de cambios
+
+| Archivo | Cambio | Prioridad |
+|---|---|---|
+| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
+| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
+| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
+| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
+
+### Detalle tecnico
+
+**Contacts.tsx - Nuevos estados:**
 ```typescript
-{email.direction === "outbound" && (
-  <button
-    onClick={(e) => {
-      e.stopPropagation();
-      setResendData({
-        to: email.to_email,
-        cc: email.cc_emails || "",
-        subject: email.subject,
-        body: email.body_html || email.body_text || "",
-      });
-      setComposeOpen(true);
-    }}
-    className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-    title="Reenviar"
-  >
-    <Forward className="w-4 h-4" />
-  </button>
-)}
+const [findymailFilter, setFindymailFilter] = useState("");
+const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
 ```
 
-### Archivo a modificar
+**Contacts.tsx - Nueva funcion:**
+```typescript
+const enrichWithFindymailFromCard = async (c: Contact) => {
+  if (!c.company_domain) return;
+  setEnrichingFindymailId(c.id);
+  try {
+    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+    });
+    if (error) throw error;
+    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
+    else toast.info("Findymail no encontro datos");
+    load();
+  } catch (err: any) {
+    toast.error(err.message || "Error con Findymail");
+  } finally {
+    setEnrichingFindymailId(null);
+  }
+};
+```
 
-| Archivo | Cambio |
-|---|---|
-| `src/pages/Emails.tsx` | Anadir boton "Reenviar" en hover actions de emails outbound (1 bloque, ~15 lineas) |
+**Contacts.tsx - Filtro actualizado:**
+```typescript
+const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
+return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+```
 
-### Resultado
-
-Al pasar el raton sobre cualquier email enviado en la lista, aparecera un icono de reenvio junto al icono de papelera. Al hacer clic se abre el compositor con todos los datos pre-rellenados listos para reenviar.
+**Contacts.tsx - Bulk enrich corregido:**
+```typescript
+body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+```
 
