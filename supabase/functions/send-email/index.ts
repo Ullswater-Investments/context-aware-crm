@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
     }
 
     // Download attachments from storage
-    const mailAttachments: { filename: string; content: Buffer }[] = [];
+    const mailAttachments: { filename: string; content: Uint8Array }[] = [];
     const attachmentRecords: { file_name: string; file_path: string; file_size?: number; file_type?: string }[] = [];
 
     if (attachmentPaths && Array.isArray(attachmentPaths)) {
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
         const arrayBuffer = await fileData.arrayBuffer();
         mailAttachments.push({
           filename: att.filename,
-          content: Buffer.from(arrayBuffer),
+          content: new Uint8Array(arrayBuffer),
         });
         attachmentRecords.push({
           file_name: att.filename,
