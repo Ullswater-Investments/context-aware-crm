@@ -492,11 +492,15 @@ export default function Emails() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                const fwdSubject = email.subject.startsWith("Fwd:")
+                                  ? email.subject
+                                  : `Fwd: ${email.subject}`;
+                                const fwdBody = `<br/><br/>---------- Mensaje reenviado ----------<br/><b>De:</b> ${email.from_email}<br/><b>Para:</b> ${email.to_email}<br/><b>Asunto:</b> ${email.subject}<br/><br/>${email.body_html || email.body_text || ""}`;
                                 setResendData({
                                   to: email.to_email,
-                                  cc: email.cc_emails || "",
-                                  subject: email.subject,
-                                  body: email.body_html || email.body_text || "",
+                                  cc: "",
+                                  subject: fwdSubject,
+                                  body: fwdBody,
                                 });
                                 setComposeOpen(true);
                               }}
@@ -635,7 +639,7 @@ export default function Emails() {
                           : `Fwd: ${selected.subject}`;
                         const fwdBody = `<br/><br/>---------- Mensaje reenviado ----------<br/><b>De:</b> ${selected.from_email}<br/><b>Para:</b> ${selected.to_email}<br/><b>Asunto:</b> ${selected.subject}<br/><br/>${selected.body_html || selected.body_text || ""}`;
                         setResendData({
-                          to: "",
+                          to: selected.to_email,
                           cc: "",
                           subject: fwdSubject,
                           body: fwdBody,
