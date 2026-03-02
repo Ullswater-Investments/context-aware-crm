@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
-  Plus, Search, Mail, Loader2, ChevronLeft, ChevronRight, Forward,
+  Plus, Search, Mail, Loader2, ChevronLeft, ChevronRight, Forward, Pencil,
   RefreshCw, ArrowDownLeft, ArrowUpRight, Inbox, Send, Trash2, RotateCcw, XCircle,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -591,6 +591,24 @@ export default function Emails() {
                       <Forward className="w-3.5 h-3.5 mr-1" />
                       Reenviar
                     </Button>
+                    {selected.direction === "outbound" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setResendData({
+                            to: selected.to_email,
+                            cc: selected.cc_emails || "",
+                            subject: selected.subject,
+                            body: selected.body_html || selected.body_text || "",
+                          });
+                          setComposeOpen(true);
+                        }}
+                      >
+                        <Pencil className="w-3.5 h-3.5 mr-1" />
+                        Editar
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
