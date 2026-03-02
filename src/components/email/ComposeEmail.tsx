@@ -117,6 +117,7 @@ export default function ComposeEmail({
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
+  const [existingAttachments, setExistingAttachments] = useState<ExistingAttachment[]>([]);
   const { loadInvalidEmails: fetchInvalidEmails, isEmailInvalid } = useInvalidEmails();
 
   // Campaign progress state
