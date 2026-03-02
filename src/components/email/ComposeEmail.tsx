@@ -59,6 +59,7 @@ interface ComposeEmailProps {
   projectId?: string;
   onSent?: () => void;
   campaignContacts?: CampaignContact[];
+  retryEmailId?: string;
 }
 
 const MAX_FILES = 5;
@@ -83,6 +84,7 @@ export default function ComposeEmail({
   projectId,
   onSent,
   campaignContacts,
+  retryEmailId,
 }: ComposeEmailProps) {
   const { user } = useAuth();
   const [to, setTo] = useState(defaultTo);
