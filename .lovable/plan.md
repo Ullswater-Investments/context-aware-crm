@@ -1,83 +1,25 @@
 
+## Incluir destinatario original en "Reenviar"
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+### Problema
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+Al reenviar un email, el campo "Para" queda vacío. El usuario necesita que el destinatario original aparezca pre-rellenado para tener contexto de a quién se envió originalmente.
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+### Cambios en `src/pages/Emails.tsx`
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
+Hay dos lugares donde se ejecuta la lógica de reenvío:
 
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
+1. **Botón hover en la lista (líneas 491-507)**: Actualmente no aplica formato de reenvío. Se actualizará para usar el formato correcto con encabezado y pre-rellenar el destinatario original.
 
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
+2. **Botón "Reenviar" en panel de detalle (líneas 637-638)**: Cambiar `to: ""` por `to: selected.to_email` para que el destinatario original aparezca pre-rellenado.
 
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
+### Detalle del cambio
 
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
+En ambos casos, el campo `to` del compositor se rellenará con el email del destinatario original (`email.to_email` / `selected.to_email`). El usuario podrá modificarlo o añadir más destinatarios antes de enviar.
 
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
+Adicionalmente, el botón hover de la lista (líneas 491-507) se actualizará para aplicar el mismo formato de reenvío que el panel de detalle: prefijo "Fwd:", encabezado "Mensaje reenviado" con De/Para/Asunto, y contenido original.
 
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
-
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
-
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
-
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
-
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
-
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
-
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
-
-### Resumen de cambios
-
-| Archivo | Cambio | Prioridad |
-|---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
-
-### Detalle tecnico
-
-**Contacts.tsx - Nuevos estados:**
-```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
-```
-
-**Contacts.tsx - Nueva funcion:**
-```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
-    });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
-};
-```
-
-**Contacts.tsx - Filtro actualizado:**
-```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
-```
-
-**Contacts.tsx - Bulk enrich corregido:**
-```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
-```
-
+| Archivo | Cambio |
+|---|---|
+| `src/pages/Emails.tsx` | Línea 638: cambiar `to: ""` a `to: selected.to_email` |
+| `src/pages/Emails.tsx` | Líneas 491-507: aplicar formato de reenvío completo con `to: email.to_email` |
