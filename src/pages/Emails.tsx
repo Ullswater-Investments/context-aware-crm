@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
-  Plus, Search, Mail, Loader2, ChevronLeft, ChevronRight, Forward,
+  Plus, Search, Mail, Loader2, ChevronLeft, ChevronRight, Forward, Pencil,
   RefreshCw, ArrowDownLeft, ArrowUpRight, Inbox, Send, Trash2, RotateCcw, XCircle,
 } from "lucide-react";
 import { format } from "date-fns";
