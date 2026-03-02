@@ -110,6 +110,7 @@ export default function ComposeEmail({
 
   // Campaign progress state
   const [campaignProgress, setCampaignProgress] = useState<{ sent: number; total: number; errors: number } | null>(null);
+  const [campaignCountdown, setCampaignCountdown] = useState<number>(0);
 
   const isCampaign = !!(campaignContacts && campaignContacts.length > 0);
   const isToInvalid = !isCampaign && to.trim() !== "" && isEmailInvalid(to.trim());
@@ -326,6 +327,22 @@ export default function ComposeEmail({
           progress.errors++;
         }
         setCampaignProgress({ ...progress });
+
+        // Delay entre envíos para evitar rate limit (excepto tras el último)
+        if (contact !== campaignContacts[campaignContacts.length - 1]) {
+          await new Promise<void>((resolve) => {
+            setCampaignCountdown(8);
+            let remaining = 8;
+            const interval = setInterval(() => {
+              remaining--;
+              setCampaignCountdown(remaining);
+              if (remaining <= 0) {
+                clearInterval(interval);
+                resolve();
+              }
+            }, 1000);
+          });
+        }
       }
 
       if (progress.errors === 0) {
@@ -334,6 +351,7 @@ export default function ComposeEmail({
         toast.warning(`Campaña: ${progress.sent} enviados, ${progress.errors} errores`);
       }
 
+      setCampaignCountdown(0);
       setSubject("");
       setBody("");
       setAttachments([]);
@@ -675,6 +693,11 @@ export default function ComposeEmail({
                   </span>
                 </div>
                 <Progress value={((campaignProgress.sent + campaignProgress.errors) / campaignProgress.total) * 100} />
+                {campaignCountdown > 0 && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Siguiente envío en {campaignCountdown}s (evitando rate limit)
+                  </p>
+                )}
               </div>
             )}
 
