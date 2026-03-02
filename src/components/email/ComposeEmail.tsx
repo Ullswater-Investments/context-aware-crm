@@ -159,6 +159,7 @@ export default function ComposeEmail({
       setSubject(defaultSubject);
       setBody(defaultBody);
       setAttachments([]);
+      setExistingAttachments([]);
       setShowCcBcc(!!defaultCc);
       setCampaignProgress(null);
       onOpenChange(true);
@@ -177,6 +178,7 @@ export default function ComposeEmail({
     setSubject("");
     setBody("");
     setAttachments([]);
+    setExistingAttachments([]);
     setCampaignProgress(null);
     onOpenChange(false);
   };
@@ -204,6 +206,42 @@ export default function ComposeEmail({
       fetchInvalidEmails();
     }
   }, [open, user]);
+
+  // Load existing attachments & pre-select account when editing
+  useEffect(() => {
+    if (!open || !editEmailId) {
+      setExistingAttachments([]);
+      return;
+    }
+    // Load attachments from original email
+    supabase
+      .from("email_attachments")
+      .select("id, file_name, file_path, file_size")
+      .eq("email_log_id", editEmailId)
+      .then(({ data }) => {
+        if (data) setExistingAttachments(data as ExistingAttachment[]);
+      });
+    // Pre-select the account that sent the original email
+    supabase
+      .from("email_logs")
+      .select("from_email")
+      .eq("id", editEmailId)
+      .maybeSingle()
+      .then(({ data: emailData }) => {
+        if (emailData?.from_email) {
+          // Find matching account
+          supabase
+            .from("email_accounts")
+            .select("id")
+            .eq("email_address", emailData.from_email)
+            .eq("is_active", true)
+            .maybeSingle()
+            .then(({ data: accData }) => {
+              if (accData?.id) setFromAccount(accData.id);
+            });
+        }
+      });
+  }, [open, editEmailId]);
 
   const handleAttachFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
