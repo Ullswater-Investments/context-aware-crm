@@ -61,7 +61,7 @@ export default function Emails() {
   const [selectedFolder, setSelectedFolder] = useState("inbox");
   const [selected, setSelected] = useState<EmailLog | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
-  const [resendData, setResendData] = useState<{ to: string; cc: string; subject: string; body: string } | null>(null);
+  const [resendData, setResendData] = useState<{ to: string; cc: string; subject: string; body: string; editEmailId?: string } | null>(null);
   const [retryEmailId, setRetryEmailId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
@@ -505,6 +505,7 @@ export default function Emails() {
                                     cc: email.cc_emails || "",
                                     subject: email.subject,
                                     body: email.body_html || email.body_text || "",
+                                    editEmailId: email.id,
                                   });
                                   setComposeOpen(true);
                                 }}
@@ -680,11 +681,12 @@ export default function Emails() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          setResendData({
+                        setResendData({
                             to: selected.to_email,
                             cc: selected.cc_emails || "",
                             subject: selected.subject,
                             body: selected.body_html || selected.body_text || "",
+                            editEmailId: selected.id,
                           });
                           setComposeOpen(true);
                         }}
@@ -699,11 +701,12 @@ export default function Emails() {
                         size="sm"
                         onClick={() => {
                           setRetryEmailId(selected.id);
-                          setResendData({
+                           setResendData({
                             to: selected.to_email,
                             cc: selected.cc_emails || "",
                             subject: selected.subject,
                             body: selected.body_html || selected.body_text || "",
+                            editEmailId: selected.id,
                           });
                           setComposeOpen(true);
                         }}
@@ -780,6 +783,7 @@ export default function Emails() {
         defaultCc={resendData?.cc}
         defaultSubject={resendData?.subject}
         defaultBody={resendData?.body}
+        editEmailId={resendData?.editEmailId}
         retryEmailId={retryEmailId || undefined}
         onSent={() => { fetchEmails(); fetchCounts(); }}
       />

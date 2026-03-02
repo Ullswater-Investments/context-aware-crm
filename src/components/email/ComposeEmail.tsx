@@ -60,7 +60,15 @@ interface ComposeEmailProps {
   onSent?: () => void;
   campaignContacts?: CampaignContact[];
   retryEmailId?: string;
+  editEmailId?: string;
 }
+
+type ExistingAttachment = {
+  id: string;
+  file_name: string;
+  file_path: string;
+  file_size: number | null;
+};
 
 const MAX_FILES = 5;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -85,6 +93,7 @@ export default function ComposeEmail({
   onSent,
   campaignContacts,
   retryEmailId,
+  editEmailId,
 }: ComposeEmailProps) {
   const { user } = useAuth();
   const [to, setTo] = useState(defaultTo);
@@ -108,6 +117,7 @@ export default function ComposeEmail({
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountOption[]>([]);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
+  const [existingAttachments, setExistingAttachments] = useState<ExistingAttachment[]>([]);
   const { loadInvalidEmails: fetchInvalidEmails, isEmailInvalid } = useInvalidEmails();
 
   // Campaign progress state
@@ -149,6 +159,7 @@ export default function ComposeEmail({
       setSubject(defaultSubject);
       setBody(defaultBody);
       setAttachments([]);
+      setExistingAttachments([]);
       setShowCcBcc(!!defaultCc);
       setCampaignProgress(null);
       onOpenChange(true);
@@ -167,6 +178,7 @@ export default function ComposeEmail({
     setSubject("");
     setBody("");
     setAttachments([]);
+    setExistingAttachments([]);
     setCampaignProgress(null);
     onOpenChange(false);
   };
@@ -194,6 +206,42 @@ export default function ComposeEmail({
       fetchInvalidEmails();
     }
   }, [open, user]);
+
+  // Load existing attachments & pre-select account when editing
+  useEffect(() => {
+    if (!open || !editEmailId) {
+      setExistingAttachments([]);
+      return;
+    }
+    // Load attachments from original email
+    supabase
+      .from("email_attachments")
+      .select("id, file_name, file_path, file_size")
+      .eq("email_log_id", editEmailId)
+      .then(({ data }) => {
+        if (data) setExistingAttachments(data as ExistingAttachment[]);
+      });
+    // Pre-select the account that sent the original email
+    supabase
+      .from("email_logs")
+      .select("from_email")
+      .eq("id", editEmailId)
+      .maybeSingle()
+      .then(({ data: emailData }) => {
+        if (emailData?.from_email) {
+          // Find matching account
+          supabase
+            .from("email_accounts")
+            .select("id")
+            .eq("email_address", emailData.from_email)
+            .eq("is_active", true)
+            .maybeSingle()
+            .then(({ data: accData }) => {
+              if (accData?.id) setFromAccount(accData.id);
+            });
+        }
+      });
+  }, [open, editEmailId]);
 
   const handleAttachFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -415,10 +463,10 @@ export default function ComposeEmail({
           organization_id: organizationId,
           project_id: projectId,
           account_id: fromAccount || undefined,
-          attachments: uploadedAttachments.map((a) => ({
-            filename: a.file_name,
-            path: a.path,
-          })),
+          attachments: [
+            ...existingAttachments.map((a) => ({ filename: a.file_name, path: a.file_path })),
+            ...uploadedAttachments.map((a) => ({ filename: a.file_name, path: a.path })),
+          ],
         },
       });
 
@@ -721,7 +769,32 @@ export default function ComposeEmail({
               />
             )}
 
-            {/* Adjuntos */}
+            {/* Adjuntos existentes (del email original) */}
+            {existingAttachments.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-medium">Adjuntos originales</p>
+                {existingAttachments.map((a) => (
+                  <div key={a.id} className="flex items-center gap-2 text-sm bg-muted/40 rounded px-2 py-1">
+                    <Paperclip className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="truncate flex-1">{a.file_name}</span>
+                    {a.file_size && (
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {(a.file_size / 1024 / 1024).toFixed(1)}MB
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setExistingAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                      className="text-destructive hover:text-destructive/80"
+                      title="Quitar adjunto"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Adjuntos nuevos */}
             {attachments.length > 0 && (
               <div className="space-y-1">
                 {attachments.map((f, i) => (
