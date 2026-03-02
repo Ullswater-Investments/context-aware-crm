@@ -376,9 +376,9 @@ export default function Emails() {
                   >
                     <div className="flex items-center gap-2 mb-1">
                       {email.direction === "inbound" ? (
-                        <ArrowDownLeft className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        <ArrowDownLeft className="w-3.5 h-3.5 text-primary shrink-0" />
                       ) : (
-                        <ArrowUpRight className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                        <ArrowUpRight className="w-3.5 h-3.5 text-accent-foreground shrink-0" />
                       )}
                       <span className={cn("text-sm truncate flex-1", email.direction === "inbound" && !email.is_read ? "font-semibold" : "font-medium")}>
                         {email.direction === "inbound" ? email.from_email : email.to_email}
