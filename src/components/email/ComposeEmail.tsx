@@ -60,7 +60,15 @@ interface ComposeEmailProps {
   onSent?: () => void;
   campaignContacts?: CampaignContact[];
   retryEmailId?: string;
+  editEmailId?: string;
 }
+
+type ExistingAttachment = {
+  id: string;
+  file_name: string;
+  file_path: string;
+  file_size: number | null;
+};
 
 const MAX_FILES = 5;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -85,6 +93,7 @@ export default function ComposeEmail({
   onSent,
   campaignContacts,
   retryEmailId,
+  editEmailId,
 }: ComposeEmailProps) {
   const { user } = useAuth();
   const [to, setTo] = useState(defaultTo);
