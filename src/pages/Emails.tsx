@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   Plus, Search, Mail, Loader2, ChevronLeft, ChevronRight, Forward, Pencil,
-  RefreshCw, ArrowDownLeft, ArrowUpRight, Inbox, Send, Trash2, RotateCcw, XCircle,
+  RefreshCw, ArrowDownLeft, ArrowUpRight, Inbox, Send, Trash2, RotateCcw, XCircle, MailOpen,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -45,11 +45,18 @@ type EmailLog = {
 
 const PAGE_SIZE = 20;
 
+/** Strip HTML tags to get plain text preview */
+function stripHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return doc.body.textContent?.trim() || "";
+}
+
 export default function Emails() {
   const { user } = useAuth();
   const [emails, setEmails] = useState<EmailLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedFolder, setSelectedFolder] = useState("inbox");
   const [selected, setSelected] = useState<EmailLog | null>(null);
@@ -61,6 +68,16 @@ export default function Emails() {
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [folderCounts, setFolderCounts] = useState<Record<string, { inbox: number; sent: number; trash: number }>>({});
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+
+  // Debounce search
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(0);
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
 
   // Fetch accounts
   useEffect(() => {
@@ -159,8 +176,8 @@ export default function Emails() {
       }
     }
 
-    if (search.trim()) {
-      const escaped = search.trim().replace(/[%_\\]/g, "\\$&");
+    if (debouncedSearch.trim()) {
+      const escaped = debouncedSearch.trim().replace(/[%_\\]/g, "\\$&");
       query = query.or(
         `to_email.ilike.%${escaped}%,from_email.ilike.%${escaped}%,subject.ilike.%${escaped}%`
       );
@@ -172,7 +189,7 @@ export default function Emails() {
       setTotalCount(count ?? 0);
     }
     setLoading(false);
-  }, [user, selectedAccountId, selectedFolder, search, page, accounts]);
+  }, [user, selectedAccountId, selectedFolder, debouncedSearch, page, accounts]);
 
   useEffect(() => {
     fetchEmails();
@@ -191,7 +208,7 @@ export default function Emails() {
     return () => { supabase.removeChannel(channel); };
   }, [user, accounts, fetchCounts, fetchEmails]);
 
-  // --- Trash actions ---
+  // --- Actions ---
   const moveToTrash = async (emailId: string) => {
     const { error } = await supabase
       .from("email_logs")
@@ -236,6 +253,18 @@ export default function Emails() {
     if (error) { toast.error("Error al vaciar papelera"); return; }
     toast.success("Papelera vaciada");
     setSelected(null);
+    fetchEmails();
+    fetchCounts();
+  };
+
+  const markAsUnread = async (emailId: string) => {
+    const { error } = await supabase
+      .from("email_logs")
+      .update({ is_read: false })
+      .eq("id", emailId);
+    if (error) { toast.error("Error al marcar como no leído"); return; }
+    toast.success("Marcado como no leído");
+    if (selected?.id === emailId) setSelected(null);
     fetchEmails();
     fetchCounts();
   };
@@ -335,7 +364,7 @@ export default function Emails() {
             <Input
               placeholder="Buscar por remitente, destinatario o asunto..."
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
             />
           </div>
@@ -356,118 +385,140 @@ export default function Emails() {
             </div>
           ) : (
             <div className="divide-y divide-border">
-              {emails.map((email) => (
-                <div
-                  key={email.id}
-                  className={cn(
-                    "group relative flex items-stretch hover:bg-accent/30 transition-colors",
-                    selected?.id === email.id && "bg-accent/50",
-                    !isTrashFolder && email.direction === "inbound" && !email.is_read && "bg-primary/5"
-                  )}
-                >
-                  <button
-                    onClick={async () => {
-                      setSelected(email);
-                      if (email.direction === "inbound" && !email.is_read) {
-                        await supabase.from("email_logs").update({ is_read: true }).eq("id", email.id);
-                      }
-                    }}
-                    className="flex-1 text-left px-4 py-3 min-w-0"
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      {email.direction === "inbound" ? (
-                        <ArrowDownLeft className="w-3.5 h-3.5 text-primary shrink-0" />
-                      ) : (
-                        <ArrowUpRight className="w-3.5 h-3.5 text-accent-foreground shrink-0" />
-                      )}
-                      <span className={cn("text-sm truncate flex-1", email.direction === "inbound" && !email.is_read ? "font-semibold" : "font-medium")}>
-                        {email.direction === "inbound" ? email.from_email : email.to_email}
-                      </span>
-                      <Badge
-                        variant={email.status === "sent" ? "default" : email.status === "received" ? "secondary" : "destructive"}
-                        className="text-[10px] shrink-0"
-                      >
-                        {email.status === "sent" ? "Enviado" : email.status === "received" ? "Recibido" : "Fallido"}
-                      </Badge>
-                    </div>
-                    <p className="text-sm truncate text-foreground/80">{email.subject}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {format(new Date(email.created_at), "dd MMM yyyy, HH:mm", { locale: es })}
-                    </p>
-                  </button>
+              {emails.map((email) => {
+                const bodyPreview = email.body_html
+                  ? stripHtml(email.body_html)
+                  : email.body_text || "";
 
-                  {/* Hover actions */}
-                  <div className="flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {isTrashFolder ? (
-                      <>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); restoreFromTrash(email.id); }}
-                          className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                          title="Restaurar"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                        </button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <button
-                              onClick={(e) => e.stopPropagation()}
-                              className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                              title="Eliminar definitivamente"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>¿Eliminar permanentemente?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Este email se eliminará de forma permanente. Esta acción no se puede deshacer.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                onClick={() => permanentDelete(email.id)}
-                              >
-                                Eliminar
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </>
-                    ) : (
-                      <>
-                        {email.direction === "outbound" && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setResendData({
-                                to: email.to_email,
-                                cc: email.cc_emails || "",
-                                subject: email.subject,
-                                body: email.body_html || email.body_text || "",
-                              });
-                              setComposeOpen(true);
-                            }}
-                            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                            title="Reenviar"
-                          >
-                            <Forward className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); moveToTrash(email.id); }}
-                          className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                          title="Mover a papelera"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
+                return (
+                  <div
+                    key={email.id}
+                    className={cn(
+                      "group relative flex items-stretch hover:bg-accent/30 transition-colors",
+                      selected?.id === email.id && "bg-accent/50",
+                      !isTrashFolder && email.direction === "inbound" && !email.is_read && "bg-primary/5"
                     )}
+                  >
+                    <button
+                      onClick={async () => {
+                        setSelected(email);
+                        if (email.direction === "inbound" && !email.is_read) {
+                          await supabase.from("email_logs").update({ is_read: true }).eq("id", email.id);
+                        }
+                      }}
+                      className="flex-1 text-left px-4 py-3 min-w-0"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        {email.direction === "inbound" ? (
+                          <ArrowDownLeft className="w-3.5 h-3.5 text-primary shrink-0" />
+                        ) : (
+                          <ArrowUpRight className="w-3.5 h-3.5 text-accent-foreground shrink-0" />
+                        )}
+                        <span className={cn("text-sm truncate flex-1", email.direction === "inbound" && !email.is_read ? "font-semibold" : "font-medium")}>
+                          {email.direction === "inbound" ? email.from_email : email.to_email}
+                        </span>
+                        <Badge
+                          variant={email.status === "sent" ? "default" : email.status === "received" ? "secondary" : "destructive"}
+                          className="text-[10px] shrink-0"
+                        >
+                          {email.status === "sent" ? "Enviado" : email.status === "received" ? "Recibido" : "Fallido"}
+                        </Badge>
+                      </div>
+                      <p className="text-sm truncate text-foreground/80">{email.subject}</p>
+                      {/* Body preview */}
+                      {bodyPreview && (
+                        <p className="text-xs truncate text-muted-foreground mt-0.5">
+                          {bodyPreview.slice(0, 120)}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {format(new Date(email.created_at), "dd MMM yyyy, HH:mm", { locale: es })}
+                      </p>
+                    </button>
+
+                    {/* Hover actions */}
+                    <div className="flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {isTrashFolder ? (
+                        <>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); restoreFromTrash(email.id); }}
+                            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                            title="Restaurar"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <button
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                                title="Eliminar definitivamente"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>¿Eliminar permanentemente?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Este email se eliminará de forma permanente. Esta acción no se puede deshacer.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={() => permanentDelete(email.id)}
+                                >
+                                  Eliminar
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>
+                      ) : (
+                        <>
+                          {/* Mark as unread (inbound read emails only) */}
+                          {email.direction === "inbound" && email.is_read && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); markAsUnread(email.id); }}
+                              className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                              title="Marcar como no leído"
+                            >
+                              <MailOpen className="w-4 h-4" />
+                            </button>
+                          )}
+                          {email.direction === "outbound" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setResendData({
+                                  to: email.to_email,
+                                  cc: email.cc_emails || "",
+                                  subject: email.subject,
+                                  body: email.body_html || email.body_text || "",
+                                });
+                                setComposeOpen(true);
+                              }}
+                              className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                              title="Reenviar"
+                            >
+                              <Forward className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); moveToTrash(email.id); }}
+                            className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                            title="Mover a papelera"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -579,11 +630,15 @@ export default function Emails() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
+                        const fwdSubject = selected.subject.startsWith("Fwd:")
+                          ? selected.subject
+                          : `Fwd: ${selected.subject}`;
+                        const fwdBody = `<br/><br/>---------- Mensaje reenviado ----------<br/><b>De:</b> ${selected.from_email}<br/><b>Para:</b> ${selected.to_email}<br/><b>Asunto:</b> ${selected.subject}<br/><br/>${selected.body_html || selected.body_text || ""}`;
                         setResendData({
-                          to: selected.to_email,
-                          cc: selected.cc_emails || "",
-                          subject: selected.subject,
-                          body: selected.body_html || selected.body_text || "",
+                          to: "",
+                          cc: "",
+                          subject: fwdSubject,
+                          body: fwdBody,
                         });
                         setComposeOpen(true);
                       }}
@@ -607,6 +662,17 @@ export default function Emails() {
                       >
                         <Pencil className="w-3.5 h-3.5 mr-1" />
                         Editar
+                      </Button>
+                    )}
+                    {/* Mark as unread in detail panel */}
+                    {selected.direction === "inbound" && selected.is_read && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => markAsUnread(selected.id)}
+                      >
+                        <MailOpen className="w-3.5 h-3.5 mr-1" />
+                        No leído
                       </Button>
                     )}
                     <Button
