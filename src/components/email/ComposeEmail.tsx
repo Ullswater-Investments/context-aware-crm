@@ -463,10 +463,10 @@ export default function ComposeEmail({
           organization_id: organizationId,
           project_id: projectId,
           account_id: fromAccount || undefined,
-          attachments: uploadedAttachments.map((a) => ({
-            filename: a.file_name,
-            path: a.path,
-          })),
+          attachments: [
+            ...existingAttachments.map((a) => ({ filename: a.file_name, path: a.file_path })),
+            ...uploadedAttachments.map((a) => ({ filename: a.file_name, path: a.path })),
+          ],
         },
       });
 
@@ -769,7 +769,32 @@ export default function ComposeEmail({
               />
             )}
 
-            {/* Adjuntos */}
+            {/* Adjuntos existentes (del email original) */}
+            {existingAttachments.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-medium">Adjuntos originales</p>
+                {existingAttachments.map((a) => (
+                  <div key={a.id} className="flex items-center gap-2 text-sm bg-muted/40 rounded px-2 py-1">
+                    <Paperclip className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="truncate flex-1">{a.file_name}</span>
+                    {a.file_size && (
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {(a.file_size / 1024 / 1024).toFixed(1)}MB
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setExistingAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                      className="text-destructive hover:text-destructive/80"
+                      title="Quitar adjunto"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Adjuntos nuevos */}
             {attachments.length > 0 && (
               <div className="space-y-1">
                 {attachments.map((f, i) => (
