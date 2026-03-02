@@ -15,10 +15,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Save, XCircle, AlertCircle,
+  Send, Loader2, Paperclip, X, Sparkles, ChevronDown, Settings2, Save, XCircle, AlertCircle, Megaphone,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import RichTextEditor from "./RichTextEditor";
@@ -37,6 +39,14 @@ type EmailAccountOption = {
   is_default: boolean;
 };
 
+export type CampaignContact = {
+  id: string;
+  email: string;
+  full_name: string;
+  organization_id: string | null;
+  position: string | null;
+};
+
 interface ComposeEmailProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -48,6 +58,7 @@ interface ComposeEmailProps {
   organizationId?: string;
   projectId?: string;
   onSent?: () => void;
+  campaignContacts?: CampaignContact[];
 }
 
 const MAX_FILES = 5;
@@ -71,6 +82,7 @@ export default function ComposeEmail({
   organizationId,
   projectId,
   onSent,
+  campaignContacts,
 }: ComposeEmailProps) {
   const { user } = useAuth();
   const [to, setTo] = useState(defaultTo);
@@ -96,7 +108,12 @@ export default function ComposeEmail({
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   const { loadInvalidEmails: fetchInvalidEmails, isEmailInvalid } = useInvalidEmails();
 
-  const isToInvalid = to.trim() !== "" && isEmailInvalid(to.trim());
+  // Campaign progress state
+  const [campaignProgress, setCampaignProgress] = useState<{ sent: number; total: number; errors: number } | null>(null);
+
+  const isCampaign = !!(campaignContacts && campaignContacts.length > 0);
+  const isToInvalid = !isCampaign && to.trim() !== "" && isEmailInvalid(to.trim());
+
   const fetchSignatures = async () => {
     if (!user) return;
     const { data } = await supabase
@@ -130,8 +147,9 @@ export default function ComposeEmail({
       setBody(defaultBody);
       setAttachments([]);
       setShowCcBcc(!!defaultCc);
+      setCampaignProgress(null);
       onOpenChange(true);
-    } else if (hasDraft) {
+    } else if (hasDraft && !campaignProgress) {
       setShowDiscardDialog(true);
     } else {
       onOpenChange(false);
@@ -146,6 +164,7 @@ export default function ComposeEmail({
     setSubject("");
     setBody("");
     setAttachments([]);
+    setCampaignProgress(null);
     onOpenChange(false);
   };
 
@@ -227,7 +246,6 @@ export default function ComposeEmail({
     }
   };
 
-  // Build signature HTML for preview and sending
   const getSignatureHtml = (): string | null => {
     if (!includeSignature || selectedSignatureId === "none") return null;
     const sig = signatures.find((s) => s.id === selectedSignatureId);
@@ -239,7 +257,100 @@ export default function ComposeEmail({
     return `<img src="${publicData.publicUrl}" alt="Firma" style="max-width: 400px; height: auto;" />`;
   };
 
+  // Substitute variables in text
+  const substituteVars = (text: string, contact: CampaignContact, orgName: string): string => {
+    return text
+      .replace(/\{\{nombre\}\}/gi, contact.full_name || "")
+      .replace(/\{\{email\}\}/gi, contact.email || "")
+      .replace(/\{\{cargo\}\}/gi, contact.position || "")
+      .replace(/\{\{empresa\}\}/gi, orgName || "");
+  };
+
+  // Campaign send logic
+  const sendCampaign = async () => {
+    if (!campaignContacts || campaignContacts.length === 0 || !subject || !user) return;
+    setSending(true);
+    const progress = { sent: 0, total: campaignContacts.length, errors: 0 };
+    setCampaignProgress(progress);
+
+    try {
+      // Upload attachments once
+      const uploadedAttachments: { file_name: string; path: string }[] = [];
+      const timestamp = Date.now();
+      for (const file of attachments) {
+        const ext = file.name.split(".").pop();
+        const safeName = `${timestamp}_${Math.random().toString(36).slice(2)}.${ext}`;
+        const storagePath = `${user.id}/${safeName}`;
+        const { error } = await supabase.storage.from("email-attachments").upload(storagePath, file);
+        if (error) throw new Error(`Error subiendo ${file.name}: ${error.message}`);
+        uploadedAttachments.push({ file_name: file.name, path: storagePath });
+      }
+
+      // Pre-load organization names
+      const orgIds = [...new Set(campaignContacts.filter(c => c.organization_id).map(c => c.organization_id!))];
+      const orgMap: Record<string, string> = {};
+      if (orgIds.length > 0) {
+        const { data: orgsData } = await supabase.from("organizations").select("id, name").in("id", orgIds);
+        if (orgsData) orgsData.forEach(o => { orgMap[o.id] = o.name; });
+      }
+
+      const signatureHtml = getSignatureHtml();
+
+      for (const contact of campaignContacts) {
+        const orgName = contact.organization_id ? (orgMap[contact.organization_id] || "") : "";
+        const personalizedSubject = substituteVars(subject, contact, orgName);
+        const personalizedBody = substituteVars(body, contact, orgName);
+
+        let htmlBody = `<div style="font-family: sans-serif; line-height: 1.6;">${personalizedBody}</div>`;
+        if (signatureHtml) {
+          htmlBody += `<br/><div style="margin-top: 16px;">${signatureHtml}</div>`;
+        }
+        const plainText = personalizedBody.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim();
+
+        try {
+          const { data, error } = await supabase.functions.invoke("send-email", {
+            body: {
+              to: contact.email,
+              subject: personalizedSubject,
+              html: htmlBody,
+              text: plainText,
+              contact_id: contact.id,
+              account_id: fromAccount || undefined,
+              attachments: uploadedAttachments.map(a => ({ filename: a.file_name, path: a.path })),
+            },
+          });
+          if (error) throw error;
+          if (data?.error) throw new Error(data.error);
+          progress.sent++;
+        } catch {
+          progress.errors++;
+        }
+        setCampaignProgress({ ...progress });
+      }
+
+      if (progress.errors === 0) {
+        toast.success(`Campaña completada: ${progress.sent} emails enviados`);
+      } else {
+        toast.warning(`Campaña: ${progress.sent} enviados, ${progress.errors} errores`);
+      }
+
+      setSubject("");
+      setBody("");
+      setAttachments([]);
+      onSent?.();
+    } catch (e: any) {
+      toast.error(e.message || "Error en la campaña");
+    } finally {
+      setSending(false);
+    }
+  };
+
   const send = async () => {
+    if (isCampaign) {
+      await sendCampaign();
+      return;
+    }
+
     if (!to || !subject || !user) {
       toast.error("Destinatario y asunto son obligatorios");
       return;
@@ -348,16 +459,19 @@ export default function ComposeEmail({
 
   const handleTemplateSelect = async (template: EmailTemplate) => {
     let html = template.content_html;
-    const hasVars = /\{\{(nombre|email|empresa|cargo)\}\}/.test(html);
-    if (hasVars) {
-      const info = await getContactInfo();
-      if (info) {
-        if (info.full_name) html = html.replace(/\{\{nombre\}\}/g, info.full_name);
-        if (info.email) html = html.replace(/\{\{email\}\}/g, info.email);
-        if (info.position) html = html.replace(/\{\{cargo\}\}/g, info.position);
-        if (info.organization_id) {
-          const { data: org } = await supabase.from("organizations").select("name").eq("id", info.organization_id).maybeSingle();
-          if (org?.name) html = html.replace(/\{\{empresa\}\}/g, org.name);
+    // In campaign mode, don't substitute variables - leave them as placeholders
+    if (!isCampaign) {
+      const hasVars = /\{\{(nombre|email|empresa|cargo)\}\}/.test(html);
+      if (hasVars) {
+        const info = await getContactInfo();
+        if (info) {
+          if (info.full_name) html = html.replace(/\{\{nombre\}\}/g, info.full_name);
+          if (info.email) html = html.replace(/\{\{email\}\}/g, info.email);
+          if (info.position) html = html.replace(/\{\{cargo\}\}/g, info.position);
+          if (info.organization_id) {
+            const { data: org } = await supabase.from("organizations").select("name").eq("id", info.organization_id).maybeSingle();
+            if (org?.name) html = html.replace(/\{\{empresa\}\}/g, org.name);
+          }
         }
       }
     }
@@ -397,7 +511,6 @@ export default function ComposeEmail({
         created_by: user.id,
       });
       if (error) throw error;
-      // Detect which variables were substituted
       const detectedVars: string[] = [];
       if (htmlToSave.includes("{{nombre}}")) detectedVars.push("{{nombre}}");
       if (htmlToSave.includes("{{email}}")) detectedVars.push("{{email}}");
@@ -425,30 +538,45 @@ export default function ComposeEmail({
           {/* HEADER FIJO */}
           <div className="shrink-0 border-b border-border">
             <SheetHeader className="px-4 py-3 flex flex-row items-center justify-between">
-              <SheetTitle className="text-base">Redactar email</SheetTitle>
+              <SheetTitle className="text-base flex items-center gap-2">
+                {isCampaign && <Megaphone className="w-4 h-4 text-primary" />}
+                {isCampaign ? "Campaña de email" : "Redactar email"}
+              </SheetTitle>
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenChange(false)} title="Cerrar">
                 <XCircle className="h-4 w-4" />
               </Button>
             </SheetHeader>
 
             <div className="px-4 pb-3 space-y-2">
-              {/* Para + CC/BCC toggle */}
+              {/* Para */}
               <div className="flex items-center gap-2">
                 <Label className="shrink-0 text-xs text-muted-foreground w-10">Para</Label>
-                <Input
-                  type="email"
-                  placeholder="email@ejemplo.com"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  className="h-8 text-sm"
-                />
-                {!showCcBcc && (
-                  <button
-                    onClick={() => setShowCcBcc(true)}
-                    className="text-xs text-primary hover:underline shrink-0"
-                  >
-                    + CC/BCC
-                  </button>
+                {isCampaign ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <Badge variant="secondary" className="text-sm gap-1">
+                      <Megaphone className="w-3.5 h-3.5" />
+                      {campaignContacts!.length} destinatarios
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">Cada email se enviará individualmente</span>
+                  </div>
+                ) : (
+                  <>
+                    <Input
+                      type="email"
+                      placeholder="email@ejemplo.com"
+                      value={to}
+                      onChange={(e) => setTo(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                    {!showCcBcc && (
+                      <button
+                        onClick={() => setShowCcBcc(true)}
+                        className="text-xs text-primary hover:underline shrink-0"
+                      >
+                        + CC/BCC
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -458,6 +586,16 @@ export default function ComposeEmail({
                   <AlertCircle className="h-4 w-4 text-amber-600" />
                   <AlertDescription className="text-xs text-amber-700 dark:text-amber-400">
                     Este email fue detectado como inválido (bounce previo). Es posible que no llegue.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Campaign variables hint */}
+              {isCampaign && (
+                <Alert className="py-2 border-primary/30 bg-primary/5">
+                  <Megaphone className="h-4 w-4 text-primary" />
+                  <AlertDescription className="text-xs text-muted-foreground">
+                    Variables disponibles: <code className="text-primary">{"{{nombre}}"}</code>, <code className="text-primary">{"{{empresa}}"}</code>, <code className="text-primary">{"{{cargo}}"}</code>, <code className="text-primary">{"{{email}}"}</code>
                   </AlertDescription>
                 </Alert>
               )}
@@ -485,8 +623,8 @@ export default function ComposeEmail({
                 </Select>
               </div>
 
-              {/* CC/BCC colapsables */}
-              {showCcBcc && (
+              {/* CC/BCC - hidden in campaign mode */}
+              {!isCampaign && showCcBcc && (
                 <>
                   <div className="flex items-center gap-2">
                     <Label className="shrink-0 text-xs text-muted-foreground w-10">CC</Label>
@@ -511,7 +649,7 @@ export default function ComposeEmail({
                 </>
               )}
 
-              {/* Asunto estilo canvas */}
+              {/* Asunto */}
               <div className="flex items-center gap-2">
                 <Label className="shrink-0 text-xs text-muted-foreground w-10">Asunto</Label>
                 <Input
@@ -526,12 +664,26 @@ export default function ComposeEmail({
 
           {/* CUERPO CON SCROLL */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+            {/* Campaign progress */}
+            {campaignProgress && (
+              <div className="space-y-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">Enviando campaña...</span>
+                  <span className="text-muted-foreground">
+                    {campaignProgress.sent + campaignProgress.errors}/{campaignProgress.total}
+                    {campaignProgress.errors > 0 && <span className="text-destructive ml-1">({campaignProgress.errors} errores)</span>}
+                  </span>
+                </div>
+                <Progress value={((campaignProgress.sent + campaignProgress.errors) / campaignProgress.total) * 100} />
+              </div>
+            )}
+
             {user && (
               <RichTextEditor
                 content={body}
                 onChange={setBody}
                 userId={user.id}
-                placeholder="Escribe tu mensaje aquí... (puedes pegar imágenes con Ctrl+V)"
+                placeholder={isCampaign ? "Escribe tu mensaje... Usa {{nombre}}, {{empresa}}, {{cargo}} para personalizar" : "Escribe tu mensaje aquí... (puedes pegar imágenes con Ctrl+V)"}
               />
             )}
 
@@ -638,12 +790,14 @@ export default function ComposeEmail({
                 <Save className="w-3.5 h-3.5" />
               </Button>
 
-              <EmailPreviewModal
-                subject={subject}
-                body={body}
-                signatureHtml={getSignatureHtml()}
-                recipient={to}
-              />
+              {!isCampaign && (
+                <EmailPreviewModal
+                  subject={subject}
+                  body={body}
+                  signatureHtml={getSignatureHtml()}
+                  recipient={to}
+                />
+              )}
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -678,9 +832,18 @@ export default function ComposeEmail({
 
             {/* Fila 2: Botón Enviar */}
             <div className="flex justify-end">
-              <Button onClick={send} disabled={sending || !to || !subject} className="px-6">
+              <Button
+                onClick={send}
+                disabled={sending || (!isCampaign && (!to || !subject)) || (isCampaign && !subject)}
+                className="px-6"
+              >
                 {sending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
+                ) : isCampaign ? (
+                  <>
+                    <Megaphone className="w-4 h-4 mr-1" />
+                    Enviar campaña ({campaignContacts!.length} emails)
+                  </>
                 ) : (
                   <>
                     Enviar
