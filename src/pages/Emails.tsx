@@ -62,6 +62,7 @@ export default function Emails() {
   const [selected, setSelected] = useState<EmailLog | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [resendData, setResendData] = useState<{ to: string; cc: string; subject: string; body: string } | null>(null);
+  const [retryEmailId, setRetryEmailId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
