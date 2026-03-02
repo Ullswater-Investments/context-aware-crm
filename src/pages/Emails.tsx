@@ -418,6 +418,9 @@ export default function Emails() {
                         <span className={cn("text-sm truncate flex-1", email.direction === "inbound" && !email.is_read ? "font-semibold" : "font-medium")}>
                           {email.direction === "inbound" ? email.from_email : email.to_email}
                         </span>
+                        {email.status === "failed" && (
+                          <XCircle className="w-3.5 h-3.5 text-destructive shrink-0" />
+                        )}
                         <Badge
                           variant={email.status === "sent" ? "default" : email.status === "received" ? "secondary" : "destructive"}
                           className="text-[10px] shrink-0"
@@ -490,26 +493,47 @@ export default function Emails() {
                             </button>
                           )}
                           {email.direction === "outbound" && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const fwdSubject = email.subject.startsWith("Fwd:")
-                                  ? email.subject
-                                  : `Fwd: ${email.subject}`;
-                                const fwdBody = `<br/><br/>---------- Mensaje reenviado ----------<br/><b>De:</b> ${email.from_email}<br/><b>Para:</b> ${email.to_email}<br/><b>Asunto:</b> ${email.subject}<br/><br/>${email.body_html || email.body_text || ""}`;
-                                setResendData({
-                                  to: email.to_email,
-                                  cc: "",
-                                  subject: fwdSubject,
-                                  body: fwdBody,
-                                });
-                                setComposeOpen(true);
-                              }}
-                              className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                              title="Reenviar"
-                            >
-                              <Forward className="w-4 h-4" />
-                            </button>
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (email.status === "failed") {
+                                    setRetryEmailId(email.id);
+                                  }
+                                  setResendData({
+                                    to: email.to_email,
+                                    cc: email.cc_emails || "",
+                                    subject: email.subject,
+                                    body: email.body_html || email.body_text || "",
+                                  });
+                                  setComposeOpen(true);
+                                }}
+                                className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                                title="Editar y reenviar"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const fwdSubject = email.subject.startsWith("Fwd:")
+                                    ? email.subject
+                                    : `Fwd: ${email.subject}`;
+                                  const fwdBody = `<br/><br/>---------- Mensaje reenviado ----------<br/><b>De:</b> ${email.from_email}<br/><b>Para:</b> ${email.to_email}<br/><b>Asunto:</b> ${email.subject}<br/><br/>${email.body_html || email.body_text || ""}`;
+                                  setResendData({
+                                    to: email.to_email,
+                                    cc: "",
+                                    subject: fwdSubject,
+                                    body: fwdBody,
+                                  });
+                                  setComposeOpen(true);
+                                }}
+                                className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                                title="Reenviar"
+                              >
+                                <Forward className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                           <button
                             onClick={(e) => { e.stopPropagation(); moveToTrash(email.id); }}
@@ -669,6 +693,25 @@ export default function Emails() {
                         Editar
                       </Button>
                     )}
+                    {selected.status === "failed" && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          setRetryEmailId(selected.id);
+                          setResendData({
+                            to: selected.to_email,
+                            cc: selected.cc_emails || "",
+                            subject: selected.subject,
+                            body: selected.body_html || selected.body_text || "",
+                          });
+                          setComposeOpen(true);
+                        }}
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                        Reintentar
+                      </Button>
+                    )}
                     {/* Mark as unread in detail panel */}
                     {selected.direction === "inbound" && selected.is_read && (
                       <Button
@@ -692,7 +735,13 @@ export default function Emails() {
                   </>
                 )}
               </div>
-              {selected.error_message && (
+              {selected.status === "failed" && (
+                <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 text-sm">
+                  <span className="font-medium text-destructive">Error de envío:</span>{" "}
+                  {selected.error_message || "Error desconocido"}
+                </div>
+              )}
+              {selected.error_message && selected.status !== "failed" && (
                 <p className="text-xs text-destructive mt-1">{selected.error_message}</p>
               )}
             </div>
@@ -722,13 +771,17 @@ export default function Emails() {
         open={composeOpen}
         onOpenChange={(open) => {
           setComposeOpen(open);
-          if (!open) setResendData(null);
+          if (!open) {
+            setResendData(null);
+            setRetryEmailId(null);
+          }
         }}
         defaultTo={resendData?.to}
         defaultCc={resendData?.cc}
         defaultSubject={resendData?.subject}
         defaultBody={resendData?.body}
-        onSent={() => { fetchEmails(); }}
+        retryEmailId={retryEmailId || undefined}
+        onSent={() => { fetchEmails(); fetchCounts(); }}
       />
     </div>
   );
