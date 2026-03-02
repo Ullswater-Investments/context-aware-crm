@@ -1,83 +1,123 @@
 
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+## Mejorar la funcion "Editar" para emails enviados (especialmente fallidos)
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+### Problema actual
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+El boton "Editar" en el panel de detalle carga correctamente el destinatario original, CC y contenido del email en el compositor. Sin embargo, tiene limitaciones importantes:
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
+1. **No existe boton "Editar" en el hover de la lista** - Solo hay "Reenviar" y "Papelera". Para editar, el usuario debe abrir el detalle primero.
+2. **No hay indicacion visual de emails fallidos** - Los emails con `status: "failed"` no se distinguen facilmente en la lista, dificultando identificar cuales necesitan re-envio.
+3. **No se vincula con el email original** - Al editar y enviar, no queda registro de que el nuevo email es una correccion del fallido.
+4. **El email fallido permanece en la lista** - Tras re-enviar exitosamente, el email fallido sigue visible sin contexto.
 
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
+### Solucion propuesta
 
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
+#### 1. Anadir boton "Editar" en hover de la lista (solo outbound)
+Agregar un boton rapido con icono `Pencil` junto al boton "Reenviar" en el hover de emails salientes. Cargara los datos originales (to, cc, subject, body) directamente.
 
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
+#### 2. Indicador visual para emails fallidos
+Mostrar un badge o icono rojo (`XCircle`) junto al estado de emails con `status === "failed"`, tanto en la lista como en el detalle. Esto permite identificar rapidamente cuales necesitan atencion.
 
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
+#### 3. Boton dedicado "Reintentar" para emails fallidos
+En emails con `status === "failed"`, mostrar un boton destacado "Reintentar" (con icono `RotateCcw`) que abra el compositor con todos los datos originales pre-cargados. Este boton sera mas visible que "Editar" para comunicar la intencion de corregir y reenviar.
 
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
+#### 4. Mover el email fallido a papelera tras reenvio exitoso (opcional)
+Pasar el `email_log_id` original al compositor. Tras un envio exitoso, marcar automaticamente el email fallido como `is_trashed = true` para limpiar la bandeja.
 
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
+### Cambios en `src/pages/Emails.tsx`
 
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
+| Cambio | Detalle |
+|---|---|
+| Hover: boton "Editar" | Nuevo boton `Pencil` para emails outbound en la lista, carga to/cc/subject/body originales |
+| Indicador fallido en lista | Badge rojo o icono `XCircle` cuando `email.status === "failed"` junto al asunto |
+| Indicador fallido en detalle | Banner superior con el `error_message` del fallo SMTP |
+| Boton "Reintentar" en detalle | Para emails fallidos, boton destacado que abre compositor con datos originales |
+| Estado `retryEmailId` | Nuevo estado para rastrear el ID del email fallido que se esta reintentando |
+| Callback `onSent` mejorado | Al reenviar un fallido, marcar el original como `is_trashed` automaticamente |
 
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
+### Cambios en `src/components/email/ComposeEmail.tsx`
 
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
-
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
-
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
-
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
-
-### Resumen de cambios
-
-| Archivo | Cambio | Prioridad |
-|---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
+| Cambio | Detalle |
+|---|---|
+| Nueva prop `retryEmailId` | ID opcional del email fallido que se esta reintentando |
+| Logica post-envio | Si `retryEmailId` existe y el envio es exitoso, actualizar el email original a `is_trashed = true` |
 
 ### Detalle tecnico
 
-**Contacts.tsx - Nuevos estados:**
+**Nuevo boton hover "Editar" (junto al de "Reenviar"):**
 ```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
-```
-
-**Contacts.tsx - Nueva funcion:**
-```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+<button
+  onClick={(e) => {
+    e.stopPropagation();
+    setResendData({
+      to: email.to_email,
+      cc: email.cc_emails || "",
+      subject: email.subject,
+      body: email.body_html || email.body_text || "",
     });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
-};
+    setComposeOpen(true);
+  }}
+  className="p-1.5 rounded-md hover:bg-accent ..."
+  title="Editar y reenviar"
+>
+  <Pencil className="w-4 h-4" />
+</button>
 ```
 
-**Contacts.tsx - Filtro actualizado:**
+**Indicador de fallo en la lista:**
 ```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+{email.status === "failed" && (
+  <XCircle className="w-3.5 h-3.5 text-destructive shrink-0" />
+)}
 ```
 
-**Contacts.tsx - Bulk enrich corregido:**
+**Banner de error en el detalle:**
 ```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+{selected.status === "failed" && (
+  <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 text-sm">
+    <span className="font-medium text-destructive">Error de envio:</span>{" "}
+    {selected.error_message || "Error desconocido"}
+  </div>
+)}
 ```
+
+**Boton "Reintentar" en detalle (para fallidos):**
+```typescript
+{selected.status === "failed" && (
+  <Button variant="destructive" size="sm" onClick={() => {
+    setRetryEmailId(selected.id);
+    setResendData({
+      to: selected.to_email,
+      cc: selected.cc_emails || "",
+      subject: selected.subject,
+      body: selected.body_html || selected.body_text || "",
+    });
+    setComposeOpen(true);
+  }}>
+    <RotateCcw className="w-3.5 h-3.5 mr-1" />
+    Reintentar
+  </Button>
+)}
+```
+
+**Auto-papelera tras reintento exitoso (ComposeEmail):**
+```typescript
+// Nueva prop
+retryEmailId?: string;
+
+// Tras envio exitoso
+if (retryEmailId) {
+  await supabase.from("email_logs")
+    .update({ is_trashed: true, trashed_at: new Date().toISOString() })
+    .eq("id", retryEmailId);
+}
+```
+
+### Resumen de archivos a modificar
+
+| Archivo | Cambios |
+|---|---|
+| `src/pages/Emails.tsx` | Boton hover "Editar", indicadores de fallo, boton "Reintentar", estado `retryEmailId` |
+| `src/components/email/ComposeEmail.tsx` | Prop `retryEmailId`, logica post-envio para auto-papelera |
 
