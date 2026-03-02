@@ -591,6 +591,24 @@ export default function Emails() {
                       <Forward className="w-3.5 h-3.5 mr-1" />
                       Reenviar
                     </Button>
+                    {selected.direction === "outbound" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setResendData({
+                            to: selected.to_email,
+                            cc: selected.cc_emails || "",
+                            subject: selected.subject,
+                            body: selected.body_html || selected.body_text || "",
+                          });
+                          setComposeOpen(true);
+                        }}
+                      >
+                        <Pencil className="w-3.5 h-3.5 mr-1" />
+                        Editar
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
