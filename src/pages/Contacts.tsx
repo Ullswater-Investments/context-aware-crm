@@ -10,9 +10,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2, MapPin, Zap, MessageSquare, Trash2, RotateCcw, XCircle, AlertCircle, ShieldAlert } from "lucide-react";
+import { Plus, Users, Search, Mail, Phone, Briefcase, LayoutGrid, List, GripVertical, Sparkles, FilterX, FileSpreadsheet, AlertTriangle, Tag, Globe, Linkedin, Loader2, MapPin, Zap, MessageSquare, Trash2, RotateCcw, XCircle, AlertCircle, ShieldAlert, Megaphone, X } from "lucide-react";
 import ContactProfile from "@/components/contacts/ContactProfile";
 import ContactImporter from "@/components/contacts/ContactImporter";
 import HunterSearch from "@/components/contacts/HunterSearch";
@@ -30,6 +31,7 @@ const PIPELINE_COLUMNS = [
 ];
 
 const VALID_DOMAIN_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$/;
+const MAX_CAMPAIGN_SIZE = 20;
 
 function hasMissingData(c: Contact): boolean {
   const hasEmail = !!(c.email || c.work_email || c.personal_email);
@@ -81,9 +83,52 @@ export default function Contacts() {
   const { invalidEmails, loadInvalidEmails, isEmailInvalid } = useInvalidEmails();
   const [detectingBounces, setDetectingBounces] = useState(false);
 
+  // Campaign states
+  const [campaignMode, setCampaignMode] = useState(false);
+  const [selectedForCampaign, setSelectedForCampaign] = useState<Set<string>>(new Set());
+  const [campaignOpen, setCampaignOpen] = useState(false);
+
   const isContactEmailInvalid = (contact: Contact): boolean => {
     const emails = [contact.email, contact.work_email, contact.personal_email].filter(Boolean);
     return emails.some(e => isEmailInvalid(e));
+  };
+
+  const getContactEmail = (c: Contact): string | null => c.email || c.work_email || c.personal_email || null;
+
+  const canSelectForCampaign = (c: Contact): boolean => {
+    const email = getContactEmail(c);
+    return !!email && !isContactEmailInvalid(c);
+  };
+
+  const toggleCampaignSelect = (contactId: string) => {
+    setSelectedForCampaign(prev => {
+      const next = new Set(prev);
+      if (next.has(contactId)) {
+        next.delete(contactId);
+      } else if (next.size < MAX_CAMPAIGN_SIZE) {
+        next.add(contactId);
+      } else {
+        toast.error(`Máximo ${MAX_CAMPAIGN_SIZE} contactos por campaña`);
+      }
+      return next;
+    });
+  };
+
+  const exitCampaignMode = () => {
+    setCampaignMode(false);
+    setSelectedForCampaign(new Set());
+  };
+
+  const getCampaignContacts = () => {
+    return contacts
+      .filter(c => selectedForCampaign.has(c.id))
+      .map(c => ({
+        id: c.id,
+        email: getContactEmail(c)!,
+        full_name: c.full_name,
+        organization_id: c.organization_id,
+        position: c.position,
+      }));
   };
 
   const detectBounces = async () => {
@@ -124,7 +169,6 @@ export default function Contacts() {
     supabase.from("organizations").select("id, name").order("name").then(({ data }) => { if (data) setOrgs(data); });
   }, [load, loadInvalidEmails]);
 
-  // --- Trash functions ---
   const moveToTrash = async (contactId: string) => {
     const { error } = await supabase.from("contacts").update({ status: "trash", trashed_at: new Date().toISOString() }).eq("id", contactId);
     if (error) { toast.error(error.message); return; }
@@ -313,16 +357,15 @@ export default function Contacts() {
     else load();
   };
 
-  const openProfile = (contact: Contact) => { setSelectedContact(contact); setProfileOpen(true); };
+  const openProfile = (contact: Contact) => { if (!campaignMode) { setSelectedContact(contact); setProfileOpen(true); } };
 
-  const handleDragStart = (e: React.DragEvent, contactId: string) => { setDraggedId(contactId); e.dataTransfer.effectAllowed = "move"; };
+  const handleDragStart = (e: React.DragEvent, contactId: string) => { if (campaignMode) return; setDraggedId(contactId); e.dataTransfer.effectAllowed = "move"; };
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; };
   const handleDrop = (e: React.DragEvent, status: string) => { e.preventDefault(); if (draggedId) { updateStatus(draggedId, status); setDraggedId(null); } };
 
   const trashCount = contacts.filter(c => c.status === "trash").length;
 
   const filtered = contacts.filter((c) => {
-    // Separate trash from normal view
     if (showTrash) return c.status === "trash";
     if (c.status === "trash") return false;
 
@@ -375,7 +418,6 @@ export default function Contacts() {
     }
   };
 
-  // Render a trash action button for kanban/list cards
   const TrashCardButton = ({ contactId, className = "" }: { contactId: string; className?: string }) => (
     <button
       onClick={(e) => { e.stopPropagation(); moveToTrash(contactId); }}
@@ -385,6 +427,23 @@ export default function Contacts() {
       <Trash2 className="w-4 h-4" />
     </button>
   );
+
+  // Campaign checkbox component
+  const CampaignCheckbox = ({ contact }: { contact: Contact }) => {
+    if (!campaignMode) return null;
+    const canSelect = canSelectForCampaign(contact);
+    const isSelected = selectedForCampaign.has(contact.id);
+    return (
+      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={() => toggleCampaignSelect(contact.id)}
+          disabled={!canSelect && !isSelected}
+          className={!canSelect && !isSelected ? "opacity-30" : ""}
+        />
+      </div>
+    );
+  };
 
   return (
     <div className="p-6 max-w-full mx-auto space-y-6">
@@ -441,6 +500,28 @@ export default function Contacts() {
           )}
           {!showTrash && (
             <>
+              {/* Campaign button */}
+              {!campaignMode ? (
+                <Button variant="outline" onClick={() => setCampaignMode(true)}>
+                  <Megaphone className="w-4 h-4 mr-2" />Campaña email
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-lg px-3 py-1.5">
+                  <Megaphone className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium text-primary">{selectedForCampaign.size}/{MAX_CAMPAIGN_SIZE}</span>
+                  <Button
+                    size="sm"
+                    disabled={selectedForCampaign.size === 0}
+                    onClick={() => setCampaignOpen(true)}
+                    className="h-7 text-xs"
+                  >
+                    <Mail className="w-3.5 h-3.5 mr-1" />Enviar campaña
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={exitCampaignMode} className="h-7 text-xs">
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              )}
               <Button variant="outline" onClick={() => setHunterOpen(true)}><Globe className="w-4 h-4 mr-2" />Hunter.io</Button>
               {pendingCount > 0 && (
                 <Button variant="outline" onClick={bulkEnrichAll} disabled={bulkEnriching}>
@@ -639,11 +720,12 @@ export default function Contacts() {
                     const missing = hasMissingData(c);
                      const emailBounced = isContactEmailInvalid(c);
                     return (
-                      <div key={c.id} draggable onDragStart={(e) => handleDragStart(e, c.id)} onClick={() => openProfile(c)}
-                        className={`group relative bg-background rounded-lg border p-3 cursor-pointer hover:shadow-md transition-shadow ${draggedId === c.id ? "opacity-50" : ""} ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""}`}>
-                        <TrashCardButton contactId={c.id} className="absolute top-2 right-2" />
+                      <div key={c.id} draggable={!campaignMode} onDragStart={(e) => handleDragStart(e, c.id)} onClick={() => campaignMode ? (canSelectForCampaign(c) && toggleCampaignSelect(c.id)) : openProfile(c)}
+                        className={`group relative bg-background rounded-lg border p-3 cursor-pointer hover:shadow-md transition-shadow ${draggedId === c.id ? "opacity-50" : ""} ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""} ${campaignMode && selectedForCampaign.has(c.id) ? "ring-2 ring-primary border-primary" : ""}`}>
+                        {!campaignMode && <TrashCardButton contactId={c.id} className="absolute top-2 right-2" />}
                         <div className="flex items-start gap-2">
-                          <GripVertical className="w-4 h-4 text-muted-foreground/40 shrink-0 mt-0.5 cursor-grab" />
+                          <CampaignCheckbox contact={c} />
+                          {!campaignMode && <GripVertical className="w-4 h-4 text-muted-foreground/40 shrink-0 mt-0.5 cursor-grab" />}
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1">
                               <p className="font-medium text-sm truncate">{c.full_name}</p>
@@ -662,7 +744,7 @@ export default function Contacts() {
                             {c.organizations?.name && <p className="text-xs text-muted-foreground truncate">{c.organizations.name}</p>}
                             {c.position && <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5"><Briefcase className="w-3 h-3" />{c.position}</p>}
                             {c.email ? (
-                              <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
+                              <button onClick={(e) => { e.stopPropagation(); if (!campaignMode) setEmailContact({ id: c.id, email: c.email! }); }}
                                 className={`text-xs truncate flex items-center gap-1 mt-0.5 transition-colors ${emailBounced ? "text-destructive line-through" : "text-muted-foreground hover:text-primary"}`}>
                                 <Mail className="w-3 h-3" />{c.email}
                                 {emailBounced && <AlertCircle className="w-3 h-3 shrink-0" />}
@@ -694,38 +776,40 @@ export default function Contacts() {
                                 <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-muted-foreground truncate flex items-center gap-1 hover:text-primary"><Globe className="w-3 h-3" />{c.company_domain}</a>
                               </div>
                             )}
-                            <div className="flex flex-wrap items-center gap-1 mt-1">
-                              {c.company_domain && (c.hunter_status === "pending" || c.hunter_status === "not_found") && (
-                                <button onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }} disabled={enrichingId === c.id}
-                                  className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0">
-                                  {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}Hunter
-                                </button>
-                              )}
-                              {(c.company_domain || c.linkedin_url) && (c.apollo_status === "pending" || c.apollo_status === "not_found") && (
-                                <button onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }} disabled={enrichingApolloId === c.id}
-                                  className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0">
-                                  {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}Apollo
-                                </button>
-                              )}
-                              {(c.lusha_status === "pending" || c.lusha_status === "not_found") && (
-                                <button onClick={(e) => { e.stopPropagation(); enrichWithLusha(c); }} disabled={enrichingLushaId === c.id}
-                                  className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0">
-                                  {enrichingLushaId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}Lusha
-                                </button>
-                              )}
-                              {c.company_domain && (c.findymail_status === "pending" || c.findymail_status === "not_found") && (
-                                <button onClick={(e) => { e.stopPropagation(); enrichWithFindymailFromCard(c); }} disabled={enrichingFindymailId === c.id}
-                                  className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0">
-                                  {enrichingFindymailId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}Findymail
-                                </button>
-                              )}
-                              {(c.phone || c.mobile_phone || c.work_phone) && (
-                                <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }}
-                                  className="text-[10px] px-1.5 py-0.5 rounded bg-[#25d366]/15 text-[#25d366] hover:bg-[#25d366]/25 transition-colors flex items-center gap-0.5 shrink-0">
-                                  <MessageSquare className="w-3 h-3" />WhatsApp
-                                </button>
-                              )}
-                            </div>
+                            {!campaignMode && (
+                              <div className="flex flex-wrap items-center gap-1 mt-1">
+                                {c.company_domain && (c.hunter_status === "pending" || c.hunter_status === "not_found") && (
+                                  <button onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }} disabled={enrichingId === c.id}
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0">
+                                    {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}Hunter
+                                  </button>
+                                )}
+                                {(c.company_domain || c.linkedin_url) && (c.apollo_status === "pending" || c.apollo_status === "not_found") && (
+                                  <button onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }} disabled={enrichingApolloId === c.id}
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0">
+                                    {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}Apollo
+                                  </button>
+                                )}
+                                {(c.lusha_status === "pending" || c.lusha_status === "not_found") && (
+                                  <button onClick={(e) => { e.stopPropagation(); enrichWithLusha(c); }} disabled={enrichingLushaId === c.id}
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0">
+                                    {enrichingLushaId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}Lusha
+                                  </button>
+                                )}
+                                {c.company_domain && (c.findymail_status === "pending" || c.findymail_status === "not_found") && (
+                                  <button onClick={(e) => { e.stopPropagation(); enrichWithFindymailFromCard(c); }} disabled={enrichingFindymailId === c.id}
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-0.5 shrink-0">
+                                    {enrichingFindymailId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}Findymail
+                                  </button>
+                                )}
+                                {(c.phone || c.mobile_phone || c.work_phone) && (
+                                  <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }}
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-[#25d366]/15 text-[#25d366] hover:bg-[#25d366]/25 transition-colors flex items-center gap-0.5 shrink-0">
+                                    <MessageSquare className="w-3 h-3" />WhatsApp
+                                  </button>
+                                )}
+                              </div>
+                            )}
                             {(c.tags || []).length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-2">
                                 {(c.tags || []).slice(0, 3).map((tag) => (
@@ -750,10 +834,11 @@ export default function Contacts() {
             const missing = hasMissingData(c);
             const emailBounced = isContactEmailInvalid(c);
             return (
-              <Card key={c.id} className={`group relative hover:shadow-md transition-shadow cursor-pointer ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""}`} onClick={() => openProfile(c)}>
-                <TrashCardButton contactId={c.id} className="absolute top-3 right-3 z-10" />
+              <Card key={c.id} className={`group relative hover:shadow-md transition-shadow cursor-pointer ${missing ? "border-destructive/50 ring-1 ring-destructive/20" : ""} ${campaignMode && selectedForCampaign.has(c.id) ? "ring-2 ring-primary border-primary" : ""}`} onClick={() => campaignMode ? (canSelectForCampaign(c) && toggleCampaignSelect(c.id)) : openProfile(c)}>
+                {!campaignMode && <TrashCardButton contactId={c.id} className="absolute top-3 right-3 z-10" />}
                 <CardHeader className="pb-3">
                   <div className="flex items-start gap-3">
+                    <CampaignCheckbox contact={c} />
                     <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center shrink-0"><Users className="w-5 h-5 text-accent" /></div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
@@ -770,7 +855,7 @@ export default function Contacts() {
                 <CardContent className="space-y-1.5">
                   {c.position && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Briefcase className="w-3.5 h-3.5" />{c.position}</div>}
                   {c.email ? (
-                    <button onClick={(e) => { e.stopPropagation(); setEmailContact({ id: c.id, email: c.email! }); }}
+                    <button onClick={(e) => { e.stopPropagation(); if (!campaignMode) setEmailContact({ id: c.id, email: c.email! }); }}
                       className={`flex items-center gap-2 text-sm transition-colors ${emailBounced ? "text-destructive line-through" : "text-muted-foreground hover:text-primary"}`}>
                       <Mail className="w-3.5 h-3.5" />{c.email}
                       {emailBounced && <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
@@ -798,38 +883,40 @@ export default function Contacts() {
                   {c.mobile_phone && c.phone && c.mobile_phone !== c.phone && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Phone className="w-3.5 h-3.5" />Móvil: {c.mobile_phone}</div>}
                   {c.linkedin_url && <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary"><Linkedin className="w-3.5 h-3.5" />LinkedIn</a>}
                   {c.company_domain && <a href={c.company_domain.startsWith('http') ? c.company_domain : `https://${c.company_domain}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary"><Globe className="w-3.5 h-3.5" />{c.company_domain}</a>}
-                  <div className="flex flex-wrap items-center gap-1 pt-1">
-                    {c.company_domain && (c.hunter_status === "pending" || c.hunter_status === "not_found") && (
-                      <button onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }} disabled={enrichingId === c.id}
-                        className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0">
-                        {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}Hunter
-                      </button>
-                    )}
-                    {(c.company_domain || c.linkedin_url) && (c.apollo_status === "pending" || c.apollo_status === "not_found") && (
-                      <button onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }} disabled={enrichingApolloId === c.id}
-                        className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0">
-                        {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}Apollo
-                      </button>
-                    )}
-                    {(c.lusha_status === "pending" || c.lusha_status === "not_found") && (
-                      <button onClick={(e) => { e.stopPropagation(); enrichWithLusha(c); }} disabled={enrichingLushaId === c.id}
-                        className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0">
-                        {enrichingLushaId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}Lusha
-                      </button>
-                    )}
-                    {c.company_domain && (c.findymail_status === "pending" || c.findymail_status === "not_found") && (
-                      <button onClick={(e) => { e.stopPropagation(); enrichWithFindymailFromCard(c); }} disabled={enrichingFindymailId === c.id}
-                        className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0">
-                        {enrichingFindymailId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}Findymail
-                      </button>
-                    )}
-                    {(c.phone || c.mobile_phone || c.work_phone) && (
-                      <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }}
-                        className="text-xs px-2 py-0.5 rounded bg-[#25d366]/15 text-[#25d366] hover:bg-[#25d366]/25 transition-colors flex items-center gap-1 shrink-0">
-                        <MessageSquare className="w-3 h-3" />WhatsApp
-                      </button>
-                    )}
-                  </div>
+                  {!campaignMode && (
+                    <div className="flex flex-wrap items-center gap-1 pt-1">
+                      {c.company_domain && (c.hunter_status === "pending" || c.hunter_status === "not_found") && (
+                        <button onClick={(e) => { e.stopPropagation(); enrichWithHunter(c.id, c.full_name, c.company_domain!); }} disabled={enrichingId === c.id}
+                          className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0">
+                          {enrichingId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}Hunter
+                        </button>
+                      )}
+                      {(c.company_domain || c.linkedin_url) && (c.apollo_status === "pending" || c.apollo_status === "not_found") && (
+                        <button onClick={(e) => { e.stopPropagation(); enrichWithApollo(c.id, c.full_name, c.company_domain, c.email, c.linkedin_url); }} disabled={enrichingApolloId === c.id}
+                          className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0">
+                          {enrichingApolloId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}Apollo
+                        </button>
+                      )}
+                      {(c.lusha_status === "pending" || c.lusha_status === "not_found") && (
+                        <button onClick={(e) => { e.stopPropagation(); enrichWithLusha(c); }} disabled={enrichingLushaId === c.id}
+                          className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0">
+                          {enrichingLushaId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}Lusha
+                        </button>
+                      )}
+                      {c.company_domain && (c.findymail_status === "pending" || c.findymail_status === "not_found") && (
+                        <button onClick={(e) => { e.stopPropagation(); enrichWithFindymailFromCard(c); }} disabled={enrichingFindymailId === c.id}
+                          className="text-xs px-2 py-0.5 rounded bg-accent text-accent-foreground hover:bg-accent/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0">
+                          {enrichingFindymailId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}Findymail
+                        </button>
+                      )}
+                      {(c.phone || c.mobile_phone || c.work_phone) && (
+                        <button onClick={(e) => { e.stopPropagation(); setWhatsappContact(c); }}
+                          className="text-xs px-2 py-0.5 rounded bg-[#25d366]/15 text-[#25d366] hover:bg-[#25d366]/25 transition-colors flex items-center gap-1 shrink-0">
+                          <MessageSquare className="w-3 h-3" />WhatsApp
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {(c.tags || []).length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
                       {(c.tags || []).map((tag) => (
@@ -856,6 +943,22 @@ export default function Contacts() {
       <HunterSearch open={hunterOpen} onOpenChange={setHunterOpen} />
       {emailContact && <ComposeEmail open={!!emailContact} onOpenChange={(o) => { if (!o) setEmailContact(null); }} defaultTo={emailContact.email} contactId={emailContact.id} />}
       {whatsappContact && <WhatsAppChat contact={whatsappContact} open={!!whatsappContact} onOpenChange={(o) => { if (!o) setWhatsappContact(null); }} />}
+      
+      {/* Campaign compose */}
+      {campaignOpen && (
+        <ComposeEmail
+          open={campaignOpen}
+          onOpenChange={(o) => {
+            if (!o) setCampaignOpen(false);
+          }}
+          campaignContacts={getCampaignContacts()}
+          onSent={() => {
+            setCampaignOpen(false);
+            exitCampaignMode();
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }
