@@ -437,13 +437,33 @@ export default function Emails() {
                         </AlertDialog>
                       </>
                     ) : (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); moveToTrash(email.id); }}
-                        className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                        title="Mover a papelera"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <>
+                        {email.direction === "outbound" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setResendData({
+                                to: email.to_email,
+                                cc: email.cc_emails || "",
+                                subject: email.subject,
+                                body: email.body_html || email.body_text || "",
+                              });
+                              setComposeOpen(true);
+                            }}
+                            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                            title="Reenviar"
+                          >
+                            <Forward className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); moveToTrash(email.id); }}
+                          className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                          title="Mover a papelera"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
