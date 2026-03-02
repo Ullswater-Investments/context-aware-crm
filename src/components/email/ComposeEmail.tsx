@@ -440,6 +440,15 @@ export default function ComposeEmail({
       }
 
       toast.success("Email enviado correctamente");
+
+      // Auto-trash the failed email if this was a retry
+      if (retryEmailId) {
+        await supabase
+          .from("email_logs")
+          .update({ is_trashed: true, trashed_at: new Date().toISOString() } as any)
+          .eq("id", retryEmailId);
+      }
+
       setTo(""); setCc(""); setBcc(""); setSubject(""); setBody(""); setAttachments([]);
       onOpenChange(false);
       onSent?.();
