@@ -1,138 +1,109 @@
 
 
-## Integración de llamadas telefónicas con Plivo Browser SDK
+## Integración SIP/WebRTC con servidor propio (Asterisk/FreeSWITCH)
 
-### Arquitectura general
+### Enfoque
 
-```text
-┌──────────────────┐     ┌─────────────────────┐     ┌──────────────┐
-│   Frontend       │     │  Edge Functions      │     │    Plivo      │
-│   (Browser SDK)  │────▶│  plivo-token         │     │    Cloud      │
-│                  │     │  plivo-answer         │◀────│              │
-│   ContactProfile │     │  plivo-webhook        │◀────│  (hangup,    │
-│   + Softphone UI │     │                      │     │  transcribe) │
-└──────────────────┘     └─────────────────────┘     └──────────────┘
-                                  │
-                                  ▼
-                          ┌──────────────┐
-                          │  call_logs   │
-                          │  (Supabase)  │
-                          └──────────────┘
-```
+Usar la librería **JsSIP** (ligera, compatible con Asterisk/FreeSWITCH) para conectar el CRM a tu servidor SIP vía WebSocket. Tú configuras tu servidor (Asterisk + certificados + STUN/TURN + SIP Trunk). Lovable se encarga del frontend y la base de datos.
 
-### Requisitos previos: Secrets
+### Requisitos previos (tu lado)
 
-Se necesitan 2 secrets nuevos: `PLIVO_AUTH_ID` y `PLIVO_AUTH_TOKEN`. Se solicitaran al usuario antes de proceder con el codigo.
+Antes de implementar necesitas tener listo:
+- Servidor Asterisk/FreeSWITCH con WebSocket habilitado (WSS)
+- Un SIP Trunk contratado (Zadarma, Netelip, etc.)
+- Un usuario SIP creado en tu centralita para el CRM
+
+### Secrets necesarios
+
+| Secret | Descripción |
+|---|---|
+| `SIP_WSS_URL` | URL WebSocket de tu Asterisk (ej: `wss://tu-servidor.com:8089/ws`) |
+| `SIP_USER` | Usuario SIP (ej: `crm-agent`) |
+| `SIP_PASSWORD` | Contraseña del usuario SIP |
+| `SIP_DOMAIN` | Dominio SIP (ej: `tu-servidor.com`) |
 
 ### 1. Base de datos: tabla `call_logs`
 
-Nueva tabla para registrar llamadas:
-
-| Columna | Tipo | Descripcion |
-|---|---|---|
-| id | uuid PK | |
-| contact_id | uuid | Referencia al contacto |
-| created_by | uuid | Usuario que inicio la llamada |
-| direction | text | 'outbound' |
-| phone_number | text | Numero llamado |
-| status | text | ringing, answered, completed, failed, no-answer |
-| duration | integer | Duracion en segundos |
-| recording_url | text | URL de la grabacion en Plivo |
-| transcription | text | Texto transcrito |
-| plivo_call_uuid | text | UUID de la llamada en Plivo |
-| started_at | timestamptz | Inicio de la llamada |
-| ended_at | timestamptz | Fin de la llamada |
-| created_at | timestamptz | now() |
-
-RLS: Solo el `created_by` puede ver/crear/actualizar/eliminar sus propios registros.
-
-### 2. Edge Functions
-
-#### `plivo-token`
-- Recibe la peticion del frontend autenticado
-- Valida el JWT del usuario con `getUser()`
-- Genera credenciales para el Plivo Endpoint usando `PLIVO_AUTH_ID` y `PLIVO_AUTH_TOKEN`
-- Devuelve `{ username, password }` del Plivo Endpoint (el usuario debe crear un Endpoint en el panel de Plivo)
-
-**Nota importante**: Plivo Browser SDK usa `client.login(username, password)` con credenciales de Endpoint, no JWT. La Edge Function servira como proxy seguro para entregar estas credenciales solo a usuarios autenticados.
-
-**URL**: `https://gvoyhkipucdtgixzultj.supabase.co/functions/v1/plivo-token`
-
-#### `plivo-answer`
-- Answer URL que Plivo consulta al iniciar una llamada
-- Recibe `To`, `From`, `CallUUID` como query params
-- Devuelve XML de Plivo:
-```xml
-<Response>
-  <Dial callerId="{from}" record="true" 
-        recordFileFormat="mp3"
-        action="{webhook_url}">
-    <Number>{to}</Number>
-  </Dial>
-</Response>
+```sql
+CREATE TABLE call_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_id uuid REFERENCES contacts(id) ON DELETE SET NULL,
+  created_by uuid NOT NULL,
+  direction text NOT NULL DEFAULT 'outbound',
+  phone_number text NOT NULL,
+  status text NOT NULL DEFAULT 'ringing',
+  duration integer DEFAULT 0,
+  recording_url text,
+  transcription text,
+  sip_call_id text,
+  started_at timestamptz DEFAULT now(),
+  ended_at timestamptz,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE call_logs ENABLE ROW LEVEL SECURITY;
+-- RLS: solo el creador accede a sus registros
 ```
-- **URL**: `https://gvoyhkipucdtgixzultj.supabase.co/functions/v1/plivo-answer`
 
-#### `plivo-webhook`
-- Recibe eventos de Plivo (hangup, recording, transcription)
-- Extrae: `CallUUID`, `Duration`, `CallStatus`, `RecordUrl`, `TranscriptionText`
-- Actualiza la fila correspondiente en `call_logs` por `plivo_call_uuid`
-- **URL**: `https://gvoyhkipucdtgixzultj.supabase.co/functions/v1/plivo-webhook`
+### 2. Edge Function: `sip-credentials`
 
-### 3. Frontend
+Entrega las credenciales SIP solo a usuarios autenticados. Lee los secrets `SIP_WSS_URL`, `SIP_USER`, `SIP_PASSWORD`, `SIP_DOMAIN` y los devuelve al frontend.
 
-#### Paquete npm
-Instalar `plivo-browser-sdk`.
+### 3. Frontend: componente `SipSoftphone.tsx`
 
-#### Componente `PlivoSoftphone`
-Nuevo componente integrado en `ContactProfile.tsx` junto al boton de WhatsApp:
+Usa **JsSIP** (paquete npm `jssip`) para:
 
-- Boton "Llamar" con icono `Phone` junto al numero del contacto
-- Al hacer clic:
-  1. Llama a `plivo-token` para obtener credenciales
-  2. Inicializa `new Plivo.Client(options)`
-  3. Llama a `client.login(username, password)`
-  4. Al recibir `onLogin`, ejecuta `client.call(phoneNumber)`
-  5. Crea registro en `call_logs` con status `ringing`
-- UI de llamada activa: barra flotante con duracion, boton "Colgar" (rojo)
-- Event listeners:
-  - `onCallRemoteRinging` → status "Conectando..."
-  - `onCallAnswered` → status "En llamada" + timer
-  - `onCallTerminated` → status "Llamada finalizada" + cleanup
-  - `onCallFailed` → toast error
+- Al abrir la ficha de contacto con teléfono, mostrar botón "Llamar"
+- Al pulsar:
+  1. Llama a `sip-credentials` para obtener config
+  2. Crea `JsSIP.UA` con WebSocket hacia tu servidor
+  3. Ejecuta `ua.call(phoneNumber)` con opciones de audio
+  4. Muestra UI de llamada activa (timer, botón colgar)
+- Event listeners: `connecting`, `accepted`, `ended`, `failed`
+- Al colgar: inserta/actualiza registro en `call_logs`
 
-#### Historial de llamadas
-Seccion en ContactProfile mostrando las ultimas llamadas del contacto desde `call_logs`, con duracion, fecha y enlace a grabacion.
+```typescript
+// Ejemplo simplificado
+import JsSIP from 'jssip';
 
-### 4. URLs para configurar en el panel de Plivo
+const socket = new JsSIP.WebSocketInterface(wssUrl);
+const ua = new JsSIP.UA({ sockets: [socket], uri: sipUri, password });
+ua.start();
 
-El usuario necesitara configurar estas URLs en su cuenta de Plivo:
+const session = ua.call(phoneNumber, { mediaConstraints: { audio: true, video: false } });
+session.on('accepted', () => { /* en llamada */ });
+session.on('ended', () => { /* colgar */ });
+```
 
-| Configuracion Plivo | URL |
+### 4. Integración en `ContactProfile.tsx`
+
+- Botón "Llamar" junto al campo teléfono (icono Phone verde)
+- Barra flotante durante llamada activa con duración y botón colgar
+- Sección "Historial de llamadas" que muestra registros de `call_logs`
+
+### 5. Transcripción (fase posterior)
+
+La transcripción con Whisper requiere que tu servidor Asterisk:
+1. Grabe la llamada (archivo WAV/MP3)
+2. Envíe el archivo a un endpoint (tu propio script o una Edge Function)
+3. Procese con Whisper y actualice `call_logs`
+
+Esto es configuración de tu servidor, no del CRM. Podemos preparar una Edge Function `call-transcribe` que reciba el audio y use Whisper, pero eso sería un paso posterior.
+
+### Archivos
+
+| Archivo | Acción |
 |---|---|
-| Application Answer URL | `https://gvoyhkipucdtgixzultj.supabase.co/functions/v1/plivo-answer` |
-| Application Hangup URL | `https://gvoyhkipucdtgixzultj.supabase.co/functions/v1/plivo-webhook` |
-| Endpoint (crear en Plivo) | El username/password del Endpoint se guardaran como secrets adicionales |
+| Migración SQL | Crear tabla `call_logs` con RLS |
+| `supabase/functions/sip-credentials/index.ts` | Nueva - entrega credenciales SIP |
+| `src/components/contacts/SipSoftphone.tsx` | Nuevo componente de llamada |
+| `src/components/contacts/ContactProfile.tsx` | Integrar botón llamar + historial |
+| `package.json` | Añadir `jssip` |
 
-### Archivos a crear/modificar
+### Pasos de implementación
 
-| Archivo | Accion |
-|---|---|
-| Migracion SQL | Crear tabla `call_logs` con RLS |
-| `supabase/functions/plivo-token/index.ts` | Nuevo |
-| `supabase/functions/plivo-answer/index.ts` | Nuevo |
-| `supabase/functions/plivo-webhook/index.ts` | Nuevo |
-| `supabase/config.toml` | Registrar 3 funciones con `verify_jwt = false` |
-| `src/components/contacts/PlivoSoftphone.tsx` | Nuevo componente softphone |
-| `src/components/contacts/ContactProfile.tsx` | Integrar boton de llamada y historial |
-| `package.json` | Anadir `plivo-browser-sdk` |
-
-### Flujo paso a paso
-
-1. Solicitar secrets `PLIVO_AUTH_ID`, `PLIVO_AUTH_TOKEN`, `PLIVO_ENDPOINT_USERNAME`, `PLIVO_ENDPOINT_PASSWORD`
+1. Solicitar los 4 secrets SIP
 2. Crear tabla `call_logs`
-3. Crear las 3 Edge Functions
-4. Crear componente `PlivoSoftphone`
+3. Crear Edge Function `sip-credentials`
+4. Instalar `jssip` y crear componente `SipSoftphone`
 5. Integrar en `ContactProfile`
-6. El usuario configura Answer URL y Hangup URL en el panel de Plivo
 
