@@ -54,7 +54,7 @@ function MissingDataAlert() {
   );
 }
 
-export default function Contacts() {
+export default function Contacts({ category = "dental_clinics" }: { category?: string }) {
   const { user } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState("");
@@ -153,6 +153,7 @@ export default function Contacts() {
     const { data } = await supabase
       .from("contacts")
       .select("*, organizations(name)")
+      .eq("category", category)
       .order("created_at", { ascending: false })
       .limit(2000);
     if (data) {
@@ -161,7 +162,7 @@ export default function Contacts() {
         toast.warning("Mostrando los primeros 2000 contactos. Usa los filtros para acotar la búsqueda.");
       }
     }
-  }, []);
+  }, [category]);
 
   useEffect(() => {
     load();
@@ -341,6 +342,7 @@ export default function Contacts() {
       work_email: form.work_email || null, personal_email: form.personal_email || null,
       mobile_phone: form.mobile_phone || null, work_phone: form.work_phone || null,
       created_by: user!.id,
+      category,
     };
     if (form.organization_id) insert.organization_id = form.organization_id;
     const { error } = await supabase.from("contacts").insert(insert);
@@ -450,7 +452,7 @@ export default function Contacts() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-2xl font-display font-bold">Contactos</h1>
+            <h1 className="text-2xl font-display font-bold">{category === "veterinary" ? "Contactos Veterinarios" : "Contactos Clínicas Dentales"}</h1>
             <p className="text-muted-foreground">Gestiona personas y embudo de ventas</p>
           </div>
           {pendingCount > 0 && !showTrash && (

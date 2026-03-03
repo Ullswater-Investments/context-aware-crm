@@ -1,0 +1,1 @@
+ALTER TABLE public.contacts ADD COLUMN category text NOT NULL DEFAULT 'dental_clinics';
