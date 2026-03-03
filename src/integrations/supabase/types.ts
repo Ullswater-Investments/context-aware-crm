@@ -81,6 +81,7 @@ export type Database = {
       contacts: {
         Row: {
           apollo_status: string
+          category: string
           company_domain: string | null
           created_at: string
           created_by: string | null
@@ -108,6 +109,7 @@ export type Database = {
         }
         Insert: {
           apollo_status?: string
+          category?: string
           company_domain?: string | null
           created_at?: string
           created_by?: string | null
@@ -135,6 +137,7 @@ export type Database = {
         }
         Update: {
           apollo_status?: string
+          category?: string
           company_domain?: string | null
           created_at?: string
           created_by?: string | null
