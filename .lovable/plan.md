@@ -1,83 +1,138 @@
 
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+## Integración de llamadas telefónicas con Plivo Browser SDK
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+### Arquitectura general
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+```text
+┌──────────────────┐     ┌─────────────────────┐     ┌──────────────┐
+│   Frontend       │     │  Edge Functions      │     │    Plivo      │
+│   (Browser SDK)  │────▶│  plivo-token         │     │    Cloud      │
+│                  │     │  plivo-answer         │◀────│              │
+│   ContactProfile │     │  plivo-webhook        │◀────│  (hangup,    │
+│   + Softphone UI │     │                      │     │  transcribe) │
+└──────────────────┘     └─────────────────────┘     └──────────────┘
+                                  │
+                                  ▼
+                          ┌──────────────┐
+                          │  call_logs   │
+                          │  (Supabase)  │
+                          └──────────────┘
+```
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
+### Requisitos previos: Secrets
 
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
+Se necesitan 2 secrets nuevos: `PLIVO_AUTH_ID` y `PLIVO_AUTH_TOKEN`. Se solicitaran al usuario antes de proceder con el codigo.
 
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
+### 1. Base de datos: tabla `call_logs`
 
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
+Nueva tabla para registrar llamadas:
 
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
-
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
-
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
-
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
-
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
-
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
-
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
-
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
-
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
-
-### Resumen de cambios
-
-| Archivo | Cambio | Prioridad |
+| Columna | Tipo | Descripcion |
 |---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
+| id | uuid PK | |
+| contact_id | uuid | Referencia al contacto |
+| created_by | uuid | Usuario que inicio la llamada |
+| direction | text | 'outbound' |
+| phone_number | text | Numero llamado |
+| status | text | ringing, answered, completed, failed, no-answer |
+| duration | integer | Duracion en segundos |
+| recording_url | text | URL de la grabacion en Plivo |
+| transcription | text | Texto transcrito |
+| plivo_call_uuid | text | UUID de la llamada en Plivo |
+| started_at | timestamptz | Inicio de la llamada |
+| ended_at | timestamptz | Fin de la llamada |
+| created_at | timestamptz | now() |
 
-### Detalle tecnico
+RLS: Solo el `created_by` puede ver/crear/actualizar/eliminar sus propios registros.
 
-**Contacts.tsx - Nuevos estados:**
-```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+### 2. Edge Functions
+
+#### `plivo-token`
+- Recibe la peticion del frontend autenticado
+- Valida el JWT del usuario con `getUser()`
+- Genera credenciales para el Plivo Endpoint usando `PLIVO_AUTH_ID` y `PLIVO_AUTH_TOKEN`
+- Devuelve `{ username, password }` del Plivo Endpoint (el usuario debe crear un Endpoint en el panel de Plivo)
+
+**Nota importante**: Plivo Browser SDK usa `client.login(username, password)` con credenciales de Endpoint, no JWT. La Edge Function servira como proxy seguro para entregar estas credenciales solo a usuarios autenticados.
+
+**URL**: `https://gvoyhkipucdtgixzultj.supabase.co/functions/v1/plivo-token`
+
+#### `plivo-answer`
+- Answer URL que Plivo consulta al iniciar una llamada
+- Recibe `To`, `From`, `CallUUID` como query params
+- Devuelve XML de Plivo:
+```xml
+<Response>
+  <Dial callerId="{from}" record="true" 
+        recordFileFormat="mp3"
+        action="{webhook_url}">
+    <Number>{to}</Number>
+  </Dial>
+</Response>
 ```
+- **URL**: `https://gvoyhkipucdtgixzultj.supabase.co/functions/v1/plivo-answer`
 
-**Contacts.tsx - Nueva funcion:**
-```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
-    });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
-};
-```
+#### `plivo-webhook`
+- Recibe eventos de Plivo (hangup, recording, transcription)
+- Extrae: `CallUUID`, `Duration`, `CallStatus`, `RecordUrl`, `TranscriptionText`
+- Actualiza la fila correspondiente en `call_logs` por `plivo_call_uuid`
+- **URL**: `https://gvoyhkipucdtgixzultj.supabase.co/functions/v1/plivo-webhook`
 
-**Contacts.tsx - Filtro actualizado:**
-```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
-```
+### 3. Frontend
 
-**Contacts.tsx - Bulk enrich corregido:**
-```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
-```
+#### Paquete npm
+Instalar `plivo-browser-sdk`.
+
+#### Componente `PlivoSoftphone`
+Nuevo componente integrado en `ContactProfile.tsx` junto al boton de WhatsApp:
+
+- Boton "Llamar" con icono `Phone` junto al numero del contacto
+- Al hacer clic:
+  1. Llama a `plivo-token` para obtener credenciales
+  2. Inicializa `new Plivo.Client(options)`
+  3. Llama a `client.login(username, password)`
+  4. Al recibir `onLogin`, ejecuta `client.call(phoneNumber)`
+  5. Crea registro en `call_logs` con status `ringing`
+- UI de llamada activa: barra flotante con duracion, boton "Colgar" (rojo)
+- Event listeners:
+  - `onCallRemoteRinging` → status "Conectando..."
+  - `onCallAnswered` → status "En llamada" + timer
+  - `onCallTerminated` → status "Llamada finalizada" + cleanup
+  - `onCallFailed` → toast error
+
+#### Historial de llamadas
+Seccion en ContactProfile mostrando las ultimas llamadas del contacto desde `call_logs`, con duracion, fecha y enlace a grabacion.
+
+### 4. URLs para configurar en el panel de Plivo
+
+El usuario necesitara configurar estas URLs en su cuenta de Plivo:
+
+| Configuracion Plivo | URL |
+|---|---|
+| Application Answer URL | `https://gvoyhkipucdtgixzultj.supabase.co/functions/v1/plivo-answer` |
+| Application Hangup URL | `https://gvoyhkipucdtgixzultj.supabase.co/functions/v1/plivo-webhook` |
+| Endpoint (crear en Plivo) | El username/password del Endpoint se guardaran como secrets adicionales |
+
+### Archivos a crear/modificar
+
+| Archivo | Accion |
+|---|---|
+| Migracion SQL | Crear tabla `call_logs` con RLS |
+| `supabase/functions/plivo-token/index.ts` | Nuevo |
+| `supabase/functions/plivo-answer/index.ts` | Nuevo |
+| `supabase/functions/plivo-webhook/index.ts` | Nuevo |
+| `supabase/config.toml` | Registrar 3 funciones con `verify_jwt = false` |
+| `src/components/contacts/PlivoSoftphone.tsx` | Nuevo componente softphone |
+| `src/components/contacts/ContactProfile.tsx` | Integrar boton de llamada y historial |
+| `package.json` | Anadir `plivo-browser-sdk` |
+
+### Flujo paso a paso
+
+1. Solicitar secrets `PLIVO_AUTH_ID`, `PLIVO_AUTH_TOKEN`, `PLIVO_ENDPOINT_USERNAME`, `PLIVO_ENDPOINT_PASSWORD`
+2. Crear tabla `call_logs`
+3. Crear las 3 Edge Functions
+4. Crear componente `PlivoSoftphone`
+5. Integrar en `ContactProfile`
+6. El usuario configura Answer URL y Hangup URL en el panel de Plivo
 
