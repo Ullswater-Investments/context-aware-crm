@@ -1,109 +1,83 @@
 
 
-## Integración SIP/WebRTC con servidor propio (Asterisk/FreeSWITCH)
+## Revision: Errores y Mejoras pendientes tras integracion Findymail
 
-### Enfoque
+### BUG 1: Bulk Enrich no incluye Findymail (Alta)
 
-Usar la librería **JsSIP** (ligera, compatible con Asterisk/FreeSWITCH) para conectar el CRM a tu servidor SIP vía WebSocket. Tú configuras tu servidor (Asterisk + certificados + STUN/TURN + SIP Trunk). Lovable se encarga del frontend y la base de datos.
+**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
 
-### Requisitos previos (tu lado)
+**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
 
-Antes de implementar necesitas tener listo:
-- Servidor Asterisk/FreeSWITCH con WebSocket habilitado (WSS)
-- Un SIP Trunk contratado (Zadarma, Netelip, etc.)
-- Un usuario SIP creado en tu centralita para el CRM
+### BUG 2: `findymail_status` accedido con cast `as any` (Media)
 
-### Secrets necesarios
+**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
 
-| Secret | Descripción |
-|---|---|
-| `SIP_WSS_URL` | URL WebSocket de tu Asterisk (ej: `wss://tu-servidor.com:8089/ws`) |
-| `SIP_USER` | Usuario SIP (ej: `crm-agent`) |
-| `SIP_PASSWORD` | Contraseña del usuario SIP |
-| `SIP_DOMAIN` | Dominio SIP (ej: `tu-servidor.com`) |
+**Solucion:** Cambiar a `contact.findymail_status` sin cast.
 
-### 1. Base de datos: tabla `call_logs`
+### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
 
-```sql
-CREATE TABLE call_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  contact_id uuid REFERENCES contacts(id) ON DELETE SET NULL,
-  created_by uuid NOT NULL,
-  direction text NOT NULL DEFAULT 'outbound',
-  phone_number text NOT NULL,
-  status text NOT NULL DEFAULT 'ringing',
-  duration integer DEFAULT 0,
-  recording_url text,
-  transcription text,
-  sip_call_id text,
-  started_at timestamptz DEFAULT now(),
-  ended_at timestamptz,
-  created_at timestamptz DEFAULT now()
-);
-ALTER TABLE call_logs ENABLE ROW LEVEL SECURITY;
--- RLS: solo el creador accede a sus registros
-```
+**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
 
-### 2. Edge Function: `sip-credentials`
+**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
 
-Entrega las credenciales SIP solo a usuarios autenticados. Lee los secrets `SIP_WSS_URL`, `SIP_USER`, `SIP_PASSWORD`, `SIP_DOMAIN` y los devuelve al frontend.
+### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
 
-### 3. Frontend: componente `SipSoftphone.tsx`
+**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
 
-Usa **JsSIP** (paquete npm `jssip`) para:
+**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
 
-- Al abrir la ficha de contacto con teléfono, mostrar botón "Llamar"
-- Al pulsar:
-  1. Llama a `sip-credentials` para obtener config
-  2. Crea `JsSIP.UA` con WebSocket hacia tu servidor
-  3. Ejecuta `ua.call(phoneNumber)` con opciones de audio
-  4. Muestra UI de llamada activa (timer, botón colgar)
-- Event listeners: `connecting`, `accepted`, `ended`, `failed`
-- Al colgar: inserta/actualiza registro en `call_logs`
+### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
 
+**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
+
+**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
+
+### Resumen de cambios
+
+| Archivo | Cambio | Prioridad |
+|---|---|---|
+| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
+| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
+| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
+| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
+
+### Detalle tecnico
+
+**Contacts.tsx - Nuevos estados:**
 ```typescript
-// Ejemplo simplificado
-import JsSIP from 'jssip';
-
-const socket = new JsSIP.WebSocketInterface(wssUrl);
-const ua = new JsSIP.UA({ sockets: [socket], uri: sipUri, password });
-ua.start();
-
-const session = ua.call(phoneNumber, { mediaConstraints: { audio: true, video: false } });
-session.on('accepted', () => { /* en llamada */ });
-session.on('ended', () => { /* colgar */ });
+const [findymailFilter, setFindymailFilter] = useState("");
+const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
 ```
 
-### 4. Integración en `ContactProfile.tsx`
+**Contacts.tsx - Nueva funcion:**
+```typescript
+const enrichWithFindymailFromCard = async (c: Contact) => {
+  if (!c.company_domain) return;
+  setEnrichingFindymailId(c.id);
+  try {
+    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+    });
+    if (error) throw error;
+    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
+    else toast.info("Findymail no encontro datos");
+    load();
+  } catch (err: any) {
+    toast.error(err.message || "Error con Findymail");
+  } finally {
+    setEnrichingFindymailId(null);
+  }
+};
+```
 
-- Botón "Llamar" junto al campo teléfono (icono Phone verde)
-- Barra flotante durante llamada activa con duración y botón colgar
-- Sección "Historial de llamadas" que muestra registros de `call_logs`
+**Contacts.tsx - Filtro actualizado:**
+```typescript
+const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
+return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+```
 
-### 5. Transcripción (fase posterior)
-
-La transcripción con Whisper requiere que tu servidor Asterisk:
-1. Grabe la llamada (archivo WAV/MP3)
-2. Envíe el archivo a un endpoint (tu propio script o una Edge Function)
-3. Procese con Whisper y actualice `call_logs`
-
-Esto es configuración de tu servidor, no del CRM. Podemos preparar una Edge Function `call-transcribe` que reciba el audio y use Whisper, pero eso sería un paso posterior.
-
-### Archivos
-
-| Archivo | Acción |
-|---|---|
-| Migración SQL | Crear tabla `call_logs` con RLS |
-| `supabase/functions/sip-credentials/index.ts` | Nueva - entrega credenciales SIP |
-| `src/components/contacts/SipSoftphone.tsx` | Nuevo componente de llamada |
-| `src/components/contacts/ContactProfile.tsx` | Integrar botón llamar + historial |
-| `package.json` | Añadir `jssip` |
-
-### Pasos de implementación
-
-1. Solicitar los 4 secrets SIP
-2. Crear tabla `call_logs`
-3. Crear Edge Function `sip-credentials`
-4. Instalar `jssip` y crear componente `SipSoftphone`
-5. Integrar en `ContactProfile`
+**Contacts.tsx - Bulk enrich corregido:**
+```typescript
+body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+```
 
