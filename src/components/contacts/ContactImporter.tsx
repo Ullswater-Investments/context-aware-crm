@@ -31,6 +31,7 @@ interface ParsedRow {
   work_phone?: string;
   company_domain?: string;
   company_website?: string;
+  additional_emails?: string;
   company_description?: string;
   sub_sector?: string;
   _company_address?: string;
@@ -51,8 +52,9 @@ function mapColumns(headers: string[]): Record<string, string> {
     sector: ["sector", "industria", "industry", "company main industry", "industry_tags", "etiqueta", "tag"],
     postal_address: ["dirección", "direccion", "address", "postal", "sede", "dirección postal", "postal_address", "municipio"],
     linkedin_url: ["contact li", "linkedin url", "linkedin", "li url"],
-    work_email: ["work email", "work_email"],
-    personal_email: ["private email", "direct email", "personal email", "additional email 1", "secondary email"],
+    work_email: ["work email", "work_email", "email_1", "email 1"],
+    personal_email: ["private email", "direct email", "personal email", "additional email 1", "secondary email", "email_2", "email 2"],
+    additional_emails: ["email_3", "email 3", "additional emails", "other email"],
     mobile_phone: ["mobile", "móvil"],
     work_phone: ["direct phone", "work phone"],
     company_domain: ["company domain", "domain", "dominio"],
@@ -253,6 +255,7 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
 
       const work_email = val(row, mapping["work_email"]);
       const personal_email = val(row, mapping["personal_email"]);
+      const additional_emails = val(row, mapping["additional_emails"]);
       const phone2 = val(row, mapping["_phone2"]) || val(row, mapping["_mobile2"]);
 
       const tags: string[] = [];
@@ -302,6 +305,7 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
         work_phone,
         company_domain: val(row, mapping["company_domain"]),
         company_website: val(row, mapping["company_website"]) || val(row, mapping["_pagina_web"]),
+        additional_emails,
         company_description: val(row, mapping["company_description"]),
         sub_sector: subSector,
         _company_address: val(row, mapping["_company_address"]),
@@ -454,12 +458,14 @@ export default function ContactImporter({ open, onOpenChange, onComplete, catego
             const setIfEmpty = (field: string, value: any) => {
               if (value) updates[field] = value;
             };
-            setIfEmpty("email", row.email);
+            // For email fields from the new Excel, force update even if existing
+            if (row.work_email) updates.work_email = row.work_email;
+            if (row.work_email) updates.email = row.work_email;
+            if (row.personal_email) updates.personal_email = row.personal_email;
+            if (row.additional_emails) updates.additional_emails = row.additional_emails;
             setIfEmpty("phone", row.phone);
             setIfEmpty("position", row.position);
             setIfEmpty("linkedin_url", row.linkedin_url);
-            setIfEmpty("work_email", row.work_email);
-            setIfEmpty("personal_email", row.personal_email);
             setIfEmpty("mobile_phone", row.mobile_phone);
             setIfEmpty("work_phone", row.work_phone);
             setIfEmpty("company_domain", row.company_domain);
@@ -471,14 +477,18 @@ export default function ContactImporter({ open, onOpenChange, onComplete, catego
               // Only update fields that are currently null in the DB
               const { data: current } = await supabase
                 .from("contacts")
-                .select("email, phone, position, linkedin_url, work_email, personal_email, mobile_phone, work_phone, company_domain, postal_address, organization_id, tags")
+                .select("email, phone, position, linkedin_url, work_email, personal_email, mobile_phone, work_phone, company_domain, postal_address, organization_id, tags, additional_emails")
                 .eq("id", existingId)
                 .single();
 
               if (current) {
                 const finalUpdates: Record<string, any> = {};
+                // Email fields that were force-set go directly
+                const forceFields = ["email", "work_email", "personal_email", "additional_emails"];
                 for (const [k, v] of Object.entries(updates)) {
-                  if (k === "tags") {
+                  if (forceFields.includes(k)) {
+                    finalUpdates[k] = v;
+                  } else if (k === "tags") {
                     if (!current.tags || current.tags.length === 0) finalUpdates.tags = v;
                   } else if (!(current as any)[k]) {
                     finalUpdates[k] = v;
@@ -505,6 +515,7 @@ export default function ContactImporter({ open, onOpenChange, onComplete, catego
               mobile_phone: row.mobile_phone || null,
               work_phone: row.work_phone || null,
               company_domain: row.company_domain || null,
+              additional_emails: row.additional_emails || null,
               created_by: user!.id,
             };
             if (category) insertPayload.category = category;

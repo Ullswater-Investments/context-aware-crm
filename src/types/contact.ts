@@ -21,5 +21,6 @@ export interface Contact {
   findymail_status?: string | null;
   last_enriched_at?: string | null;
   postal_address?: string | null;
+  additional_emails?: string | null;
   category?: string;
 }
