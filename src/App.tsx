@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import Organizations from "./pages/Organizations";
 import Contacts from "./pages/Contacts";
 import ContactsVeterinary from "./pages/ContactsVeterinary";
+import ContactsDigitalAgents from "./pages/ContactsDigitalAgents";
 import Projects from "./pages/Projects";
 import Documents from "./pages/Documents";
 import Tasks from "./pages/Tasks";
@@ -39,6 +40,7 @@ function AppRoutes() {
                 <Route path="/organizations" element={<Organizations />} />
                 <Route path="/contacts" element={<Contacts />} />
                 <Route path="/contacts-veterinary" element={<ContactsVeterinary />} />
+                <Route path="/contacts-digital-agents" element={<ContactsDigitalAgents />} />
                 <Route path="/projects" element={<Projects />} />
                 <Route path="/documents" element={<Documents />} />
                 <Route path="/tasks" element={<Tasks />} />
