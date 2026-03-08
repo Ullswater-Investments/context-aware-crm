@@ -16,6 +16,7 @@ const navItems = [
 { to: "/organizations", icon: Building2, label: "Empresas" },
 { to: "/contacts", icon: Users, label: "Clínicas Dentales" },
 { to: "/contacts-veterinary", icon: Users, label: "Veterinarios" },
+{ to: "/contacts-digital-agents", icon: Users, label: "Agentes Digitalizadores" },
 { to: "/projects", icon: FolderKanban, label: "Proyectos" },
 { to: "/documents", icon: FileText, label: "Documentos" },
 { to: "/tasks", icon: CheckSquare, label: "Tareas" },
