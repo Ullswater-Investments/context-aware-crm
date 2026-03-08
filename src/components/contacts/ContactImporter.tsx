@@ -508,7 +508,7 @@ export default function ContactImporter({ open, onOpenChange, onComplete, catego
               created_by: user!.id,
             };
             if (category) insertPayload.category = category;
-            const { error } = await supabase.from("contacts").insert(insertPayload);
+            const { error } = await supabase.from("contacts").insert(insertPayload as any);
 
             if (error) errors++;
             else {
