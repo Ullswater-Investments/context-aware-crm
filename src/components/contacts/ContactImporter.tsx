@@ -13,6 +13,7 @@ interface ContactImporterProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onComplete: () => void;
+  category?: string;
 }
 
 interface ParsedRow {
@@ -42,20 +43,20 @@ function mapColumns(headers: string[]): Record<string, string> {
   const lower = headers.map((h) => h.toLowerCase().trim());
 
   const patterns: Record<string, string[]> = {
-    full_name: ["nombre completo", "full_name", "fullname", "full name", "contact name"],
+    full_name: ["nombre completo", "full_name", "fullname", "full name", "contact name", "nombre"],
     email: ["email", "email address", "correo", "e-mail", "mail"],
     phone: ["teléfono", "telefono", "phone number", "phone", "tel", "corporate phone"],
     position: ["cargo", "position", "puesto", "título", "titulo", "job title", "role", "title"],
     company: ["empresa", "company name", "company", "organización", "organizacion", "org", "compañía", "compania"],
     sector: ["sector", "industria", "industry", "company main industry", "industry_tags", "etiqueta", "tag"],
-    postal_address: ["dirección", "direccion", "address", "postal", "sede", "dirección postal", "postal_address"],
+    postal_address: ["dirección", "direccion", "address", "postal", "sede", "dirección postal", "postal_address", "municipio"],
     linkedin_url: ["contact li", "linkedin url", "linkedin", "li url"],
     work_email: ["work email", "work_email"],
     personal_email: ["private email", "direct email", "personal email", "additional email 1", "secondary email"],
     mobile_phone: ["mobile", "móvil"],
     work_phone: ["direct phone", "work phone"],
     company_domain: ["company domain", "domain", "dominio"],
-    company_website: ["company website", "website"],
+    company_website: ["company website", "website", "página web", "pagina web", "web"],
     company_description: ["company description"],
     sub_sector: ["sub industry", "company sub industry", "sub sector"],
   };
@@ -89,9 +90,10 @@ function mapColumns(headers: string[]): Record<string, string> {
     return null;
   };
 
-  // Handle First Name + Last Name split
-  const firstName = lower.findIndex((h) => h === "nombre" || h === "first name" || h === "first_name");
+  // Handle First Name + Last Name split (only if both exist; "nombre" alone maps to full_name via patterns)
+  const firstName = lower.findIndex((h) => h === "first name" || h === "first_name");
   const lastName = lower.findIndex((h) => h === "apellido" || h === "apellidos" || h === "last name" || h === "last_name" || h === "surname");
+  const hasNombreOnly = lower.findIndex((h) => h === "nombre") >= 0 && lastName < 0;
 
   if (firstName >= 0 && lastName >= 0) {
     mapping["_first_name"] = headers[firstName];
@@ -100,6 +102,10 @@ function mapColumns(headers: string[]): Record<string, string> {
     const n = find(patterns.full_name);
     if (n) mapping["full_name"] = n;
   }
+
+  // Handle "Código Postal" as auxiliary for postal_address
+  const cpIdx = lower.findIndex((h) => h === "código postal" || h === "codigo postal" || h === "cp" || h === "zip");
+  if (cpIdx >= 0) mapping["_codigo_postal"] = headers[cpIdx];
 
   // Map specific fields FIRST to claim their columns before generic ones
   const fieldOrder = [
@@ -270,6 +276,12 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
 
       // Compose postal_address from City + State + Country if not mapped directly
       let postal_address = val(row, mapping["postal_address"]);
+      const codigoPostal = val(row, mapping["_codigo_postal"]);
+      if (postal_address && codigoPostal) {
+        postal_address = `${postal_address}, ${codigoPostal}`;
+      } else if (!postal_address && codigoPostal) {
+        postal_address = codigoPostal;
+      }
       if (!postal_address) {
         const parts = [val(row, mapping["_city"]), val(row, mapping["_state"]), val(row, mapping["_country"])].filter(Boolean);
         if (parts.length > 0) postal_address = parts.join(", ");
@@ -289,19 +301,33 @@ function parseRows(data: Record<string, any>[], headers: string[]): ParsedRow[] 
         mobile_phone,
         work_phone,
         company_domain: val(row, mapping["company_domain"]),
-        company_website: val(row, mapping["company_website"]),
+        company_website: val(row, mapping["company_website"]) || val(row, mapping["_pagina_web"]),
         company_description: val(row, mapping["company_description"]),
         sub_sector: subSector,
         _company_address: val(row, mapping["_company_address"]),
         _company_size: val(row, mapping["_company_size"]),
         _company_type: val(row, mapping["_company_type"]),
       } as ParsedRow;
+      // Extract company_domain from company_website if not set
+      if (!parsed.company_domain && parsed.company_website) {
+        try {
+          let url = parsed.company_website;
+          if (!url.startsWith("http")) url = "https://" + url;
+          const hostname = new URL(url).hostname.replace(/^www\./, "");
+          parsed.company_domain = hostname;
+        } catch {
+          // URL parsing failed, try simple extraction
+          const cleaned = parsed.company_website.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0];
+          if (cleaned.includes(".")) parsed.company_domain = cleaned;
+        }
+      }
+
       return sanitizeEmailFields(parsed);
     })
     .filter(Boolean) as ParsedRow[];
 }
 
-export default function ContactImporter({ open, onOpenChange, onComplete }: ContactImporterProps) {
+export default function ContactImporter({ open, onOpenChange, onComplete, category }: ContactImporterProps) {
   const { user } = useAuth();
   const [dragging, setDragging] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -465,7 +491,7 @@ export default function ContactImporter({ open, onOpenChange, onComplete }: Cont
               }
             }
           } else {
-            const { error } = await supabase.from("contacts").insert({
+            const insertPayload: Record<string, any> = {
               full_name: row.full_name,
               email: row.email || row.work_email || row.personal_email || null,
               phone: row.phone || null,
@@ -480,7 +506,9 @@ export default function ContactImporter({ open, onOpenChange, onComplete }: Cont
               work_phone: row.work_phone || null,
               company_domain: row.company_domain || null,
               created_by: user!.id,
-            });
+            };
+            if (category) insertPayload.category = category;
+            const { error } = await supabase.from("contacts").insert(insertPayload);
 
             if (error) errors++;
             else {
