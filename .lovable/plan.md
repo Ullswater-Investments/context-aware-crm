@@ -1,83 +1,54 @@
 
 
-## Revision: Errores y Mejoras pendientes tras integracion Findymail
+## Actualizar contactos Agentes Digitalizadores con emails del Excel
 
-### BUG 1: Bulk Enrich no incluye Findymail (Alta)
+### Problema
 
-**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
+El Excel tiene columnas `Email_1`, `Email_2`, `Email_3` por contacto. La tabla `contacts` tiene 3 campos de email: `email`, `work_email`, `personal_email`. Podemos mapear los 3 emails del Excel a estos 3 campos existentes sin necesidad de ampliar el esquema.
 
-**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
+### Mapeo de emails
 
-### BUG 2: `findymail_status` accedido con cast `as any` (Media)
-
-**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
-
-**Solucion:** Cambiar a `contact.findymail_status` sin cast.
-
-### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
-
-**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
-
-**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
-
-### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
-
-**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
-
-**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
-
-### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
-
-**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
-
-**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
-
-### Resumen de cambios
-
-| Archivo | Cambio | Prioridad |
+| Excel | Campo DB | Lógica |
 |---|---|---|
-| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
-| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
-| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
-| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
+| Email_1 | `work_email` + `email` (principal) | Email principal de trabajo |
+| Email_2 | `personal_email` | Segundo email |
+| Email_3 | `notes` (concatenado) | Tercer email almacenado en notas |
 
-### Detalle tecnico
+Alternativa: si prefieres no perder Email_3 en notas, añadir columna `additional_emails text` a la tabla. Recomiendo esta opción.
 
-**Contacts.tsx - Nuevos estados:**
-```typescript
-const [findymailFilter, setFindymailFilter] = useState("");
-const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+### Plan
+
+#### 1. Migración: añadir campo `additional_emails`
+
+```sql
+ALTER TABLE contacts ADD COLUMN additional_emails text;
 ```
 
-**Contacts.tsx - Nueva funcion:**
-```typescript
-const enrichWithFindymailFromCard = async (c: Contact) => {
-  if (!c.company_domain) return;
-  setEnrichingFindymailId(c.id);
-  try {
-    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
-      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
-    });
-    if (error) throw error;
-    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
-    else toast.info("Findymail no encontro datos");
-    load();
-  } catch (err: any) {
-    toast.error(err.message || "Error con Findymail");
-  } finally {
-    setEnrichingFindymailId(null);
-  }
-};
-```
+Un campo de texto para almacenar emails extra (separados por coma si hay varios).
 
-**Contacts.tsx - Filtro actualizado:**
-```typescript
-const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
-return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
-```
+#### 2. Actualizar `ContactImporter.tsx`
 
-**Contacts.tsx - Bulk enrich corregido:**
-```typescript
-body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
-```
+- Añadir mapeo para columnas `email_1`, `email_2`, `email_3` en `mapColumns`
+- Email_1 → `work_email` + `email`
+- Email_2 → `personal_email`  
+- Email_3 → `additional_emails`
+- En el upsert, actualizar estos campos incluso si ya hay datos (forzar actualización de emails desde el Excel)
+
+#### 3. Actualizar `Contact` type y UI
+
+- Añadir `additional_emails?: string | null` a `src/types/contact.ts`
+- Mostrar `additional_emails` en `ContactProfile.tsx` si tiene valor
+
+### Archivos a modificar
+
+| Archivo | Cambio |
+|---|---|
+| Migración SQL | Añadir columna `additional_emails` |
+| `src/types/contact.ts` | Añadir campo `additional_emails` |
+| `src/components/contacts/ContactImporter.tsx` | Mapeo Email_1/2/3, forzar update de emails |
+| `src/components/contacts/ContactProfile.tsx` | Mostrar additional_emails |
+
+### Resultado
+
+El usuario importa el Excel, el sistema matchea por nombre de empresa, y actualiza los 3 emails en cada contacto existente. Los contactos que no existan se crean nuevos con todos los emails.
 
