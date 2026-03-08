@@ -345,6 +345,25 @@ export default function ContactImporter({ open, onOpenChange, onComplete, catego
       setProgress(0);
       setResult(null);
 
+      // Save file to documents bucket + table (non-blocking)
+      try {
+        const path = `${user!.id}/${Date.now()}_${file.name}`;
+        const { error: uploadErr } = await supabase.storage.from("documents").upload(path, file);
+        if (!uploadErr) {
+          await supabase.from("documents").insert({
+            name: file.name,
+            file_path: path,
+            file_type: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            file_size: file.size,
+            created_by: user!.id,
+          });
+        } else {
+          console.warn("No se pudo guardar el archivo en Documentos:", uploadErr.message);
+        }
+      } catch (e: any) {
+        console.warn("Error guardando documento:", e.message);
+      }
+
       let rows: ParsedRow[] = [];
 
       try {
