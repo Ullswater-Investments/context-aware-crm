@@ -437,7 +437,7 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
   const apolloConfig = LUSHA_STATUS_CONFIG[apolloStatus] || LUSHA_STATUS_CONFIG.pending;
   const findymailStatus = contact.findymail_status || "pending";
   const findymailConfig = LUSHA_STATUS_CONFIG[findymailStatus] || LUSHA_STATUS_CONFIG.pending;
-  const hasLushaData = contact.work_email || contact.personal_email || contact.mobile_phone || contact.work_phone;
+  const hasLushaData = contact.work_email || contact.personal_email || contact.mobile_phone || contact.work_phone || (contact as any).additional_emails;
 
   return (
     <>
@@ -594,6 +594,12 @@ export default function ContactProfile({ contact, open, onOpenChange, onUpdate }
                       <div className="flex items-center justify-between text-sm">
                         <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-muted-foreground" />Trabajo: {contact.work_phone}</span>
                         <CopyButton value={contact.work_phone} />
+                      </div>
+                    )}
+                    {(contact as any).additional_emails && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-muted-foreground" />Otros: {(contact as any).additional_emails}</span>
+                        <CopyButton value={(contact as any).additional_emails} />
                       </div>
                     )}
                     {contact.last_enriched_at && (
