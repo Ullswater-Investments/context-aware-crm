@@ -452,7 +452,7 @@ export default function Contacts({ category = "dental_clinics" }: { category?: s
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-2xl font-display font-bold">{category === "veterinary" ? "Contactos Veterinarios" : "Contactos Clínicas Dentales"}</h1>
+            <h1 className="text-2xl font-display font-bold">{category === "veterinary" ? "Contactos Veterinarios" : category === "digital_agents" ? "Contactos Agentes Digitalizadores" : "Contactos Clínicas Dentales"}</h1>
             <p className="text-muted-foreground">Gestiona personas y embudo de ventas</p>
           </div>
           {pendingCount > 0 && !showTrash && (
@@ -941,7 +941,7 @@ export default function Contacts({ category = "dental_clinics" }: { category?: s
       )}
 
       <ContactProfile contact={selectedContact} open={profileOpen} onOpenChange={setProfileOpen} onUpdate={() => { load(); if (selectedContact) { supabase.from("contacts").select("*, organizations(name)").eq("id", selectedContact.id).single().then(({ data }) => { if (data) setSelectedContact(data as Contact); }); } }} />
-      <ContactImporter open={importerOpen} onOpenChange={setImporterOpen} onComplete={load} />
+      <ContactImporter open={importerOpen} onOpenChange={setImporterOpen} onComplete={load} category={category} />
       <HunterSearch open={hunterOpen} onOpenChange={setHunterOpen} />
       {emailContact && <ComposeEmail open={!!emailContact} onOpenChange={(o) => { if (!o) setEmailContact(null); }} defaultTo={emailContact.email} contactId={emailContact.id} />}
       {whatsappContact && <WhatsAppChat contact={whatsappContact} open={!!whatsappContact} onOpenChange={(o) => { if (!o) setWhatsappContact(null); }} />}

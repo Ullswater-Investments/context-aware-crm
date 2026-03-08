@@ -1,57 +1,83 @@
 
 
-## Importación directa de contactos "Agentes Digitalizadores" desde el Excel
+## Revision: Errores y Mejoras pendientes tras integracion Findymail
 
-### Problema actual
+### BUG 1: Bulk Enrich no incluye Findymail (Alta)
 
-1. El título de la página `Contacts.tsx` solo distingue entre `veterinary` y `dental_clinics` — no muestra "Agentes Digitalizadores" para `digital_agents`.
-2. El `ContactImporter` no pasa la `category` al insertar contactos — todos se crean como `dental_clinics` (valor por defecto de la columna).
-3. El Excel tiene columnas: **Nombre** (empresa), **Municipio**, **Código Postal**, **Página Web** — que no coinciden exactamente con los patrones del mapeo automático.
+**Problema:** En `src/pages/Contacts.tsx` linea 258, el boton "Enriquecer todos" solo envia `["hunter", "apollo", "lusha"]` como servicios. Findymail queda excluido del enriquecimiento masivo a pesar de estar integrado en la Edge Function.
 
-### Cambios necesarios
+**Solucion:** Cambiar el array a `["hunter", "apollo", "lusha", "findymail"]`.
 
-#### 1. Actualizar título en `Contacts.tsx` (línea 455)
+### BUG 2: `findymail_status` accedido con cast `as any` (Media)
 
-Cambiar el ternario simple a un mapa de títulos que incluya `digital_agents` → "Contactos Agentes Digitalizadores".
+**Problema:** En `src/components/contacts/ContactProfile.tsx` linea 380, se usa `(contact as any).findymail_status` a pesar de que el tipo `Contact` ya tiene el campo `findymail_status`. Esto indica que el codigo se escribio antes de actualizar el tipo, o no se actualizo tras anadirlo.
 
-#### 2. Pasar `category` al `ContactImporter`
+**Solucion:** Cambiar a `contact.findymail_status` sin cast.
 
-- Añadir prop `category` a `ContactImporterProps`
-- En el `insert` de contactos (línea 468-483), incluir `category` en el payload
-- Pasar `category` desde `Contacts.tsx` al componente `<ContactImporter>`
+### BUG 3: Sin filtro Findymail en pagina de Contactos (Media)
 
-#### 3. Mejorar mapeo de columnas del Excel
+**Problema:** La pagina de Contactos tiene filtros Select para Lusha, Hunter y Apollo, pero no para Findymail. Los contactos enriquecidos con Findymail no se pueden filtrar.
 
-Añadir al `mapColumns`:
-- `"nombre"` como patrón para `full_name` (ya existe como first_name, pero no como nombre completo de empresa)
-- `"municipio"` como patrón para `postal_address`
-- `"código postal"` / `"codigo postal"` como auxiliar para `postal_address`
-- `"página web"` / `"pagina web"` como patrón para `company_website`
+**Solucion:** Anadir un cuarto Select de filtro para estado Findymail (`findymailFilter`), junto a los tres existentes. Actualizar la logica de filtrado en la funcion `filtered` y el boton "Limpiar".
 
-Combinar Municipio + Código Postal en `postal_address` durante el parseo.
+### BUG 4: Sin boton Findymail en tarjetas Kanban (Media)
 
-Extraer dominio de la URL en `company_domain`.
+**Problema:** Las tarjetas del Kanban muestran botones de enriquecimiento rapido para Hunter, Apollo y Lusha, pero no para Findymail. El usuario no puede enriquecer con Findymail desde la vista Kanban.
 
-#### 4. Extraer dominio desde `company_website` en `parseRows`
+**Solucion:** Anadir un boton "Findymail" en las tarjetas Kanban (similar a los otros tres), visible cuando `company_domain` existe y `findymail_status` es `pending` o `not_found`. Requiere anadir estado `enrichingFindymailId` y funcion `enrichWithFindymailFromCard`.
 
-Después del parseo, si hay `company_website` pero no `company_domain`, extraer el dominio limpio (sin www, sin path).
+### BUG 5: Sin icono de estado Findymail en tarjetas Kanban (Baja)
 
-### Archivos a modificar
+**Problema:** Las tarjetas Kanban muestran iconos de estado para Lusha (Sparkles verde), Hunter (Globe verde/naranja) y Apollo (Sparkles azul/naranja), pero no para Findymail.
 
-| Archivo | Cambio |
-|---|---|
-| `src/pages/Contacts.tsx` | Título dinámico + pasar `category` al importer |
-| `src/components/contacts/ContactImporter.tsx` | Aceptar prop `category`, incluir en insert, mejorar mapeo de columnas |
+**Solucion:** Anadir icono de estado Findymail (por ejemplo, `Mail` en verde/naranja) junto a los otros indicadores.
 
-### Resultado esperado
+### Resumen de cambios
 
-El usuario abre "Agentes Digitalizadores", pulsa "Importar", sube el Excel, y los ~380 contactos se crean con:
-- `full_name` = Nombre (empresa)
-- `postal_address` = Municipio + Código Postal
-- `company_domain` = dominio extraído de Página Web
-- `company_website` = URL completa
-- `category` = `digital_agents`
-- `status` = `new_lead`
+| Archivo | Cambio | Prioridad |
+|---|---|---|
+| `src/pages/Contacts.tsx` | Anadir `"findymail"` al array de bulk enrich | Alta |
+| `src/pages/Contacts.tsx` | Anadir filtro Select para Findymail | Media |
+| `src/pages/Contacts.tsx` | Anadir boton + icono Findymail en tarjetas Kanban | Media |
+| `src/components/contacts/ContactProfile.tsx` | Quitar cast `as any` en `findymail_status` | Media |
 
-Luego puede usar Enriquecer Todos para buscar emails/teléfonos via Lusha, Hunter, Apollo, Findymail.
+### Detalle tecnico
+
+**Contacts.tsx - Nuevos estados:**
+```typescript
+const [findymailFilter, setFindymailFilter] = useState("");
+const [enrichingFindymailId, setEnrichingFindymailId] = useState<string | null>(null);
+```
+
+**Contacts.tsx - Nueva funcion:**
+```typescript
+const enrichWithFindymailFromCard = async (c: Contact) => {
+  if (!c.company_domain) return;
+  setEnrichingFindymailId(c.id);
+  try {
+    const { data, error } = await supabase.functions.invoke("enrich-findymail-contact", {
+      body: { contact_id: c.id, full_name: c.full_name, domain: c.company_domain },
+    });
+    if (error) throw error;
+    if (data?.status === "enriched") toast.success("Email encontrado con Findymail");
+    else toast.info("Findymail no encontro datos");
+    load();
+  } catch (err: any) {
+    toast.error(err.message || "Error con Findymail");
+  } finally {
+    setEnrichingFindymailId(null);
+  }
+};
+```
+
+**Contacts.tsx - Filtro actualizado:**
+```typescript
+const matchesFindymail = !findymailFilter || findymailFilter === "all" || c.findymail_status === findymailFilter;
+return matchesSearch && matchesLusha && matchesHunter && matchesApollo && matchesFindymail;
+```
+
+**Contacts.tsx - Bulk enrich corregido:**
+```typescript
+body: { last_id: lastId, services: ["hunter", "apollo", "lusha", "findymail"] },
+```
 
